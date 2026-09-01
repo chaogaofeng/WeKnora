@@ -34,6 +34,11 @@ type Handler struct {
 	temporaryDocuments      interfaces.TemporaryDocumentService
 	feedbackService         service.FeedbackPipelineService         // M5: async user-feedback-to-wiki pipeline (nil = disabled)
 	unsolvedQuestionService interfaces.AgentUnsolvedQuestionService // M5: async post-answer answerability judgement (nil = disabled)
+	// artifactCollector drains skill-generated files from the session sandbox
+	// after an agent turn completes. May be nil when the sandbox backend does
+	// not support artifact collection; handlers must check before using.
+	artifactCollector *service.ArtifactCollector
+	memoryService     interfaces.MemoryService // Service for cross-session long-term memory
 }
 
 // NewHandler creates a new instance of Handler with all necessary dependencies
@@ -56,6 +61,8 @@ func NewHandler(
 	temporaryDocuments interfaces.TemporaryDocumentService,
 	feedbackService service.FeedbackPipelineService,
 	unsolvedQuestionService interfaces.AgentUnsolvedQuestionService,
+	artifactCollector *service.ArtifactCollector,
+	memoryService interfaces.MemoryService,
 ) *Handler {
 	return &Handler{
 		sessionService:          sessionService,
@@ -74,6 +81,8 @@ func NewHandler(
 		temporaryDocuments:      temporaryDocuments,
 		feedbackService:         feedbackService,
 		unsolvedQuestionService: unsolvedQuestionService,
+		artifactCollector:       artifactCollector,
+		memoryService:           memoryService,
 		attachmentProcessor: NewAttachmentProcessor(
 			fileService,
 			documentReader,
@@ -126,7 +135,7 @@ func (h *Handler) CreateSession(c *gin.Context) {
 	createdSession := &types.Session{
 		TenantID:    tenantID.(uint64),
 		Title:       request.Title,
-		Description: request.Description,
+		Description: types.SanitizeClientSessionDescription(request.Description, ""),
 	}
 	// Attach the calling user as the session owner when available.
 	// API-key callers scope sessions per external user when configured;

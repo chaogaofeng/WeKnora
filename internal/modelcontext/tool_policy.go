@@ -79,6 +79,13 @@ var toolHandlePolicies = map[string]toolHandlePolicy{
 		sourceIDKeys: map[string]struct{}{"knowledge_ids": {}},
 		sourceOutput: true,
 	},
+	// Past conversations carry no durable chunk or document IDs, so there is
+	// nothing to compact; the output is prose the model may quote.
+	"search_conversations": {},
+	// Memories are single sentences about the person. They carry no chunk or
+	// document IDs of their own, and the memory item IDs never leave the
+	// service, so there is nothing here for the model to hold a handle on.
+	"search_memory": {},
 	"query_knowledge_graph": {
 		sourceIDKeys: map[string]struct{}{"knowledge_base_ids": {}},
 		sourceOutput: true,
@@ -162,6 +169,13 @@ var toolHandlePolicies = map[string]toolHandlePolicy{
 		sourceIDKeys: map[string]struct{}{"folder_id": {}},
 		sourceOutput: true,
 	},
+	// Sandbox shell/file tools return whatever a skill script produced, so they
+	// carry the same unknown-shape caveat as skill output above.
+	"shell_exec":         {},
+	"list_sandbox_files": {},
+	"read_sandbox_file":  {},
+	"write_sandbox_file": {},
+	"edit_sandbox_file":  {},
 }
 
 // HasToolPolicy reports whether a tool has an explicit model-handle policy.

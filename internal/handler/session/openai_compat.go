@@ -429,7 +429,7 @@ func (h *Handler) openAIStreamQA(
 	setSSEHeaders(c)
 
 	// Write initial agent_query event to StreamManager
-	h.writeAgentQueryEvent(ctx, sessionID, assistantMessageID)
+	h.writeAgentQueryEvent(ctx, sessionID, reqCtx.userMessageID, reqCtx.userCreatedAt, reqCtx.assistantMessage)
 
 	// Build base context for async work
 	baseCtx := ctx
@@ -468,7 +468,7 @@ func (h *Handler) openAIStreamQA(
 	// Setup stream handler: bridges EventBus events → StreamManager so
 	// the pull-based polling loop can observe answer/thinking/complete events.
 	h.setupStreamHandler(asyncCtx, sessionID, assistantMessageID, requestID,
-		time.Now(), reqCtx.assistantMessage, eventBus)
+		reqCtx.session.TenantID, time.Now(), reqCtx.assistantMessage, eventBus)
 
 	// Normal mode: register completion handler on EventAgentFinalAnswer
 	if mode == qaModeNormal {
@@ -1126,7 +1126,7 @@ func (h *Handler) openAINonStreamQA(
 	assistantMessageID := reqCtx.assistantMessage.ID
 
 	// Write initial event to StreamManager
-	h.writeAgentQueryEvent(ctx, sessionID, assistantMessageID)
+	h.writeAgentQueryEvent(ctx, sessionID, reqCtx.userMessageID, reqCtx.userCreatedAt, reqCtx.assistantMessage)
 
 	// Build base context
 	baseCtx := ctx
@@ -1152,7 +1152,7 @@ func (h *Handler) openAINonStreamQA(
 
 	// Setup stream handler: bridges EventBus events → StreamManager
 	h.setupStreamHandler(asyncCtx, sessionID, assistantMessageID, reqCtx.requestID,
-		time.Now(), reqCtx.assistantMessage, eventBus)
+		reqCtx.session.TenantID, time.Now(), reqCtx.assistantMessage, eventBus)
 
 	// Collect the full answer content
 	var fullContent strings.Builder

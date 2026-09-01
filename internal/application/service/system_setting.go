@@ -144,6 +144,14 @@ var registry = map[string]settingSpec{
 		Description: "公开注册成功后的默认空间策略。create_personal = 自动创建个人空间并设为 Owner；" +
 			"tenantless = 仅创建用户，等待接受邀请或主动创建空间。修改后只影响新注册用户。",
 	},
+	"auth.complex_password_enabled": {
+		Type:     "bool",
+		EnvName:  "WEKNORA_AUTH_COMPLEX_PASSWORD_ENABLED",
+		Default:  false,
+		Category: "auth",
+		Description: "是否启用复杂密码。开启后密码必须包含大小写字母、数字和特殊字符。" +
+			"修改后立即生效，只影响新注册用户或新密码修改/重置操作。特殊字符包含：!@#$%^&*()_+-=[]{}|;:,.<>?",
+	},
 	// tenant.max_owned_per_user caps how many tenants a single non-superuser
 	// can create (and Own) via self-service POST /tenants. Read on every
 	// request — UI edits take effect immediately, no restart required. The
@@ -199,6 +207,16 @@ var registry = map[string]settingSpec{
 		Description: "创建空间时是否自动生成一个全量权限（full_access）的 API Key，并在创建接口的响应中返回其明文 token。" +
 			"用于兼容旧版本「创建空间即下发默认 API Key」的行为（属于破坏性变更的回退开关）。" +
 			"每次创建空间时实时读取，修改后立即生效。默认 false（不自动创建，需通过 API Key 管理显式创建）。",
+	},
+	// tenant.auto_accept_invitation: invite = auto-join switch (default false).
+	"tenant.auto_accept_invitation": {
+		Type:     "bool",
+		EnvName:  "WEKNORA_TENANT_AUTO_ACCEPT_INVITATION",
+		Default:  false,
+		Category: "tenant",
+		Description: "全局开关：开启后，空间管理员通过邮箱邀请已注册用户加入空间时，" +
+			"被邀请人将被立即自动加入（直接写入成员关系），无需在收件箱手动接受，也不再生成待接受的邀请记录。" +
+			"关闭时保持原有「发出邀请 → 被邀请人收件箱确认」流程。每次邀请时实时读取，修改后立即生效。默认 false。",
 	},
 	"asynq.core_concurrency": {
 		Type:            "int",

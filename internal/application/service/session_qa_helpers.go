@@ -86,8 +86,10 @@ func (s *sessionService) restrictTagScopesToAgentScope(
 
 // resolveChatModelID resolves the effective chat model ID for a QA request.
 //
-// When an agent is selected, its model configuration must be complete and
-// valid. A request-level override may choose another valid model for this
+// When a user-configured agent is selected, its model configuration must be
+// complete and valid. The internal wiki fixer is the one exception: it is not
+// exposed in the agent UI, so an empty model_id falls back to KB/system model
+// selection. A request-level override may choose another valid model for this
 // request, but it must not make an unconfigured or stale agent appear usable.
 //
 // Without an agent, the legacy KB / session / system fallback remains
@@ -101,10 +103,11 @@ func (s *sessionService) resolveChatModelID(
 	summaryModelID := req.SummaryModelID
 	customAgent := req.CustomAgent
 	session := req.Session
+	configuredAgentModelID := ""
 
 	if customAgent != nil {
-		configuredModelID := strings.TrimSpace(customAgent.Config.ModelID)
-		if configuredModelID == "" {
+		configuredAgentModelID = strings.TrimSpace(customAgent.Config.ModelID)
+		if configuredAgentModelID == "" {
 			// Builtin agents (e.g. the internal wiki-fixer / wiki-researcher)
 			// carry no tenant-owned model config and are resolved against the
 			// KB / session chat model below. Only tenant-customised agents are
@@ -112,11 +115,16 @@ func (s *sessionService) resolveChatModelID(
 			if !customAgent.IsBuiltin {
 				return "", fmt.Errorf("chat model is not configured: please set model_id on agent %s", customAgent.ID)
 			}
+			// The wiki fixer is an internal agent and is intentionally omitted
+			// from the agent-management list. It therefore cannot receive a
+			// user-configured model_id; resolve it from the current Wiki KB or
+			// the normal system KnowledgeQA fallback below instead.
+			logger.Infof(ctx, "No model_id configured for internal wiki fixer %s, using KB/system fallback", customAgent.ID)
 		} else {
-			model, err := s.modelService.GetModelByID(ctx, configuredModelID)
+			model, err := s.modelService.GetModelByID(ctx, configuredAgentModelID)
 			if err != nil || model == nil || model.Type != types.ModelTypeKnowledgeQA {
-				return "", fmt.Errorf("configured chat model %s is unavailable for agent %s", configuredModelID, customAgent.ID)
-			}
+				return "", fmt.Errorf("configured chat model %s is unavailable for agent %s", configuredAgentModelID, customAgent.ID)
+		}
 		}
 	}
 
@@ -129,9 +137,9 @@ func (s *sessionService) resolveChatModelID(
 		}
 		logger.Warnf(ctx, "Request provided invalid summary model ID %s, falling back", summaryModelID)
 	}
-	if customAgent != nil && strings.TrimSpace(customAgent.Config.ModelID) != "" {
-		logger.Infof(ctx, "Using custom agent's model_id: %s", strings.TrimSpace(customAgent.Config.ModelID))
-		return strings.TrimSpace(customAgent.Config.ModelID), nil
+	if configuredAgentModelID != "" {
+		logger.Infof(ctx, "Using custom agent's model_id: %s", configuredAgentModelID)
+		return configuredAgentModelID, nil
 	}
 	return s.selectChatModelID(ctx, session, knowledgeBaseIDs, knowledgeIDs)
 }

@@ -27,6 +27,7 @@ type WikiPageHandler struct {
 	auditService         interfaces.AuditLogService
 	folderService        interfaces.KnowledgeFolderService // M4-fix1: wiki governance page
 	folderSummaryService interfaces.FolderSummaryService   // M4-fix1: wiki governance page
+	memoryService        interfaces.MemoryService
 }
 
 // NewWikiPageHandler creates a new wiki page handler
@@ -37,6 +38,7 @@ func NewWikiPageHandler(
 	auditService interfaces.AuditLogService,
 	folderService interfaces.KnowledgeFolderService,
 	folderSummaryService interfaces.FolderSummaryService,
+	memoryService interfaces.MemoryService,
 ) *WikiPageHandler {
 	return &WikiPageHandler{
 		wikiService:          wikiService,
@@ -45,6 +47,7 @@ func NewWikiPageHandler(
 		auditService:         auditService,
 		folderService:        folderService,
 		folderSummaryService: folderSummaryService,
+		memoryService:        memoryService,
 	}
 }
 
@@ -1028,6 +1031,9 @@ func (h *WikiPageHandler) GetGraph(c *gin.Context) {
 		Depth:           depth,
 		Types:           typesFilter,
 		Limit:           limit,
+	}
+	if h.memoryService != nil {
+		req.FamiliarKnowledgeIDs = h.memoryService.FamiliarKnowledgeIDs(c.Request.Context())
 	}
 
 	graph, err := h.wikiService.GetGraph(c.Request.Context(), req)
