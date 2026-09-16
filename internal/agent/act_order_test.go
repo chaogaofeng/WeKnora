@@ -64,7 +64,7 @@ func TestParallelReadsRespectMutationBarriers(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		engine.executeToolCallsParallel(ctx, response, step, 0, "session", "message")
+		engine.executeToolCallsParallel(ctx, response, &types.AgentState{}, step, 0, "session", "message")
 	}()
 	for i := 0; i < 2; i++ {
 		select {

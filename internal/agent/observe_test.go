@@ -446,7 +446,7 @@ func TestExecuteToolCalls_LengthFinish_RefusesEveryCallWithoutExecuting(t *testi
 				}},
 			},
 		},
-		step, 0, "sess-1", "msg-1",
+		&types.AgentState{}, step, 0, "sess-1", "msg-1",
 	)
 
 	assert.Equal(t, 0, tool.calls, "a truncated call must never reach the tool")
@@ -471,7 +471,7 @@ func TestExecuteToolCalls_TruncatedArgsWithoutFinishReason_Refuses(t *testing.T)
 				}},
 			},
 		},
-		step, 0, "sess-1", "msg-1",
+		&types.AgentState{}, step, 0, "sess-1", "msg-1",
 	)
 
 	assert.Equal(t, 0, tool.calls)
@@ -496,7 +496,7 @@ func TestExecuteToolCalls_CompleteArgs_StillExecute(t *testing.T) {
 				}},
 			},
 		},
-		step, 0, "sess-1", "msg-1",
+		&types.AgentState{}, step, 0, "sess-1", "msg-1",
 	)
 
 	assert.Equal(t, 1, tool.calls)

@@ -894,3 +894,121 @@ func (s *knowledgeService) ProcessKnowledgeListDelete(ctx context.Context, t *as
 	logger.Infof(ctx, "Successfully deleted %d knowledge items", len(payload.KnowledgeIDs))
 	return nil
 }
+
+func (s *knowledgeService) cleanupWikiReferences(
+	ctx context.Context,
+	knowledge *types.Knowledge,
+	sourceChunkRefs map[string]bool,
+) error {
+	if knowledge == nil {
+		return nil
+	}
+	kbID := knowledge.KnowledgeBaseID
+	knowledgeID := knowledge.ID
+	if kbID == "" || knowledgeID == "" {
+		return nil
+	}
+
+	var cleanupErr error
+
+	// (1) Tombstone + scrub pending ingest — must happen first so any
+	// wiki_ingest task that wakes up between here and the retract enqueue
+	// below sees "knowledge gone" and bails out.
+	if s.redisClient != nil {
+		key := WikiDeletedTombstoneKey(kbID, knowledgeID)
+		if err := s.redisClient.Set(ctx, key, "1", wikiDeletedTTL).Err(); err != nil {
+			cleanupErr = errors.Join(cleanupErr, err)
+		}
+	}
+	if s.taskPendingRepo != nil {
+		err := s.taskPendingRepo.DeleteByDedupKey(ctx, wikiTaskType, wikiTaskScope, kbID, knowledgeID, WikiOpIngest)
+		if err != nil {
+			cleanupErr = errors.Join(cleanupErr, err)
+		}
+	}
+
+	// Pull title/summary from the knowledge itself — do NOT read them from
+	// existing wiki pages. In the race window wiki pages may not exist yet,
+	// and even when they do their "summary" is the LLM-extracted one which
+	// we're about to invalidate anyway. The knowledge row still has the
+	// original Title/FileName/Description, which is what the retract prompt
+	// actually wants.
+	docTitle := knowledge.Title
+	if docTitle == "" {
+		docTitle = knowledge.FileName
+	}
+	if docTitle == "" {
+		docTitle = knowledgeID
+	}
+	docSummary := knowledge.Description
+
+	// (2) Immediate reconciliation for pages already present. If ingest
+	// hasn't run yet this simply finds nothing; that's fine — see (3).
+	pages, err := s.wikiRepo.ListBySourceRef(ctx, kbID, knowledgeID)
+	if err != nil {
+		logger.Warnf(ctx, "wiki cleanup: failed to list pages by source ref %s: %v", knowledgeID, err)
+		return errors.Join(cleanupErr, err)
+	}
+
+	// Prefer the on-disk summary if the summary page already exists (it's
+	// richer than the raw user-provided description). Leave docSummary
+	// untouched otherwise so we still pass something meaningful downstream.
+	for _, page := range pages {
+		if page.PageType == types.WikiPageTypeSummary && page.Summary != "" {
+			docSummary = page.Summary
+			break
+		}
+	}
+
+	// Persist the retract page set before removing source refs. Otherwise an
+	// enqueue failure would leave the retry unable to rediscover those pages.
+	var pageSlugs, folderIDs []string
+	for _, page := range pages {
+		if page.PageType != types.WikiPageTypeIndex {
+			pageSlugs = append(pageSlugs, page.Slug)
+			folderIDs = append(folderIDs, page.FolderID)
+		}
+	}
+	lang := types.LanguageFromContextOrDefault(ctx)
+	tenantID, _ := types.TenantIDFromContext(ctx)
+	if err := enqueueWikiRetract(ctx, s.task, s.taskPendingRepo, WikiRetractPayload{
+		TenantID: tenantID, KnowledgeBaseID: kbID, KnowledgeID: knowledgeID,
+		DocTitle: docTitle, DocSummary: docSummary, Language: lang,
+		PageSlugs: pageSlugs, FolderIDs: uniqueWikiFolderIDs(folderIDs),
+	}); err != nil {
+		return errors.Join(cleanupErr, err)
+	}
+
+	var deletedSlugs []string
+	for _, page := range pages {
+		if page.PageType == types.WikiPageTypeIndex {
+			continue
+		}
+
+		remaining := removeSourceRef(page.SourceRefs, knowledgeID)
+
+		if len(remaining) == 0 {
+			if err := s.wikiService.DeletePage(ctx, kbID, page.Slug); err != nil {
+				logger.Warnf(ctx, "wiki cleanup: failed to delete page %s: %v", page.Slug, err)
+				cleanupErr = errors.Join(cleanupErr, err)
+			} else {
+				deletedSlugs = append(deletedSlugs, page.Slug)
+			}
+		} else {
+			page.SourceRefs = remaining
+			page.ChunkRefs = removeChunkRefs(page.ChunkRefs, sourceChunkRefs)
+			if err := s.wikiService.UpdatePageMeta(ctx, page); err != nil {
+				logger.Warnf(ctx, "wiki cleanup: failed to update source refs for page %s: %v", page.Slug, err)
+				cleanupErr = errors.Join(cleanupErr, err)
+			}
+		}
+	}
+
+	if len(deletedSlugs) > 0 {
+		logger.Infof(ctx, "wiki cleanup: deleted %d pages after knowledge %s deletion: %v",
+			len(deletedSlugs), knowledgeID, deletedSlugs)
+	}
+
+	return cleanupErr
+}
+
