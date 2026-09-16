@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"unicode/utf8"
+
 	"gorm.io/gorm"
 )
 
@@ -128,7 +130,15 @@ func NormalizeKnowledgeFolderPath(raw string) string {
 			continue
 		}
 		if len(segment) > MaxKnowledgeFolderSegmentLength {
-			segment = strings.TrimSpace(segment[:MaxKnowledgeFolderSegmentLength])
+			// The cap is a byte budget, so back the cut off to the start of a
+			// rune. Slicing at the raw index leaves the leading bytes of a
+			// partial rune behind, and a folder named in Chinese hits that on
+			// the 43rd character.
+			cut := MaxKnowledgeFolderSegmentLength
+			for cut > 0 && !utf8.RuneStart(segment[cut]) {
+				cut--
+			}
+			segment = strings.TrimSpace(segment[:cut])
 		}
 		if segment == "" {
 			continue

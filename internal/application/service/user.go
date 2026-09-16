@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -626,6 +627,19 @@ func (s *userService) UpdateUserPreferences(
 	}
 
 	merged := user.Preferences
+	if patch.BrowserSearchInstructions != nil {
+		value := strings.TrimSpace(*patch.BrowserSearchInstructions)
+		if utf8.RuneCountInString(value) > types.MaxBrowserSearchInstructionsLength {
+			return types.UserPreferences{}, fmt.Errorf(
+				"browser search instructions must not exceed %d characters",
+				types.MaxBrowserSearchInstructionsLength,
+			)
+		}
+		merged.BrowserSearchInstructions = nil
+		if value != "" && value != types.DefaultBrowserSearchInstructions {
+			merged.BrowserSearchInstructions = &value
+		}
+	}
 	if patch.LastActiveTenantID != nil {
 		// *0 = "forget my preference, fall back to home on next login";
 		// any positive value = set/replace. We do not validate membership
@@ -1099,6 +1113,13 @@ func (s *userService) generateTokensForTenant(
 // The previous refresh token (if provided) is revoked so the old session
 // can no longer roll forward into the source tenant.
 //
+// On success the target is also recorded as the user's last-active-
+// tenant preference. Refresh tokens do not carry tenant_id, so
+// RefreshToken / the next login re-resolve from this preference;
+// a successful switch therefore has to persist it before minting
+// tokens. A write failure aborts the switch so we never return a
+// token pair whose later refresh would bounce to a different workspace.
+//
 // Returns ErrMembershipNotFound when the user is not a member of the
 // target tenant. Cross-tenant superuser access (CanAccessAllTenants)
 // is allowed without a membership row, mirroring the auth middleware's
@@ -1136,6 +1157,14 @@ func (s *userService) SwitchTenant(
 		return nil, fmt.Errorf("load target workspace: %w", err)
 	}
 
+	// Persist before minting tokens so a 200 response is also a
+	// durable landing-preference update. RefreshToken re-reads this
+	// field; writing after issue would leave a window where access
+	// is scoped to targetTenantID but refresh falls back to home.
+	if err := s.recordLastActiveTenant(ctx, user, targetTenantID); err != nil {
+		return nil, fmt.Errorf("record last-active-tenant preference: %w", err)
+	}
+
 	accessToken, refreshToken, err := s.generateTokensForTenant(ctx, user, targetTenantID)
 	if err != nil {
 		return nil, fmt.Errorf("generate tokens: %w", err)
@@ -1161,6 +1190,27 @@ func (s *userService) SwitchTenant(
 		Token:        accessToken,
 		RefreshToken: refreshToken,
 	}, nil
+}
+
+// recordLastActiveTenant records tenantID as the user's last-active-
+// tenant preference so fresh logins and refresh-token rotations land
+// in the last activated workspace. Switching home writes the home ID
+// rather than clearing; resolveLoginTenantID treats *home the same as
+// nil today. (The SPA still sends 0 when switching home — landing is
+// equivalent unless home tenant_id is later rewritten while the old
+// home membership remains.) Errors are returned to the caller.
+func (s *userService) recordLastActiveTenant(ctx context.Context, user *types.User, tenantID uint64) error {
+	if user == nil || tenantID == 0 {
+		return nil
+	}
+	patch := types.UserPreferences{LastActiveTenantID: &tenantID}
+	merged, err := s.UpdateUserPreferences(ctx, user.ID, patch)
+	if err != nil {
+		return err
+	}
+	// Reflect the persisted preferences in the switch response.
+	user.Preferences = merged
+	return nil
 }
 
 // ValidateToken validates an access token. The second return value is
@@ -1193,6 +1243,9 @@ func (s *userService) ValidateToken(ctx context.Context, tokenString string) (*t
 	if isRefreshTokenClaims(claims) {
 		return nil, 0, errors.New("refresh token cannot be used as access token")
 	}
+	if isSandboxTerminalTicketClaims(claims) {
+		return nil, 0, errors.New("terminal ticket cannot be used as access token")
+	}
 
 	// Check if token is revoked
 	tokenRecord, err := s.tokenRepo.GetTokenByValue(ctx, tokenString)
@@ -1216,9 +1269,50 @@ func (s *userService) ValidateToken(ctx context.Context, tokenString string) (*t
 	return user, activeTenantID, nil
 }
 
+func redactAuthToken(token *types.AuthToken) *types.AuthToken {
+	if token == nil {
+		return nil
+	}
+	cp := *token
+	cp.Token = ""
+	return &cp
+}
+
+// GetAccessTokenByValue looks up the stored token row for a JWT string.
+// The JWT itself is stripped so callers cannot log or re-play it.
+func (s *userService) GetAccessTokenByValue(ctx context.Context, tokenString string) (*types.AuthToken, error) {
+	tokenString = strings.TrimSpace(tokenString)
+	if tokenString == "" {
+		return nil, apprepo.ErrTokenNotFound
+	}
+	token, err := s.tokenRepo.GetTokenByValue(ctx, tokenString)
+	if err != nil {
+		return nil, err
+	}
+	return redactAuthToken(token), nil
+}
+
+// GetAccessTokenByID looks up a stored token row by primary key.
+func (s *userService) GetAccessTokenByID(ctx context.Context, id string) (*types.AuthToken, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil, apprepo.ErrTokenNotFound
+	}
+	token, err := s.tokenRepo.GetTokenByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return redactAuthToken(token), nil
+}
+
 func isRefreshTokenClaims(claims jwt.MapClaims) bool {
 	tokenType, ok := claims["type"].(string)
 	return ok && tokenType == "refresh"
+}
+
+func isSandboxTerminalTicketClaims(claims jwt.MapClaims) bool {
+	tokenType, ok := claims["type"].(string)
+	return ok && tokenType == sandboxTerminalTicketType
 }
 
 func userIDFromSignedToken(tokenString string) (string, error) {

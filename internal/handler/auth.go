@@ -655,10 +655,11 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{
-			"user":            userInfo,
-			"tenant":          dto.NewTenantResponse(ctx, tenant),
-			"memberships":     memberships,
-			"tenant_required": tenant == nil,
+			"user":                userInfo,
+			"preference_defaults": gin.H{"browser_search_instructions": types.DefaultBrowserSearchInstructions},
+			"tenant":              dto.NewTenantResponse(ctx, tenant),
+			"memberships":         memberships,
+			"tenant_required":     tenant == nil,
 			"capabilities": gin.H{
 				"can_create_tenant":      canCreateTenant,
 				"auto_accept_invitation": autoAcceptInvitation,
@@ -672,11 +673,14 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 // (preserve existing value) from "explicit false". See
 // types.UserPreferences for the persistence-layer counterpart.
 type updateMyPreferencesRequest struct {
-	// LastActiveTenantID lets the SPA persist "after a fresh login,
-	// drop me back into this workspace" across devices. Send a positive
-	// workspace id to set / replace, or 0 to clear. Membership is validated
-	// at next login, not here. Nil = field omitted from the PATCH and
-	// stays untouched.
+	BrowserSearchInstructions *string `json:"browser_search_instructions" binding:"omitempty,max=4000"`
+	// LastActiveTenantID lets clients persist "after a fresh login,
+	// drop me back into this workspace" across devices. The SPA sends
+	// this after every tenant switch; POST /auth/switch-tenant records
+	// the same preference server-side. Send a positive workspace id to
+	// set / replace, or 0 to clear. Membership is validated at next
+	// login, not here. Nil = field omitted from the PATCH and stays
+	// untouched.
 	LastActiveTenantID *uint64 `json:"last_active_tenant_id"`
 }
 
@@ -711,7 +715,8 @@ func (h *AuthHandler) UpdateMyPreferences(c *gin.Context) {
 	}
 
 	patch := types.UserPreferences{
-		LastActiveTenantID: req.LastActiveTenantID,
+		LastActiveTenantID:        req.LastActiveTenantID,
+		BrowserSearchInstructions: req.BrowserSearchInstructions,
 	}
 	prefs, err := h.userService.UpdateUserPreferences(ctx, user.ID, patch)
 	if err != nil {
@@ -832,14 +837,16 @@ func (h *AuthHandler) GetAuthConfig(c *gin.Context) {
 
 // SwitchTenant godoc
 // @Summary      切换激活空间
-// @Description  为当前用户在目标空间重新签发访问令牌；要求该用户在目标空间存在 active 成员关系
+// @Description  为当前用户在目标空间重新签发访问令牌；要求该用户在目标空间存在 active 成员关系（跨租户超级用户除外）。
+// @Description  成功换签会把目标空间写入「最近活跃租户」偏好，下次登录与 refresh 都落在该空间（refresh JWT 不含 tenant_id）。
+// @Description  该偏好是账号级的：一次换签会改变该用户所有设备的下次登录/refresh 落点。偏好写入失败则整次换签失败，不会发出新 token。
 // @Tags         认证
 // @Accept       json
 // @Produce      json
 // @Param        request  body      object{tenant_id=integer,refresh_token=string}  true  "切换请求"
 // @Success      200      {object}  types.LoginResponse
 // @Failure      400      {object}  errors.AppError  "参数错误"
-// @Failure      403      {object}  errors.AppError  "无该空间成员关系"
+// @Failure      403      {object}  errors.AppError  "无该空间成员关系或偏好写入失败"
 // @Security     Bearer
 // @Router       /auth/switch-tenant [post]
 //
