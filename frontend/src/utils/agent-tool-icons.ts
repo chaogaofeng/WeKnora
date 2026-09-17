@@ -31,6 +31,10 @@ export function getAgentToolIconName(
   if (toolName === 'todo_write') {
     return 'task'
   }
+  // [push-files] push_files tool card icon
+  if (toolName === 'push_files') {
+    return 'download'
+  }
   if (toolName === 'image_analysis' || toolName === 'query_understand') {
     return 'ai-search'
   }

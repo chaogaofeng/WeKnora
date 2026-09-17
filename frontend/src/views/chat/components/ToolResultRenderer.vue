@@ -74,6 +74,9 @@
       :output="output" :arguments="toolArguments" :success="success"
     />
 
+    <!-- [push-files] File Push Cards Display (migrated from dev2 M2) -->
+    <FilePushCards v-else-if="displayType === 'file_push'" :data="toolData as FilePushData" />
+
     <!-- Fallback: Display raw output -->
     <div v-else class="fallback-output">
       <div class="fallback-header">
@@ -107,7 +110,9 @@ import type {
   ShellExecData,
   ListSandboxFilesData,
   WriteSandboxFileData,
-  ReadSkillData
+  ReadSkillData,
+  // [push-files]
+  FilePushData
 } from '@/types/tool-results';
 
 import SearchResults from './tool-results/SearchResults.vue';
@@ -129,6 +134,8 @@ import SandboxFilesResult from './tool-results/SandboxFilesResult.vue';
 import WriteSandboxFileResult from './tool-results/WriteSandboxFileResult.vue';
 import ReadSkillResult from './tool-results/ReadSkillResult.vue';
 import McpToolResult from './tool-results/McpToolResult.vue';
+// [push-files]
+import FilePushCards from './tool-results/FilePushCards.vue';
 
 interface Props {
   success?: boolean;

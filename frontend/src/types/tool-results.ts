@@ -32,7 +32,9 @@ export type DisplayType =
     | 'edit_sandbox_file'
     | 'read_skill'
     | 'mcp_discovery'
-    | 'mcp_call';
+    | 'mcp_call'
+    // [push-files] push_files tool card (migrated from dev2 M2)
+    | 'file_push';
 
 // Search result item
 export interface SearchResultItem {
@@ -401,6 +403,29 @@ export interface ReadSkillData {
 // Union type for all wiki edit data
 export type WikiEditData = WikiWritePageData | WikiReplaceTextData | WikiRenamePageData | WikiDeletePageData;
 
+// [push-files] File push card (push_files tool, migrated from dev2 M2)
+export interface FilePushCard {
+    knowledge_id: string;
+    knowledge_base_id?: string;
+    title: string;
+    file_name?: string;
+    file_type?: string;
+    file_size?: number;
+    download_url?: string;
+    expires_at?: string;
+    expires_in_hours?: number;
+    storage_provider?: string;
+    push_failed_reason?: string;
+}
+
+// [push-files] File push data (display_type: 'file_push')
+export interface FilePushData {
+    display_type: 'file_push';
+    files?: FilePushCard[];
+    count?: number;
+    failed_count?: number;
+}
+
 // Union type for all tool result data
 export type ToolResultData =
     | SearchResultsData
@@ -422,7 +447,9 @@ export type ToolResultData =
     | WikiDeletePageData
     | ShellExecData
     | ListSandboxFilesData
-    | ReadSkillData;
+    | ReadSkillData
+    // [push-files]
+    | FilePushData;
 
 // Action data (from index.vue)
 export interface ActionData {

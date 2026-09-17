@@ -13,6 +13,8 @@ import {
   updateDocumentChunk, listChunkRevisions, revertDocumentChunk, updateKnowledgeMetadata,
   updateKnowledgeSummary, regenerateKnowledgeSummary, upsertGeneratedQuestion, regenerateGeneratedQuestions, getKnowledgeDetails,
   KNOWLEDGE_CHUNK_PAGE_SIZE,
+  // [push-files]
+  setKnowledgePushAllowed,
 } from "@/api/knowledge-base/index";
 import { MessagePlugin } from "tdesign-vue-next";
 import { sanitizeHTML, safeMarkdownToHTML, createSafeImage, isValidImageURL, hydrateProtectedFileImages, isValidURL } from '@/utils/security';
@@ -56,6 +58,39 @@ const summaryRefreshing = ref(false);
 const summaryEditing = ref(false);
 const summaryDraft = ref('');
 const summarySaving = ref(false);
+
+// [push-files] 文档"允许推送"开关：关闭后智能体无法通过 push_files 工具推送该文件或生成下载链接
+const pushAllowedLoading = ref(false);
+const pushAllowedValue = ref(true);
+// 仅文件型 / 手工型文档显示该开关（URL 抓取的网页无可推送文件）
+const showPushAllowedSwitch = computed(() =>
+  props.canEditKB && props.details?.id && (props.details.type === 'file' || props.details.type === 'manual')
+);
+// 开关状态严格跟随 details.push_allowed 的真实值。
+// 仅监听 push_allowed 单个字段，避免与 id 变更的 watch 交叠造成竞态；
+// 当值尚未加载（null/undefined）时保持上一状态，待真实值到达后再同步。
+watch(() => props.details?.push_allowed, (val) => {
+  if (val === null || val === undefined) return;
+  pushAllowedValue.value = val !== false;
+}, { immediate: true });
+const onTogglePushAllowed = async (val: boolean) => {
+  if (!props.details?.id || pushAllowedLoading.value) return;
+  const prev = pushAllowedValue.value;
+  pushAllowedValue.value = val;
+  pushAllowedLoading.value = true;
+  try {
+    await setKnowledgePushAllowed(props.details.id, val);
+    props.details.push_allowed = val;
+    MessagePlugin.success(val
+      ? t('knowledgeBase.pushAllowedEnabled')
+      : t('knowledgeBase.pushAllowedDisabled'));
+  } catch (err) {
+    pushAllowedValue.value = prev;
+    MessagePlugin.error(t('knowledgeBase.pushAllowedToggleFailed'));
+  } finally {
+    pushAllowedLoading.value = false;
+  }
+};
 
 const startSummaryEdit = () => {
   summaryDraft.value = props.details?.description || '';
@@ -1668,6 +1703,21 @@ const handleChunkPageChange = (pageInfo: { current: number }) => {
                 </t-tag>
               </span>
             </div>
+            <!-- [push-files] 文档"允许推送"开关：关闭后智能体无法通过 push_files 工具推送该文件或生成下载链接 -->
+            <div v-if="showPushAllowedSwitch" class="doc-detail-row doc-detail-row--push">
+              <span class="doc-detail-label">{{ $t('knowledgeBase.pushAllowedLabel') }}</span>
+              <span class="doc-detail-value doc-detail-push-switch">
+                <t-switch
+                  size="small"
+                  :value="pushAllowedValue"
+                  :loading="pushAllowedLoading"
+                  @change="onTogglePushAllowed"
+                />
+                <t-tooltip :content="$t('knowledgeBase.pushAllowedTooltip')" placement="top-left">
+                  <t-icon name="info-circle" size="14px" class="doc-detail-push-hint" />
+                </t-tooltip>
+              </span>
+            </div>
           </div>
         </section>
 
@@ -2335,6 +2385,20 @@ const handleChunkPageChange = (pageInfo: { current: number }) => {
   flex: 0 0 72px;
   font-size: 12px;
   color: var(--td-text-color-secondary);
+}
+
+/* [push-files] 允许推送开关行 */
+.doc-detail-row--push {
+  align-items: center;
+}
+
+.doc-detail-push-switch {
+  gap: 6px;
+}
+
+.doc-detail-push-hint {
+  color: var(--td-text-color-placeholder);
+  cursor: help;
 }
 
 .doc-detail-value {

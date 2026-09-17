@@ -2173,6 +2173,14 @@ const toggleEvent = (eventId: string) => {
 };
 
 const handleActionHeaderClick = (event: any) => {
+  // [push-files] push_files is a card-rendering tool (file_push cards). We must
+  // expand the card so users can reach the download button; otherwise clicking
+  // would only open the reference drawer and the download card stays hidden.
+  if (event?.tool_name === 'push_files') {
+    if (event.tool_call_id) toggleEvent(event.tool_call_id);
+    if (canOpenToolReferences(event)) openToolReferences(event);
+    return;
+  }
   if (canOpenToolReferences(event)) {
     openToolReferences(event);
     return;
