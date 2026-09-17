@@ -209,6 +209,16 @@ func NewRouter(params RouterParams) *gin.Engine {
 	// "log to stderr only" instead of crashing.
 	r.Use(middleware.AuditServiceProvider(params.AuditLogService))
 
+	// [openai-compat] OpenAI-compatible endpoints for external consumers
+	// (e.g. Dify). Authentication is handled by the global Auth middleware
+	// above (X-API-Key or Bearer token); no RBAC/APIKey-gate is needed
+	// since the handler resolves agent/session from the tenant context.
+	openaiGroup := r.Group("/v1")
+	{
+		openaiGroup.POST("/chat/completions", params.SessionHandler.OpenAIChatCompletions)
+		openaiGroup.GET("/models", params.SessionHandler.OpenAIModels)
+	}
+
 	// 需要认证的API路由
 	v1 := r.Group("/api/v1")
 	{

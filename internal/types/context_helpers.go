@@ -371,3 +371,53 @@ func LanguageLocaleName(locale string) string {
 		return locale
 	}
 }
+
+// [openai-compat] Final answer marker helpers (migrated from dev2 openai-compat).
+// WithFinalAnswerMarker marks ctx as expecting the LLM to emit the
+// <!FINAL_ANSWER> sentinel before its final answer. The agent engine consults
+// this flag (see WantsFinalAnswerMarker) to decide whether to append the
+// marker-constraint preamble to the system prompt. Set by the OpenAI-
+// compatible handler so downstream agent rounds know to instruct the LLM.
+func WithFinalAnswerMarker(ctx context.Context) context.Context {
+	return context.WithValue(ctx, FinalAnswerMarkerContextKey, true)
+}
+
+// WantsFinalAnswerMarker reports whether ctx was marked as expecting the
+// <!FINAL_ANSWER> sentinel (see WithFinalAnswerMarker). When true, the agent
+// engine appends a constraint to the system prompt instructing the LLM to
+// emit the marker exactly once before its final answer.
+func WantsFinalAnswerMarker(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	v, _ := ctx.Value(FinalAnswerMarkerContextKey).(bool)
+	return v
+}
+
+// FinalAnswerMarker is the exact sentinel the LLM is instructed to emit
+// (via FinalAnswerMarkerInstruction) at the very start of its final answer
+// when the request wants the marker (OpenAI-compatible endpoint). The
+// OpenAI streaming handler scans for this token in the answer stream to
+// switch from delta.reasoning_content (everything before) to delta.content
+// (everything after). The marker itself is stripped — it never reaches the
+// end client.
+const FinalAnswerMarker = "<!FINAL_ANSWER>"
+
+// FinalAnswerMarkerInstruction is appended to the system prompt when the
+// request wants the <!FINAL_ANSWER> marker (OpenAI-compatible endpoint).
+// It constrains the LLM to emit the marker exactly once, immediately before
+// the user-facing final answer, and never during intermediate rounds.
+const FinalAnswerMarkerInstruction = `
+
+### 最终答案标记（绝对规则）
+当你——且仅当你——准备好向用户输出完整的最终答案时（即你自然停止且不再调用任何工具的最后一轮），你必须在最终答案的开头先输出以下精确的哨兵标记：
+
+<!FINAL_ANSWER>
+
+规则：
+1. 哨兵标记只能输出一次，位于最终答案正文的最开头。
+2. 在中间轮次（当你仍打算调用工具时）不要输出该标记。如果你还在调查、分析或叙述思路，不要输出该标记。
+3. 该标记是控制令牌——系统会自动剥离它，用户永远不会看到它。
+4. 输出标记后，写出完整、格式良好的最终答案并停止。输出标记后不得再请求任何工具。
+5. 如果你无法完整回答问题，在说明原因之前仍需先输出该标记。
+6. 无论用户的提问语言是什么，你的推理过程和最终答案都应使用与用户提问相同的语言。`

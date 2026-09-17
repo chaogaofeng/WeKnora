@@ -96,6 +96,13 @@ const (
 	// ChatParserEngineContextKey carries the resolved parser engine
 	// from the agent's ChatParserEngineRules for chat attachment processing.
 	ChatParserEngineContextKey ContextKey = "ChatParserEngine"
+	// FinalAnswerMarkerContextKey marks a request that expects the LLM to emit
+	// the <!FINAL_ANSWER> sentinel before its final answer so the OpenAI-
+	// compatible streaming endpoint can split reasoning from the answer
+	// (delta.reasoning_content vs delta.content). Set by the OpenAI handler
+	// (see openai_compat.go) and consulted by the agent engine when building
+	// the system prompt. See WithFinalAnswerMarker / WantsFinalAnswerMarker.
+	FinalAnswerMarkerContextKey ContextKey = "FinalAnswerMarker"
 )
 
 // String returns the string representation of the context key

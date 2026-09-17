@@ -163,7 +163,18 @@ func (e *AgentEngine) buildSystemPrompt(ctx context.Context) string {
 	for _, section := range sections {
 		logger.Debugf(ctx, "[Agent][Prompt] section=%s bytes=%d", section.Name, len(section.Content))
 	}
-	return renderSystemPromptSections(sections)
+	prompt := renderSystemPromptSections(sections)
+	prompt = strings.TrimRight(prompt, " \t\r\n")
+
+	// [openai-compat] When the request originates from the OpenAI-compatible
+	// endpoint, append a constraint instructing the LLM to emit <!FINAL_ANSWER>
+	// exactly once before its final answer. The OpenAI handler parses this
+	// marker to split the stream into delta.reasoning_content (everything
+	// before) and delta.content (everything after). See WantsFinalAnswerMarker.
+	if types.WantsFinalAnswerMarker(ctx) {
+		prompt += types.FinalAnswerMarkerInstruction
+	}
+	return prompt
 }
 
 // SetMemoryPrompt supplies the long-term memory envelope for this run. Empty

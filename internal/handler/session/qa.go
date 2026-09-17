@@ -690,7 +690,17 @@ func (h *Handler) setupSSEStream(reqCtx *qaRequestContext, generateTitle bool, m
 	}
 
 	eventBus := event.NewEventBus()
-	asyncCtx, cancel := context.WithCancel(logger.CloneContext(baseCtx))
+	// [openai-compat] Detach asyncCtx from the HTTP request's cancellation
+	// chain so an SSE client disconnect does not cancel ongoing generation
+	// (the LLM call would otherwise fail mid-stream with "context canceled",
+	// dropping the answer the user already waited for). The OpenAI-compatible
+	// endpoint relies on this: its stream translator consumes the same event
+	// bus, and WithoutCancel lets background generation finish even after the
+	// client goes away. context.WithoutCancel keeps the values carried by
+	// baseCtx (tenant / model / effective-tenant) while suppressing request
+	// cancellation; the only way asyncCtx is cancelled is via cancel(),
+	// which the EventStop handler below triggers on a user-requested stop.
+	asyncCtx, cancel := context.WithCancel(logger.CloneContext(context.WithoutCancel(baseCtx)))
 
 	streamCtx := &sseStreamContext{
 		eventBus:         eventBus,
