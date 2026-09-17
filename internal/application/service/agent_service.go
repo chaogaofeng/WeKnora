@@ -1054,6 +1054,15 @@ func (s *agentService) registerTools(
 				WithKnowledgeScope(s.knowledgeService)
 		case tools.ToolGetDocumentInfo:
 			toolToRegister = tools.NewGetDocumentInfoTool(s.knowledgeService, s.chunkService, config.SearchTargets)
+		case tools.ToolPushFiles:
+			// [push-files] migrated from dev2 M2. Requires the file service
+			// (for presigned download URLs); skipped otherwise.
+			if s.fileService == nil {
+				logger.Warnf(ctx, "push_files tool requires a file service, skipping registration")
+				continue
+			}
+			tenantID := firstSearchTargetTenant(config.SearchTargets)
+			toolToRegister = tools.NewPushFilesTool(s.knowledgeService, s.fileService, config.SearchTargets, tenantID)
 		case tools.ToolSearchConversations:
 			// The owner is captured from the caller's identity here, not read
 			// from the model's arguments, so no prompt can redirect the search
@@ -1482,4 +1491,17 @@ func (s *agentService) resolvePinnedSkillInfos(config *types.AgentConfig) []*age
 		})
 	}
 	return result
+}
+
+// [push-files] firstSearchTargetTenant returns the first non-zero tenant ID
+// found in the search targets, used to sign presigned download URLs for
+// push_files. Falls back to 0 (presign signing will then fail gracefully if
+// no tenant is bound). Migrated from dev2.
+func firstSearchTargetTenant(searchTargets types.SearchTargets) uint64 {
+	for _, t := range searchTargets {
+		if t != nil && t.TenantID != 0 {
+			return t.TenantID
+		}
+	}
+	return 0
 }

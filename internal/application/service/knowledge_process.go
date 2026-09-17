@@ -4053,3 +4053,23 @@ func runKnowledgeListReparseSubmissions(
 		asynq.SkipRetry, outcome.Submitted, outcome.Failed, errors.Join(failures...),
 	)
 }
+
+// [push-files] SetKnowledgePushAllowed toggles the push_allowed flag on a
+// single knowledge document. When false, the push_files tool and IM link
+// generation will reject the document. Returns the reloaded knowledge row.
+// Migrated from dev2 (M2 push-allowed toggle).
+func (s *knowledgeService) SetKnowledgePushAllowed(ctx context.Context, knowledgeID string, allowed bool) (*types.Knowledge, error) {
+	tenantID, _ := ctx.Value(types.TenantIDContextKey).(uint64)
+	record, err := s.repo.GetKnowledgeByID(ctx, tenantID, knowledgeID)
+	if err != nil {
+		logger.Errorf(ctx, "SetKnowledgePushAllowed: failed to get knowledge %s: %v", knowledgeID, err)
+		return nil, err
+	}
+	if err := s.repo.UpdateKnowledgeColumn(ctx, knowledgeID, "push_allowed", allowed); err != nil {
+		logger.Errorf(ctx, "SetKnowledgePushAllowed: failed to update column for %s: %v", knowledgeID, err)
+		return nil, err
+	}
+	record.PushAllowed = &allowed
+	logger.Infof(ctx, "Knowledge push_allowed set to %v, ID: %s", allowed, knowledgeID)
+	return record, nil
+}

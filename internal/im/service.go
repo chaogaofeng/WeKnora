@@ -2877,6 +2877,10 @@ loop:
 
 	outCtx := imOutboundContext(ctx)
 	finalDisplay := cleanIMContent(outCtx, FormatIMFinalFromParts(parts), tenant, s.defaultFileSvc, s.storageResolver)
+	// [push-files] IM channels don't render the structured file_push cards;
+	// surface pushed file download links at the end of the message body.
+	// (No-op while PushedKnowledgeIDs is empty; see types.Message.)
+	finalDisplay = appendPushedFileLinks(outCtx, finalDisplay, assistantMsg, s.knowledgeService, s.defaultFileSvc)
 	if noVisibleContent || finalDisplay == "" {
 		fallback := imNoAnswerFallback
 		if finalErr != nil {
@@ -2916,6 +2920,10 @@ loop:
 	if answer == "" {
 		answer = imNoAnswerFallback
 	}
+	// [push-files] persist the pushed file download links into the assistant
+	// message so the recorded content matches what was displayed on the IM
+	// channel. (No-op while PushedKnowledgeIDs is empty.)
+	answer = appendPushedFileLinks(outCtx, answer, assistantMsg, s.knowledgeService, s.defaultFileSvc)
 
 	assistantMsg.Content = answer
 	assistantMsg.IsCompleted = true
@@ -3130,6 +3138,9 @@ func (s *Service) runQA(ctx context.Context, session *types.Session, query strin
 	if notice := s.buildIMMCPAuthNotice(ctx, authServices); notice != "" {
 		answer = appendIMAuthNotice(answer, notice)
 	}
+	// [push-files] surface pushed file download links at the end of the message
+	// body. (No-op while PushedKnowledgeIDs is empty.)
+	answer = appendPushedFileLinks(ctx, answer, assistantMsg, s.knowledgeService, s.defaultFileSvc)
 
 	// Update assistant message with the full answer (including citation tags for web rendering).
 	assistantMsg.Content = answer

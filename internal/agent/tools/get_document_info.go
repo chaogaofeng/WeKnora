@@ -102,7 +102,13 @@ func (t *GetDocumentInfoTool) Execute(ctx context.Context, args json.RawMessage)
 		}, err
 	}
 
-	knowledgeIDs := input.KnowledgeIDs
+	// [push-files] The model may hand us a wiki page slug (summary/<id>) instead
+	// of the bare knowledge_id. Strip the wiki prefix so the lookup still
+	// reaches the underlying document. FAQ ids are untouched (chunk ids).
+	knowledgeIDs := make([]string, 0, len(input.KnowledgeIDs))
+	for _, id := range input.KnowledgeIDs {
+		knowledgeIDs = append(knowledgeIDs, normalizeKnowledgeID(id))
+	}
 	faqIDs := input.FAQIDs
 	if len(knowledgeIDs) == 0 && len(faqIDs) == 0 {
 		return &types.ToolResult{

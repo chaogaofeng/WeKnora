@@ -357,6 +357,21 @@ type ToolResult struct {
 	Data        map[string]interface{} `json:"data,omitempty"`   // Structured data for programmatic use
 	Error       string                 `json:"error,omitempty"`  // Error message if execution failed
 	Images      []string               `json:"images,omitempty"` // Base64 data URIs from tool (e.g. MCP image content)
+
+	// [push-files] SearchResults carries the raw search results from retrieval
+	// tools (knowledge_search, wiki_search, etc.) and pushed-file pseudo results
+	// from push_files. Currently informational: the engine-side collection
+	// (act.go collectKnowledgeRefs) from dev2 was not migrated with the minimal
+	// port, so nothing consumes this yet. Kept so the push_files tool can set
+	// it and a future migration can wire up citation tracking without touching
+	// every tool again.
+	SearchResults []*SearchResult `json:"-"` // not serialized; engine-internal use only
+
+	// [push-files] PushedKnowledgeIDs marks which knowledge_ids in this tool
+	// result were "pushed" (delivered as downloadable links) by the push_files
+	// tool. Only push_files populates it. Informational in the minimal port
+	// (no consumer yet; see SearchResults above).
+	PushedKnowledgeIDs []string `json:"-"` // not serialized; engine-internal use only
 }
 
 // ToolCall represents a single tool invocation within an agent step
