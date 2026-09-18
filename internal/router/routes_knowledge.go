@@ -334,3 +334,17 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		wiki.PUT("/issues/:issue_id/status", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.UpdateIssueStatus)
 	}
 }
+
+// [folder-summary] RegisterFolderSummaryRoutes registers the folder-summary
+// wiki projection endpoints (bottom-up folder summaries → wiki pages).
+func RegisterFolderSummaryRoutes(r *gin.RouterGroup, fsHandler *handler.FolderSummaryWikiHandler, g *rbacGuards) {
+	fs := g.apiKeyGroup(r.Group("/knowledge-bases/:id/folder-summaries"), apiKeyRetrieve(apiKeyFullAccess()))
+	{
+		// Tree listing with per-folder state — Viewer+ with KB read.
+		fs.GET("", g.Viewer(), g.KBAccessRead("id"), fsHandler.ListTree)
+		// Full generation pass — Contributor+ with KB write.
+		fs.POST("/generate", g.Contributor(), g.KBAccessWrite("id"), fsHandler.Generate)
+		// Subtree refresh — same as generate.
+		fs.POST("/refresh", g.Contributor(), g.KBAccessWrite("id"), fsHandler.Refresh)
+	}
+}

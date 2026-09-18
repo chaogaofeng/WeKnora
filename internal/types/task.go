@@ -254,6 +254,8 @@ const (
 	TypeTemporaryDocumentProcess = "temporary_document:process" // 会话临时文档解析任务
 	// TypeMemoryExtract 长期记忆抽取任务（会话轮次防抖后异步执行）
 	TypeMemoryExtract = "memory:extract"
+	// [folder-summary] 文件夹层层摘要生成任务（自底向上汇总 folder_path 并投影 wiki 页）
+	TypeFolderSummaryGenerate = "folder:summary:generate"
 )
 
 // MemoryExtractPayload carries everything the background distillation task

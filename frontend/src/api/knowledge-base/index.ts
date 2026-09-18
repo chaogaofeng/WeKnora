@@ -654,3 +654,38 @@ export function batchReparseKnowledge(kbId: string, ids: string[], processConfig
     process_config: processConfig,
   });
 }
+
+// ---------------------------------------------------------------------------
+// [folder-summary] 文件夹层层摘要 → Wiki 投影
+// ---------------------------------------------------------------------------
+
+export interface FolderSummaryItem {
+  path: string;
+  slug: string;
+  depth: number;
+  files: number;
+  state: 'missing' | 'fresh' | 'stale' | 'manual_edit';
+  updated_at?: string;
+}
+
+export interface FolderSummaryTree {
+  items: FolderSummaryItem[];
+}
+
+/** 触发全量生成（自底向上逐层汇总，异步任务）。 */
+export function generateFolderSummaries(kbId: string) {
+  return post(`/api/v1/knowledge-bases/${kbId}/folder-summaries/generate`, {});
+}
+
+/** 刷新指定子树（path 为空 = 全量）。 */
+export function refreshFolderSummaries(kbId: string, path: string) {
+  return post(`/api/v1/knowledge-bases/${kbId}/folder-summaries/refresh`, { path });
+}
+
+/** 文件夹摘要树 + 每层投影页状态。 */
+export function listFolderSummaryTree(kbId: string) {
+  return get(`/api/v1/knowledge-bases/${kbId}/folder-summaries`) as Promise<{
+    success: boolean;
+    data: FolderSummaryTree;
+  }>;
+}

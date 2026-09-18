@@ -22,6 +22,7 @@ import (
 	esv7 "github.com/elastic/go-elasticsearch/v7"
 	"github.com/elastic/go-elasticsearch/v8"
 	_ "github.com/go-sql-driver/mysql" // 给 Doris (database/sql) 注册 MySQL 协议驱动
+	"github.com/hibiken/asynq"
 	"github.com/milvus-io/milvus/client/v2/milvusclient"
 	"github.com/neo4j/neo4j-go-driver/v6/neo4j"
 	"github.com/panjf2000/ants/v2"
@@ -250,6 +251,13 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewWikiIngestService, dig.Name("wikiIngest")))
 	must(container.Provide(service.NewWikiLintService))
 	must(container.Provide(service.NewEmbedChannelService))
+	// [folder-summary] bottom-up folder summaries projected as wiki pages.
+	// The concrete service (unnamed) feeds the REST handler; the TaskHandler
+	// adapter (named, as AsynqTaskParams expects) feeds the asynq mux.
+	must(container.Provide(service.NewFolderSummaryWikiService))
+	must(container.Provide(func(svc service.FolderSummaryWikiService) interfaces.TaskHandler {
+		return folderSummaryTaskHandlerAdapter{svc}
+	}, dig.Name("folderSummaryWiki")))
 
 	// Web search service (needed by AgentService)
 	logger.Debugf(ctx, "[Container] Registering web search registry and providers...")
@@ -459,6 +467,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewDataSourceHandler))
 	// Wiki page handler
 	must(container.Provide(handler.NewWikiPageHandler))
+	// [folder-summary] folder-summary wiki projection handler
+	must(container.Provide(handler.NewFolderSummaryWikiHandler))
 	// IM integration
 	logger.Debugf(ctx, "[Container] Registering IM integration...")
 	must(container.Provide(imPkg.NewService))
@@ -1820,4 +1830,14 @@ func startAuditLogRetention(
 		runner.Stop()
 		return nil
 	})
+}
+
+// [folder-summary] folderSummaryTaskHandlerAdapter exposes the
+// FolderSummaryWikiService as an interfaces.TaskHandler for the asynq mux.
+type folderSummaryTaskHandlerAdapter struct {
+	svc service.FolderSummaryWikiService
+}
+
+func (a folderSummaryTaskHandlerAdapter) Handle(ctx context.Context, t *asynq.Task) error {
+	return a.svc.Handle(ctx, t)
 }

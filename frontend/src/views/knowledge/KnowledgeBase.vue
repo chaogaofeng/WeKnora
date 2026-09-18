@@ -2,6 +2,8 @@
 import { ref, onMounted, onUnmounted, watch, reactive, computed, nextTick } from "vue";
 import { MessagePlugin } from "tdesign-vue-next";
 import DocContent from "@/components/doc-content.vue";
+// [folder-summary] 文件夹摘要面板
+import FolderSummaryPanel from "./components/FolderSummaryPanel.vue";
 import useKnowledgeBase from '@/hooks/useKnowledgeBase';
 import { useRoute, useRouter } from 'vue-router';
 import EmptyKnowledge from '@/components/empty-knowledge.vue';
@@ -535,6 +537,8 @@ const tagFilterPanelVisible = ref(false);
 const tagFilterTriggerHover = ref(false);
 const tagFilterCleared = ref(false);
 const tagManageDrawerVisible = ref(false);
+// [folder-summary] folder summary panel visibility
+const folderSummaryPanelVisible = ref(false);
 
 const showTagFilterClear = computed(
   () => selectedTagIds.value.length > 0 && tagFilterTriggerHover.value,
@@ -2553,6 +2557,19 @@ async function createNewSession(value: string): Promise<void> {
                       </span>
                     </button>
                   </div>
+                </t-popup>
+                <!-- [folder-summary] 文件夹摘要面板入口 -->
+                <t-popup v-model:visible="folderSummaryPanelVisible" trigger="click" placement="bottom-left"
+                  overlay-class-name="folder-summary-popup" :overlay-inner-style="{ padding: 0 }">
+                  <button type="button" class="doc-folder-summary-trigger">
+                    <t-icon name="folder-open" size="16px" />
+                    <span>{{ $t('knowledgeBase.folderSummary.title') }}</span>
+                  </button>
+                  <template #content>
+                    <div class="folder-summary-popover" @click.stop>
+                      <FolderSummaryPanel v-if="kbId && folderSummaryPanelVisible" :kb-id="kbId" />
+                    </div>
+                  </template>
                 </t-popup>
                 <div class="doc-filter-field">
                   <t-select v-model="selectedFileType" :options="fileTypeOptions"
@@ -4578,5 +4595,27 @@ async function createNewSession(value: string): Promise<void> {
 
 .del-card {
   vertical-align: middle;
+}
+
+/* [folder-summary] 文件夹摘要面板触发按钮（对齐 tag-filter trigger 规格） */
+.doc-folder-summary-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--td-radius-default);
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-text-color-primary);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+
+  &:hover {
+    background: var(--td-bg-color-secondarycontainer-hover);
+  }
 }
 </style>

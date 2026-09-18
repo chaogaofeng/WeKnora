@@ -44,10 +44,12 @@ type AsynqTaskParams struct {
 	KnowledgePostProcess interfaces.TaskHandler `name:"knowledgePostProcess"`
 	KnowledgeAutoTag     interfaces.TaskHandler `name:"knowledgeAutoTag"`
 	WikiIngest           interfaces.TaskHandler `name:"wikiIngest"`
-	TemporaryDocument    interfaces.TemporaryDocumentService
-	MemoryService        interfaces.MemoryService
-	DeadLetterRepo       interfaces.TaskDeadLetterRepository
-	SpanTracker          service.SpanTracker
+	// [folder-summary] bottom-up folder summaries projected as wiki pages.
+	FolderSummaryWiki interfaces.TaskHandler `name:"folderSummaryWiki"`
+	TemporaryDocument interfaces.TemporaryDocumentService
+	MemoryService     interfaces.MemoryService
+	DeadLetterRepo    interfaces.TaskDeadLetterRepository
+	SpanTracker       service.SpanTracker
 }
 
 // defaultRedisOpTimeout is the previous hard-coded read timeout. The 100ms
@@ -312,6 +314,10 @@ func RunAsynqServer(params AsynqTaskParams) *asynq.ServeMux {
 	// and both land on QueueWiki, so the dedicated wiki pool serves them.
 	mux.HandleFunc(types.TypeWikiIngest, params.WikiIngest.Handle)
 	mux.HandleFunc(types.TypeWikiFinalize, params.WikiIngest.Handle)
+
+	// [folder-summary] Register the folder-summary generation handler
+	// (bottom-up folder summaries projected as wiki pages).
+	mux.HandleFunc(types.TypeFolderSummaryGenerate, params.FolderSummaryWiki.Handle)
 
 	// Register long-term memory distillation handler
 	mux.HandleFunc(types.TypeMemoryExtract, params.MemoryService.Handle)
