@@ -139,7 +139,12 @@ type Session struct {
 }
 
 func (s *Session) BeforeCreate(tx *gorm.DB) (err error) {
-	s.ID = uuid.New().String()
+	// [openai-compat] Preserve a caller-supplied ID: the OpenAI-compatible
+	// endpoint creates sessions with a hinted ID so subsequent requests with
+	// the same hint reuse the session.
+	if s.ID == "" {
+		s.ID = uuid.New().String()
+	}
 	return nil
 }
 
