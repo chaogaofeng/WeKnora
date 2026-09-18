@@ -6052,6 +6052,9 @@ export default {
       getDocInfoDesc: 'View document metadata',
       dbQuery: 'Query Database',
       dbQueryDesc: 'Query information from the database',
+      // [push-files] push_files tool (migrated from dev2 M2)
+      pushFiles: 'Push Files',
+      pushFilesDesc: 'Generate time-limited download links for files in the knowledge base and show them as cards',
       dataAnalysis: 'Data Analysis',
       dataAnalysisDesc: 'Understand data files and perform data analysis',
       dataSchema: 'View Data Schema',

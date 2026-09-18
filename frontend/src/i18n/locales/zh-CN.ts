@@ -1201,6 +1201,9 @@ export default {
       getDocInfoDesc: '查看文档元数据',
       dbQuery: '查询数据库',
       dbQueryDesc: '查询数据库中的信息',
+      // [push-files] push_files 工具（migrated from dev2 M2）
+      pushFiles: '推送文件',
+      pushFilesDesc: '为知识库中的文件生成限时下载链接并展示为卡片',
       dataAnalysis: '数据分析',
       dataAnalysisDesc: '理解数据文件并进行数据分析',
       dataSchema: '查看数据元信息',
