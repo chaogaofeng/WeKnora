@@ -166,6 +166,8 @@ export default function (knowledgeBaseId?: string) {
       error_message: "",
 	  custom_metadata: {},
       chunkLoadError: "",
+      // [push-files] reset push switch state between docs
+      push_allowed: undefined,
       tags: item?.tags ? [...item.tags] : [],
     });
     getKnowledgeDetails(item.id)
@@ -184,7 +186,9 @@ export default function (knowledgeBaseId?: string) {
             summary_status: data.summary_status || '',
             parse_status: data.parse_status || '',
             error_message: data.error_message || '',
-			custom_metadata: data.custom_metadata || {},
+            custom_metadata: data.custom_metadata || {},
+            // [push-files] document-level push switch initial value
+            push_allowed: data.push_allowed,
             tags: data.tags?.length ? data.tags : (item?.tags || []),
           });
         }
