@@ -425,6 +425,25 @@ func (s *folderSummaryWikiService) listChildFolders(ctx context.Context, tenantI
 		if c == nil || c.FolderPath == "" {
 			continue
 		}
+		// Skip the folder itself. TrimPrefix only strips an exact
+		// "<parent>/" prefix, so the parent's own row ("测试" under
+		// parentPath "测试") survives with rest == the full path, which
+		// previously made the folder list ITSELF as its own child — feeding
+		// the page's previous content back into its own regeneration prompt
+		// (self-aggregation) and emitting a "[[folder_summary/...|self]]"
+		// link back to itself.
+		if c.FolderPath == parentPath {
+			continue
+		}
+		// Only paths actually under "<parent>/" are children. TrimPrefix is
+		// a no-op for paths that merely share a leading substring ("测" under
+		// "测试/") or live at a different level ("同级" next to "测试"), and
+		// the bare rest != "" check used to admit those as phantom children
+		// too — pulling unrelated folders' summaries into this folder's
+		// generation prompt and link listing.
+		if prefix != "" && !strings.HasPrefix(c.FolderPath, prefix) {
+			continue
+		}
 		rest := strings.TrimPrefix(c.FolderPath, prefix)
 		if prefix == "" {
 			rest = c.FolderPath
@@ -669,7 +688,12 @@ func parseSnapshotComment(content string) *types.FolderSummarySnapshot {
 	if end < 0 {
 		return nil
 	}
-	seg := rest[:end]
+	// Include the full "-->" terminator in the segment: `end` is the offset of
+	// the FIRST '-' of "-->", so rest[:end] would cut it off and leave a
+	// dangling "<!-- ... files=N children=M " string that never matches the
+	// Sscanf format (unexpected EOF), making every page parse as an unknown
+	// snapshot and thus permanently stale.
+	seg := rest[:end+len("-->")]
 	var files, children int
 	if _, err := fmt.Sscanf(seg, "<!-- folder_summary_snapshot files=%d children=%d -->", &files, &children); err != nil {
 		return nil
