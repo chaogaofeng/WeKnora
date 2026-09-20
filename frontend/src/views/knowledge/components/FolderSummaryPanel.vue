@@ -33,6 +33,9 @@
         <span class="row-name" :title="item.path">{{ displayName(item.path) }}</span>
         <span class="row-files">{{ item.files }}</span>
         <span class="row-state" :class="`state-${item.state}`">{{ stateLabel(item.state) }}</span>
+        <span v-if="formatTime(item.updated_at)" class="row-time" :title="item.updated_at">
+          {{ formatTime(item.updated_at) }}
+        </span>
         <t-button
           v-if="item.state !== 'fresh' && item.path"
           size="small"
@@ -49,7 +52,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import { MessagePlugin } from 'tdesign-vue-next';
 import { useI18n } from 'vue-i18n';
 import {
@@ -67,7 +70,57 @@ const generating = ref(false);
 const refreshing = ref('');
 const items = ref<FolderSummaryItem[]>([]);
 
+// Generation runs as an async task (asynq + LLM call) whose latency is
+// unbounded; a single fixed 3s re-fetch usually fires before the worker
+// finishes and the panel keeps showing stale states. Poll a few times with
+// increasing backoff instead — long enough to cover a slow LLM, bounded so
+// we never spin forever. A poll that observes a non-missing state flips to
+// fresh/stale early-stops the chain; the panel also stops polling when it
+// is unmounted (popup closed).
+let pollTimers: ReturnType<typeof setTimeout>[] = [];
+const cancelPendingPolls = () => {
+  pollTimers.forEach(clearTimeout);
+  pollTimers = [];
+};
+const scheduleStatePolls = () => {
+  cancelPendingPolls();
+  // 3s + 5s + 8s + 13s ≈ covers typical LLM latencies (a single qwen call
+  // measured ~12s locally); stops after 4 attempts whatever the result.
+  const delays = [3000, 5000, 8000, 13000];
+  delays.forEach((delay) => {
+    pollTimers.push(setTimeout(() => {
+      // Skip silently when the popup is gone (component unmounted) or a
+      // generation pass is still running — onGenerate/onRefresh re-arm the
+      // chain themselves when their own request completes.
+      if (generating.value || refreshing.value) return;
+      refreshTree();
+    }, delay));
+  });
+};
+
 const displayName = (path: string) => (path ? path : t('knowledgeBase.folderSummary.root'));
+
+// De-emphasized generation timestamp next to the state label: relative time
+// ("3 分钟前") inline, full timestamp in the hover title. Missing states have
+// no updated_at (nothing was ever generated) and render no time at all.
+const formatTime = (updatedAt?: string): string => {
+  if (!updatedAt) return '';
+  const ts = new Date(updatedAt).getTime();
+  if (Number.isNaN(ts)) return '';
+  const diffMs = Date.now() - ts;
+  if (diffMs < 0) return '';
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 1) return t('knowledgeBase.folderSummary.justNow');
+  if (minutes < 60) return t('knowledgeBase.folderSummary.minutesAgo', { n: minutes });
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return t('knowledgeBase.folderSummary.hoursAgo', { n: hours });
+  const days = Math.floor(hours / 24);
+  if (days < 30) return t('knowledgeBase.folderSummary.daysAgo', { n: days });
+  // Beyond a month, show a compact absolute date — relative "90 天前" is
+  // less useful than knowing it was made in August.
+  const d = new Date(ts);
+  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+};
 
 const stateLabel = (state: FolderSummaryItem['state']) =>
   t(`knowledgeBase.folderSummary.state.${state}`);
@@ -89,7 +142,7 @@ const onGenerate = async () => {
   try {
     await generateFolderSummaries(props.kbId);
     MessagePlugin.success(t('knowledgeBase.folderSummary.generateScheduled'));
-    setTimeout(refreshTree, 3000);
+    scheduleStatePolls();
   } catch (err: any) {
     MessagePlugin.error(err?.message || t('knowledgeBase.folderSummary.generateFailed'));
   } finally {
@@ -102,7 +155,7 @@ const onRefresh = async (item: FolderSummaryItem) => {
   try {
     await refreshFolderSummaries(props.kbId, item.path);
     MessagePlugin.success(t('knowledgeBase.folderSummary.generateScheduled'));
-    setTimeout(refreshTree, 3000);
+    scheduleStatePolls();
   } catch (err: any) {
     MessagePlugin.error(err?.message || t('knowledgeBase.folderSummary.generateFailed'));
   } finally {
@@ -111,6 +164,7 @@ const onRefresh = async (item: FolderSummaryItem) => {
 };
 
 onMounted(refreshTree);
+onUnmounted(cancelPendingPolls);
 defineExpose({ refreshTree });
 </script>
 
@@ -172,6 +226,13 @@ defineExpose({ refreshTree });
   .row-files {
     color: var(--td-text-color-secondary);
     font-size: 12px;
+  }
+
+  // Intentionally quieter than the state label — presence, not prominence.
+  .row-time {
+    color: var(--td-text-color-placeholder);
+    font-size: 12px;
+    flex-shrink: 0;
   }
 
   .row-state {
