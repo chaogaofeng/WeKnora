@@ -44,6 +44,9 @@ var contextCloneAcrossDetach = map[ContextKey]bool{
 	// Per-API-key operation and KB scopes: a restriction, so dropping it would
 	// hand background work broader reach than the key it came from.
 	TenantAPIKeyScopeContextKey: true,
+	// Display identity for which API key initiated work. Not a grant; dropping
+	// it would only lose activity attribution on detached goroutines.
+	AuditAPIKeyContextKey: true,
 
 	// Session scope. SessionTenantID re-scopes session/message lookups, while
 	// SandboxTenantID keys the session→sandbox binding to the session owner
@@ -120,6 +123,9 @@ var contextCloneAcrossDetach = map[ContextKey]bool{
 	// system prompt from a context derived via logger.CloneContext) still sees
 	// the flag and appends the <!FINAL_ANSWER> constraint.
 	FinalAnswerMarkerContextKey: true,
+	// The authenticated MCP endpoint. Read only by the MCP tool handlers on
+	// the request context that authenticated it.
+	MCPEndpointContextKey: false,
 }
 
 // ContextKeysClonedAcrossDetach returns the keys logger.CloneContext carries

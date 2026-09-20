@@ -7,7 +7,7 @@ import "strings"
 // knowledge_id.
 //
 // The wiki subsystem addresses pages by slug (summary/<id>, folder_summary/<id>,
-// folder/<id>, wiki/...), whereas push_files / get_document_info expect the raw
+// folder/<id>, wiki/...), whereas push_files / read_document expect the raw
 // knowledge_id. When the model reuses a wiki slug it saw in a tool result as a
 // knowledge_ids value (instead of the bare document id), the prefix would make
 // the lookup fail with "knowledge not found". Stripping the known prefixes lets
