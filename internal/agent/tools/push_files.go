@@ -27,14 +27,14 @@ Use this tool when the user explicitly requests a file (e.g. "把那份手册发
 - Pushed files are recorded as citations (reference_type=push).
 
 ## What This Tool Does NOT Do
-- Does NOT read or summarize file content (use knowledge_search / list_knowledge_chunks for that).
+- Does NOT read or summarize file content (use read_document / search_knowledge for that).
 - Does NOT push files outside the session's accessible knowledge bases.
 - Does NOT generate links for files that have no downloadable storage path.
 
 ## Parameters
 - knowledge_ids (required): 1–10 document identifiers. Use the EXACT value you saw, preferring a real knowledge_id. Sources of valid IDs:
   - In a wiki workflow: the real knowledge_id value inside <source knowledge_id="..."> tags returned by wiki_read_page / wiki_search (under the sources section). Use that literal value directly.
-  - In a RAG workflow: the short dN document handles surfaced by knowledge_search / grep_chunks / list_knowledge_chunks.
+  - In a RAG workflow: the short dN document handles surfaced by search_knowledge / read_document.
 - expiry_hours (optional): link validity in hours (default 24, max 168=7d).
 
 ## CRITICAL — handle integrity
@@ -52,7 +52,7 @@ The agent should briefly explain what each file is in the final answer alongside
   "properties": {
     "knowledge_ids": {
       "type": "array",
-      "description": "REQUIRED: 1-10 document IDs to push. Valid: (a) a document's summary/ page slug (e.g. summary/<knowledge_id>) — the tool strips the prefix automatically; (b) a real knowledge_id UUID from wiki_read_page/wiki_search <source knowledge_id=\"...\"> tags; (c) a short dN handle from knowledge_search/grep_chunks. Never invent/extrapolate an ID; never pass folder nodes (folder_summary/<id>, folder/<id>).",
+      "description": "REQUIRED: 1-10 document IDs to push. Valid: (a) a document's summary/ page slug (e.g. summary/<knowledge_id>) — the tool strips the prefix automatically; (b) a real knowledge_id UUID from wiki_read_page/wiki_search <source knowledge_id=\"...\"> tags; (c) a short dN handle from search_knowledge/read_document. Never invent/extrapolate an ID; never pass folder nodes (folder_summary/<id>, folder/<id>).",
       "items": {"type": "string"},
       "minItems": 1,
       "maxItems": 10
@@ -141,7 +141,7 @@ func (t *PushFilesTool) Execute(ctx context.Context, args json.RawMessage) (*typ
 		expiryHours = 168
 	}
 
-	// 构造可见 KB 集合用于权限校验（与 knowledge_search 同一权限边界）。
+	// 构造可见 KB 集合用于权限校验（与 search_knowledge 同一权限边界）。
 	allowedKB := make(map[string]bool)
 	for _, target := range t.searchTargets {
 		if target != nil && target.KnowledgeBaseID != "" {

@@ -375,7 +375,7 @@ type ToolResult struct {
 	Images      []string               `json:"images,omitempty"` // Base64 data URIs from tool (e.g. MCP image content)
 
 	// [push-files] SearchResults carries the raw search results from retrieval
-	// tools (knowledge_search, wiki_search, etc.) and pushed-file pseudo results
+	// tools (search_knowledge, wiki_search, etc.) and pushed-file pseudo results
 	// from push_files. Currently informational: the engine-side collection
 	// (act.go collectKnowledgeRefs) from dev2 was not migrated with the minimal
 	// port, so nothing consumes this yet. Kept so the push_files tool can set
