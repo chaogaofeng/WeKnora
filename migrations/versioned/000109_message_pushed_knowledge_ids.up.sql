@@ -1,12 +1,12 @@
--- Migration: 01001_message_pushed_knowledge_ids
+-- Migration: 000109_message_pushed_knowledge_ids
 -- [push-files] Track which knowledge files were pushed by the push_files
 -- tool in each assistant message. Column is present but not yet populated in
 -- the minimal port (the dev2 writer lived in the full reference-tracking
 -- chain); IM link generation and future writers read it.
--- Renumbered from dev2's 000080 to the 01000+ private range to avoid
--- colliding with upstream WeKnora migration numbers.
+-- Renumbered from dev2's 000080, then from a private 01000 range back into
+-- the mainline sequence (see 000108 for why the 01000 range was wrong).
 
-DO $$ BEGIN RAISE NOTICE '[Migration 01001] Adding pushed_knowledge_ids to messages'; END $$;
+DO $$ BEGIN RAISE NOTICE '[Migration 000109] Adding pushed_knowledge_ids to messages'; END $$;
 
 ALTER TABLE messages
     ADD COLUMN IF NOT EXISTS pushed_knowledge_ids JSONB NOT NULL DEFAULT '[]'::jsonb;
@@ -14,4 +14,4 @@ ALTER TABLE messages
 COMMENT ON COLUMN messages.pushed_knowledge_ids IS
     'Knowledge IDs pushed by push_files tool in this message';
 
-DO $$ BEGIN RAISE NOTICE '[Migration 01001] done'; END $$;
+DO $$ BEGIN RAISE NOTICE '[Migration 000109] done'; END $$;
