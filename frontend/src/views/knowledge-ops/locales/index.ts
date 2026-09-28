@@ -1,5 +1,18 @@
 import { useI18n } from 'vue-i18n'
 const en: Record<string, string> = {
+  searchPlaceholder: "Search questions or keywords",
+  searchShort: "Search",
+  questionPeriod: "Asked",
+  reviewPeriod: "Reviewed",
+  startDate: "Start time",
+  endDate: "End time",
+  moreFilters: "More filters",
+  activeFilters: "Active filters",
+  timeBoundary: "Start inclusive · end exclusive",
+  last7Days: "Last 7 days",
+  last30Days: "Last 30 days",
+  allReviewers: "All reviewers",
+
   coverageMatrix: "Evidence coverage by QA type",
   sourceStats: "Source comparison · latest diagnoses",
   causeStats: "Root cause candidates · a run may have several",
@@ -66,6 +79,19 @@ const en: Record<string, string> = {
   answerTarget: 'Answer', causeTarget: 'Root cause', previous: 'Previous', next: 'Next', page: 'Page', budget: 'Diagnosis usage', tokens: 'Input / output tokens', duration: 'Duration (ms)', stratum: 'Sampling stratum', settingsError: 'Unable to load settings or model choices',
 }
 const zh: Record<string, string> = {
+  searchPlaceholder: "搜索问题或关键词…",
+  searchShort: "搜索",
+  questionPeriod: "问答时间",
+  reviewPeriod: "复核时间",
+  startDate: "开始时间",
+  endDate: "结束时间",
+  moreFilters: "更多筛选",
+  activeFilters: "已生效",
+  timeBoundary: "含开始 · 不含结束",
+  last7Days: "最近 7 天",
+  last30Days: "最近 30 天",
+  allReviewers: "全部复核人",
+
   coverageMatrix: "三类问答的证据覆盖",
   sourceStats: "来源核验 · 最新诊断",
   causeStats: "根因候选 · 一条回答可有多项",
