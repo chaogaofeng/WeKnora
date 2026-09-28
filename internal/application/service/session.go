@@ -164,14 +164,8 @@ func NewSessionService(cfg *config.Config,
 	memoryService interfaces.MemoryService,
 	sandboxConfigRepo repository.TenantSandboxConfigRepository,
 	tenantSkillRepo repository.TenantSkillRepository,
-	captureSinks ...capture.Sink,
 ) interfaces.SessionService {
-	var captureSink capture.Sink
-	if len(captureSinks) > 0 {
-		captureSink = captureSinks[0]
-	}
 	return &sessionService{
-		captureSink:           captureSink,
 		cfg:                   cfg,
 		sessionRepo:           sessionRepo,
 		messageRepo:           messageRepo,

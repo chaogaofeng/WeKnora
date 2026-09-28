@@ -2,6 +2,7 @@ package chatpipeline
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -127,5 +128,42 @@ func TestKnowledgeOpsStreamFinishesOnDoneWithoutWaitingForProviderClose(t *testi
 		require.Equal(t, "completed", c.Status)
 	case <-time.After(time.Second):
 		t.Fatal("terminal answer not captured until channel closes")
+	}
+}
+
+func TestKnowledgeOpsStreamCapturesDecoderTailAtEveryTerminalPath(t *testing.T) {
+	for _, terminal := range []string{"completed", "failed", "cancelled"} {
+		t.Run(terminal, func(t *testing.T) {
+			r := &opsRecorder{finish: make(chan capture.Completion, 2)}
+			ctx, cancel := context.WithCancel(capture.WithRecorder(context.Background(), r))
+			defer cancel()
+			bus := &syncEventBus{}
+			chunks := []types.StreamResponse{{ResponseType: types.ResponseTypeAnswer, Content: "answer"}}
+			if terminal == "completed" {
+				chunks = append(chunks, types.StreamResponse{ResponseType: types.ResponseTypeAnswer, Done: true}, types.StreamResponse{ResponseType: types.ResponseTypeAnswer, Done: true})
+			}
+			if terminal == "failed" {
+				chunks = append(chunks, types.StreamResponse{ResponseType: types.ResponseTypeError, Content: "provider failure"})
+			}
+			model := &openStreamChat{chunks: chunks, closeStream: terminal != "cancelled"}
+			cm := &types.ChatManage{PipelineContext: types.PipelineContext{EventBus: bus}}
+			p := &PluginChatCompletionStream{modelService: &stubModelService{model: model}}
+			require.Nil(t, p.OnEvent(ctx, types.CHAT_COMPLETION_STREAM, cm, func() *PluginError { return nil }))
+			if terminal == "cancelled" {
+				// The final r is held by the resource decoder until cancellation flushes it.
+				require.Eventually(t, func() bool { return len(bus.finalAnswerContents()) > 0 }, time.Second, time.Millisecond)
+				require.Equal(t, []string{"answe"}, bus.finalAnswerContents())
+				cancel()
+			}
+			select {
+			case completion := <-r.finish:
+				require.Equal(t, terminal, completion.Status)
+				require.Equal(t, "answer", completion.Answer)
+			case <-time.After(time.Second):
+				t.Fatal("terminal run was not captured")
+			}
+			require.Eventually(t, func() bool { return strings.Join(bus.finalAnswerContents(), "") == "answer" }, time.Second, time.Millisecond)
+			require.Empty(t, r.finish)
+		})
 	}
 }

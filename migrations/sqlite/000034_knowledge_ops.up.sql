@@ -1,0 +1,120 @@
+CREATE TABLE knowledge_ops_settings (
+    tenant_id BIGINT PRIMARY KEY,
+    enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    model_id TEXT NOT NULL DEFAULT '',
+    calibration_note TEXT NOT NULL DEFAULT '',
+    auto_record_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    sample_percent INTEGER NOT NULL DEFAULT 10,
+    max_evidence_chars INTEGER NOT NULL DEFAULT 48000,
+    max_output_tokens INTEGER NOT NULL DEFAULT 4096,
+    timeout_seconds INTEGER NOT NULL DEFAULT 90,
+    capture_enabled_at TIMESTAMP NULL,
+    updated_at TIMESTAMP NOT NULL
+);
+
+CREATE TABLE knowledge_ops_runs (
+    id TEXT PRIMARY KEY,
+    tenant_id BIGINT NOT NULL,
+    actor_id TEXT NOT NULL DEFAULT '',
+    session_id TEXT NOT NULL DEFAULT '',
+    message_id TEXT NOT NULL,
+    request_id TEXT NOT NULL DEFAULT '',
+    channel TEXT NOT NULL DEFAULT 'unknown',
+    qa_type TEXT NOT NULL DEFAULT 'unknown',
+    execution_mode TEXT NOT NULL DEFAULT 'unknown',
+    agent_id TEXT NOT NULL DEFAULT '',
+    model_id TEXT NOT NULL DEFAULT '',
+    question TEXT NOT NULL DEFAULT '',
+    answer TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'running',
+    capture_status TEXT NOT NULL DEFAULT 'unknown',
+    gaps TEXT NOT NULL DEFAULT '[]',
+    started_at TIMESTAMP NOT NULL,
+    finished_at TIMESTAMP NULL,
+    updated_at TIMESTAMP NOT NULL,
+    UNIQUE(tenant_id,message_id)
+);
+
+CREATE INDEX idx_knowledge_ops_runs_scope ON knowledge_ops_runs(tenant_id,started_at,id);
+
+CREATE TABLE knowledge_ops_evidence (
+    id TEXT PRIMARY KEY,
+    tenant_id BIGINT NOT NULL,
+    run_id TEXT NOT NULL REFERENCES knowledge_ops_runs(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL DEFAULT 'unknown',
+    kb_id TEXT NOT NULL DEFAULT '',
+    knowledge_id TEXT NOT NULL DEFAULT '',
+    chunk_id TEXT NOT NULL DEFAULT '',
+    page_id TEXT NOT NULL DEFAULT '',
+    slug TEXT NOT NULL DEFAULT '',
+    version TEXT NOT NULL DEFAULT 'unknown',
+    title TEXT NOT NULL DEFAULT '',
+    content TEXT NOT NULL DEFAULT '',
+    hash TEXT NOT NULL,
+    tool_call_id TEXT NOT NULL DEFAULT '',
+    round INTEGER NOT NULL DEFAULT 0,
+    sent_to_model BOOLEAN NOT NULL DEFAULT FALSE,
+    post_hoc BOOLEAN NOT NULL DEFAULT FALSE,
+    truncated BOOLEAN NOT NULL DEFAULT FALSE,
+    acquired_at TIMESTAMP NOT NULL
+);
+
+CREATE INDEX idx_knowledge_ops_evidence_run ON knowledge_ops_evidence(tenant_id,run_id);
+
+CREATE TABLE knowledge_ops_analyses (
+    id TEXT PRIMARY KEY,
+    tenant_id BIGINT NOT NULL,
+    run_id TEXT NOT NULL REFERENCES knowledge_ops_runs(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT '',
+    report TEXT NOT NULL DEFAULT '{}',
+    route TEXT NOT NULL DEFAULT '',
+    route_reason TEXT NOT NULL DEFAULT '',
+    policy_version TEXT NOT NULL DEFAULT '',
+    model_id TEXT NOT NULL DEFAULT '',
+    model_name TEXT NOT NULL DEFAULT '',
+    sample_percent INTEGER NOT NULL DEFAULT 0,
+    sample_stratum TEXT NOT NULL DEFAULT '',
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    duration_ms BIGINT NOT NULL DEFAULT 0,
+    group_key TEXT NOT NULL DEFAULT '',
+    error TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMP NOT NULL,
+    UNIQUE(run_id,version)
+);
+
+CREATE INDEX idx_knowledge_ops_analyses_scope ON knowledge_ops_analyses(tenant_id,run_id,version);
+
+CREATE TABLE knowledge_ops_reviews (
+    id TEXT PRIMARY KEY,
+    tenant_id BIGINT NOT NULL,
+    run_id TEXT NOT NULL REFERENCES knowledge_ops_runs(id) ON DELETE CASCADE,
+    analysis_id TEXT NOT NULL REFERENCES knowledge_ops_analyses(id) ON DELETE CASCADE,
+    cause_category TEXT NOT NULL DEFAULT '',
+    target TEXT NOT NULL,
+    verdict TEXT NOT NULL,
+    action TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    reviewer_id TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL
+);
+
+CREATE INDEX idx_knowledge_ops_reviews_scope ON knowledge_ops_reviews(tenant_id,run_id,created_at);
+
+CREATE TABLE knowledge_ops_tasks (
+    id TEXT PRIMARY KEY,
+    tenant_id BIGINT NOT NULL,
+    run_id TEXT NOT NULL REFERENCES knowledge_ops_runs(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    lease_token TEXT NOT NULL DEFAULT '',
+    lease_until TIMESTAMP NULL,
+    last_error TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
+    UNIQUE(run_id,version)
+);
+
+CREATE INDEX idx_knowledge_ops_tasks_poll ON knowledge_ops_tasks(status,lease_until,created_at);

@@ -22,7 +22,7 @@ func testStore(t *testing.T) *Repository {
 	require.NoError(t, err)
 	raw.SetMaxOpenConns(1)
 	t.Cleanup(func() { raw.Close() })
-	data, err := os.ReadFile(filepath.Join("..", "..", "migrations", "sqlite", "000027_knowledge_ops.up.sql"))
+	data, err := os.ReadFile(filepath.Join("..", "..", "migrations", "sqlite", "000034_knowledge_ops.up.sql"))
 	require.NoError(t, err)
 	for _, sql := range strings.Split(string(data), ";") {
 		if strings.TrimSpace(sql) != "" {
@@ -108,7 +108,7 @@ func TestReviewIsAppendOnlyAndBoundToAnalysis(t *testing.T) {
 
 func TestMigrationRollbackAndReapply(t *testing.T) {
 	r := testStore(t)
-	for _, name := range []string{"000027_knowledge_ops.down.sql", "000027_knowledge_ops.up.sql"} {
+	for _, name := range []string{"000034_knowledge_ops.down.sql", "000034_knowledge_ops.up.sql"} {
 		body, err := os.ReadFile(filepath.Join("..", "..", "migrations", "sqlite", name))
 		require.NoError(t, err)
 		for _, stmt := range strings.Split(string(body), ";") {

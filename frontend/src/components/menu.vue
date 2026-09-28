@@ -86,10 +86,12 @@
                         :class="['menu_item', item.childrenPath && item.childrenPath == currentpath ? 'menu_item_c_active' : isMenuItemActive(item.path) ? 'menu_item_active' : '']">
                         <div class="menu_item-box">
                             <div class="menu_icon">
-                                <svg v-if="item.icon === 'knowledge-ops'" class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3" /><path d="M7 16v-4m5 4V8m5 8v-6" /></svg>
-                                <img v-else class="icon"
+                                <t-icon v-if="item.iconName" :name="item.iconName" class="icon" aria-hidden="true" />
+                                <template v-else>
+                                <img class="icon"
                                     :src="getImgSrc(item.icon == 'zhishiku' ? knowledgeIcon : item.icon == 'agent' ? agentIcon : item.icon == 'artifact' ? artifactIcon : item.icon == 'organization' ? organizationIcon : item.icon == 'logout' ? logoutIcon : item.icon == 'setting' ? settingIcon : prefixIcon)"
                                     alt="">
+                                </template>
                             </div>
                             <template v-if="!uiStore.sidebarCollapsed">
                                 <span class="menu_title" :title="item.title">{{ item.title }}</span>
@@ -348,7 +350,7 @@ const activeBucket = computed(() => sessionBuckets.value[activeSessionBucketKey.
 const hasAnySession = computed(() =>
     Object.values(sessionBuckets.value).some((bucket) => bucket.items.length > 0),
 );
-type MenuItem = { title: string; icon: string; path: string; childrenPath?: string; children?: any[] };
+type MenuItem = { title: string; icon: string; path: string; childrenPath?: string; children?: any[]; iconName?: string; section?: 'top' | 'bottom'; routeName?: string };
 const { menuArr, visibleMenuArr } = storeToRefs(usemenuStore);
 let activeSubmenu = ref<string>('');
 const isLiteEdition = ref(false);
@@ -408,6 +410,8 @@ const isInOrganizationList = computed<boolean>(() => route.name === 'organizatio
 // 统一的菜单项激活状态判断
 const isMenuItemActive = (itemPath: string): boolean => {
     const currentRoute = route.name;
+    const entry = menuArr.value.find(item => item.path === itemPath);
+    if (entry?.routeName) return currentRoute === entry.routeName;
 
     switch (itemPath) {
         case 'knowledge-bases':
@@ -418,8 +422,6 @@ const isMenuItemActive = (itemPath: string): boolean => {
             return currentRoute === 'agentList';
         case 'artifacts':
             return currentRoute === 'artifactLibrary';
-        case 'knowledge-ops':
-            return currentRoute === 'knowledgeOps';
         case 'organizations':
             return currentRoute === 'organizationList';
         case 'creatChat':
@@ -448,14 +450,14 @@ const getIconActiveState = (itemPath: string) => {
 };
 
 // 分离上下两部分菜单（使用 visibleMenuArr 以便 lite 模式过滤 logout）
-const TOP_MENU_PATHS = new Set(['creatChat', 'knowledge-bases', 'artifacts', 'agents', 'organizations', 'knowledge-ops']);
+const TOP_MENU_PATHS = new Set(['creatChat', 'knowledge-bases', 'artifacts', 'agents', 'organizations']);
 
 const topMenuItems = computed<MenuItem[]>(() => {
-    return (visibleMenuArr.value as unknown as MenuItem[]).filter((item: MenuItem) => TOP_MENU_PATHS.has(item.path));
+    return (visibleMenuArr.value as unknown as MenuItem[]).filter((item: MenuItem) => item.section === 'top' || TOP_MENU_PATHS.has(item.path));
 });
 
 const bottomMenuItems = computed<MenuItem[]>(() => {
-    return (visibleMenuArr.value as unknown as MenuItem[]).filter((item: MenuItem) => !TOP_MENU_PATHS.has(item.path));
+    return (visibleMenuArr.value as unknown as MenuItem[]).filter((item: MenuItem) => item.section !== 'top' && !TOP_MENU_PATHS.has(item.path));
 });
 
 // 当前知识库信息

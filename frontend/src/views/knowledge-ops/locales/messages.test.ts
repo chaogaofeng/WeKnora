@@ -8,7 +8,7 @@ test('knowledge operations messages have identical keys and compile for every su
     assert.deepEqual(Object.keys(messages).sort(), reference, locale)
     for (const [key, value] of Object.entries(messages)) {
       const errors: string[] = []
-      baseCompile(value, { onError: error => errors.push(error.message) })
+      baseCompile(value, { onError: (error) => errors.push(error.message) })
       assert.deepEqual(errors, [], `${locale}.${key}`)
     }
   }

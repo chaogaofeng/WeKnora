@@ -36,7 +36,7 @@ func TestPostgresMigrationAndConcurrentReviewVersionGate(t *testing.T) {
 	require.NoError(t, err)
 	defer raw.Close()
 	apply := func(suffix string) {
-		b, err := os.ReadFile(filepath.Join("..", "..", "migrations", "versioned", "000110_knowledge_ops."+suffix+".sql"))
+		b, err := os.ReadFile(filepath.Join("..", "..", "migrations", "versioned", "000115_knowledge_ops."+suffix+".sql"))
 		require.NoError(t, err)
 		for _, stmt := range strings.Split(string(b), ";") {
 			if strings.TrimSpace(stmt) != "" {

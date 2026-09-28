@@ -2,12 +2,12 @@ package service
 
 import (
 	"context"
-	"github.com/Tencent/WeKnora/internal/modelcontext"
 	"testing"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/knowledgeops/capture"
+	"github.com/Tencent/WeKnora/internal/modelcontext"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/stretchr/testify/require"
 )
@@ -39,7 +39,8 @@ func (s *sessionOpsSink) Start(_ context.Context, in capture.Start) capture.Reco
 }
 func TestKnowledgeOpsAgentSetupFailureStillFinishesNewRun(t *testing.T) {
 	sink := &sessionOpsSink{enabled: true, rec: &sessionOpsRecorder{}}
-	svc := &sessionService{captureSink: sink}
+	svc := &sessionService{}
+	svc.SetKnowledgeOpsSink(sink)
 	req := &types.QARequest{Session: &types.Session{ID: "session", TenantID: 7}, Query: "new question", AssistantMessageID: "message"}
 	ctx := types.WithPrincipal(context.Background(), types.Principal{Type: types.PrincipalWebUser, ID: "user"})
 	ctx = context.WithValue(ctx, types.RequestIDContextKey, "request")
@@ -57,7 +58,8 @@ func TestKnowledgeOpsAgentSetupFailureStillFinishesNewRun(t *testing.T) {
 func TestKnowledgeOpsStartUsesSessionTenantAndPresetWithoutHistoryScan(t *testing.T) {
 	for _, qaType := range []string{types.AgentTypeRAGQA, types.AgentTypeWikiQA, types.AgentTypeHybridRAGWiki} {
 		sink := &sessionOpsSink{enabled: true, rec: &sessionOpsRecorder{}}
-		svc := &sessionService{captureSink: sink}
+		svc := &sessionService{}
+		svc.SetKnowledgeOpsSink(sink)
 		req := &types.QARequest{Session: &types.Session{ID: "session", TenantID: 7, IMPlatform: "wecom"}, Query: "new turn", CustomAgent: &types.CustomAgent{ID: "agent", TenantID: 99, Config: types.CustomAgentConfig{AgentType: qaType, ModelID: "model"}}}
 		_ = svc.startKnowledgeOps(context.Background(), req, "smart-reasoning")
 		require.Len(t, sink.starts, 1)

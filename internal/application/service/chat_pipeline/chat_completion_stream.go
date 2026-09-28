@@ -81,7 +81,7 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 		})
 		return ErrModelCall.WithError(errors.New("EventBus is required for streaming"))
 	}
-	eventBus := chatManage.EventBus
+	eventBus, finishCapture := captureKnowledgeOpsStream(ctx, chatManage.EventBus)
 
 	pipelineInfo(ctx, "Stream", "eventbus_ready", map[string]interface{}{
 		"session_id": chatManage.SessionID,
@@ -117,15 +117,13 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 	// The goroutine monitors ctx.Done() to avoid leaking when the context is cancelled
 	// and the upstream channel is not closed promptly.
 	go func() {
+		defer finishCapture()
 		answerDecoder := modelContext.StreamDecoder()
 		thinkingDecoder := modelContext.StreamDecoder()
 		thinkingID := fmt.Sprintf("%s-thinking", uuid.New().String()[:8])
 		answerID := fmt.Sprintf("%s-answer", uuid.New().String()[:8])
 		thinkingOpen := false
 		answerCompleted := false
-		capturedAnswer := capture.NewAnswerBuffer(ctx)
-		var captureErr error
-		defer func() { capture.Finish(ctx, capturedAnswer.String(), captureErr) }()
 
 		closeThinking := func() {
 			if !thinkingOpen {
@@ -158,7 +156,6 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 				})
 			}
 			answerTail := answerDecoder.Flush()
-			capturedAnswer.Append(answerTail)
 			if answerTail != "" {
 				_ = eventBus.Emit(ctx, types.Event{
 					ID:        answerID,
@@ -172,7 +169,6 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 		for {
 			select {
 			case <-ctx.Done():
-				captureErr = ctx.Err()
 				flushDecoders()
 				closeThinking()
 				pipelineInfo(ctx, "Stream", "context_cancelled", map[string]interface{}{
@@ -182,10 +178,6 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 
 			case response, ok := <-responseChan:
 				if !ok {
-					if !answerCompleted && captureErr == nil {
-						captureErr = errors.New("model stream ended before completion")
-						capture.Gap(ctx, "model_stream_incomplete")
-					}
 					flushDecoders()
 					closeThinking()
 					pipelineInfo(ctx, "Stream", "channel_close", map[string]interface{}{
@@ -195,7 +187,6 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 				}
 
 				if response.ResponseType == types.ResponseTypeError {
-					captureErr = errors.New("model stream failed")
 					pipelineError(ctx, "Stream", "stream_error", map[string]interface{}{
 						"session_id": chatManage.SessionID,
 						"error":      response.Content,
@@ -248,10 +239,6 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 					if response.Done {
 						response.Content += answerDecoder.Flush()
 						answerCompleted = true
-					}
-					capturedAnswer.Append(response.Content)
-					if response.Done {
-						capture.Finish(ctx, capturedAnswer.String(), captureErr)
 					}
 					closeThinking()
 					eventBus.Emit(ctx, types.Event{

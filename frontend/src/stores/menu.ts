@@ -13,6 +13,10 @@ interface MenuItem {
   title: string
   titleKey?: string
   icon: string
+  iconName?: string
+  section?: 'top' | 'bottom'
+  routeName?: string
+  requiresTenantAdmin?: boolean
   path: string
   childrenPath?: string
   children?: MenuChild[]
@@ -79,7 +83,10 @@ export const useMenuStore = defineStore('menuStore', () => {
       if (authStore.isLiteMode && liteHiddenPaths.has(item.path)) {
         return false
       }
-      if ((item.path === 'organizations' || item.path === 'knowledge-ops') && !authStore.hasRole('admin')) {
+      if (item.requiresTenantAdmin && !authStore.hasRole('admin')) {
+        return false
+      }
+      if (item.path === 'organizations' && !authStore.hasRole('admin')) {
         return false
       }
       if (!deploymentCapabilities.isSupported(item.requiredCapability)) {

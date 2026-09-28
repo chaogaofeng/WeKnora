@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { createReviewDrafts, reviewPayload, buildFilters, applyReviewAction } from './state.ts'
+import {
+  createReviewDrafts,
+  reviewPayload,
+  buildFilters,
+  applyReviewAction,
+} from './state.ts'
 
 test('answer and cause reviews have independent drafts and payloads', () => {
   const drafts = createReviewDrafts()
@@ -8,12 +13,27 @@ test('answer and cause reviews have independent drafts and payloads', () => {
   drafts.answer.verdict = 'supported'
   drafts.cause.reason = 'Historical version is missing'
   drafts.cause.action = 'needs_more_evidence'
-  assert.deepEqual(reviewPayload('answer', drafts.answer, 'analysis-2'), { target: 'answer', analysis_id: 'analysis-2', verdict: 'supported', action: 'confirmed', reason: 'Answer evidence verified' })
-  assert.equal(reviewPayload('cause', drafts.cause, 'analysis-2').reason, 'Historical version is missing')
+  assert.deepEqual(reviewPayload('answer', drafts.answer, 'analysis-2'), {
+    target: 'answer',
+    analysis_id: 'analysis-2',
+    verdict: 'supported',
+    action: 'confirmed',
+    reason: 'Answer evidence verified',
+  })
+  assert.equal(
+    reviewPayload('cause', drafts.cause, 'analysis-2').reason,
+    'Historical version is missing',
+  )
   assert.equal(drafts.answer.action, 'confirmed')
 })
 test('filters keep inclusive start and exclusive end timestamps and omit empty values', () => {
-  const filters = buildFilters({ from: '2026-09-01T08:00', to: '2026-09-02T08:00', qa_type: 'rag', channel: '', search: ' question ' })
+  const filters = buildFilters({
+    from: '2026-09-01T08:00',
+    to: '2026-09-02T08:00',
+    qa_type: 'rag',
+    channel: '',
+    search: ' question ',
+  })
   assert.equal(filters.from, new Date('2026-09-01T08:00').toISOString())
   assert.equal(filters.to, new Date('2026-09-02T08:00').toISOString())
   assert.equal(filters.search, 'question')
@@ -27,9 +47,18 @@ test('needs-evidence constrains answer and cause verdicts without changing the o
   applyReviewAction('answer', drafts.answer, 'needs_more_evidence', 'supported')
   assert.equal(drafts.answer.verdict, 'unverifiable')
   assert.equal(drafts.cause.verdict, 'evidence_backed')
-  applyReviewAction('cause', drafts.cause, 'needs_more_evidence', 'suspected', 'retrieval')
+  applyReviewAction(
+    'cause',
+    drafts.cause,
+    'needs_more_evidence',
+    'suspected',
+    'retrieval',
+  )
   assert.equal(drafts.cause.verdict, 'unresolved')
-  assert.equal(reviewPayload('answer', drafts.answer, 'v2').cause_category, undefined)
+  assert.equal(
+    reviewPayload('answer', drafts.answer, 'v2').cause_category,
+    undefined,
+  )
 })
 test('confirm restores the machine conclusion while corrected preserves the selected correction', () => {
   const draft = createReviewDrafts().cause
@@ -46,8 +75,12 @@ test('confirm restores the machine conclusion while corrected preserves the sele
 })
 
 test('review date filters apply to review timestamps with explicit UTC conversion', () => {
- const result = buildFilters({ review_from: '2026-09-01T08:00', review_to: '2026-09-02T08:00', target: 'cause' })
- assert.equal(result.review_from, new Date('2026-09-01T08:00').toISOString())
- assert.equal(result.review_to, new Date('2026-09-02T08:00').toISOString())
- assert.equal(result.target, 'cause')
+  const result = buildFilters({
+    review_from: '2026-09-01T08:00',
+    review_to: '2026-09-02T08:00',
+    target: 'cause',
+  })
+  assert.equal(result.review_from, new Date('2026-09-01T08:00').toISOString())
+  assert.equal(result.review_to, new Date('2026-09-02T08:00').toISOString())
+  assert.equal(result.target, 'cause')
 })
