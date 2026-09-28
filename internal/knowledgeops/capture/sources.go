@@ -26,8 +26,44 @@ func SearchSources(results []*types.SearchResult, callID string) []Source {
 			docID = ""
 		}
 		sources = append(sources, Source{ID: r.ID, Kind: kind, KBID: kbID, KnowledgeID: docID, ChunkID: chunkID, Content: r.Content, Title: r.KnowledgeTitle, Version: r.Metadata["version"], ToolCallID: callID})
+		if kind == "chunk" {
+			for _, id := range r.SubChunkID {
+				if id != "" && id != chunkID {
+					sources = append(sources, Source{Kind: "source_dependency", KBID: kbID, KnowledgeID: docID, ChunkID: id})
+				}
+			}
+		}
 	}
 	return sources
+}
+
+// RecordSearchDependencies retains permission bindings before a merge can
+// discard a contributing result. These identities are never answer evidence.
+func RecordSearchDependencies(ctx context.Context, result *types.SearchResult) {
+	if FromContext(ctx) == nil || result == nil {
+		return
+	}
+	sources := SearchSources([]*types.SearchResult{result}, "")
+	for i := range sources {
+		sources[i].Kind = "source_dependency"
+		sources[i].Content = ""
+	}
+	RecordSources(ctx, sources)
+}
+
+// RecordChunkDependencies is called where parent text is actually added to
+// a result, so no later database lookup invents its original source chain.
+func RecordChunkDependencies(ctx context.Context, chunks ...*types.Chunk) {
+	if FromContext(ctx) == nil {
+		return
+	}
+	sources := make([]Source, 0, len(chunks))
+	for _, c := range chunks {
+		if c != nil {
+			sources = append(sources, Source{Kind: "source_dependency", KBID: c.KnowledgeBaseID, KnowledgeID: c.KnowledgeID, ChunkID: c.ID})
+		}
+	}
+	RecordSources(ctx, sources)
 }
 
 // RecordToolResult consumes only explicitly supported provenance contracts.

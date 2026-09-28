@@ -29,6 +29,35 @@ func sanitize(s string) (string, bool) {
 
 var systemEvidence = regexp.MustCompile(`(?s)<(?:retrieval|user_memory)(?:\s[^>]*)?>.*?</(?:retrieval|user_memory)>`)
 var sourceBlocks = regexp.MustCompile(`(?s)<(?:chunk|wiki_page|page)(?:\s[^>]*)?>.*?</(?:chunk|wiki_page|page)>`)
+var documentBlocks = regexp.MustCompile(`(?s)<document(?:\s[^>]*)?>.*?</document>`)
+
+type modelSourceBlock struct{ identity, content string }
+
+// Preserve the exact document header (including applicability metadata and
+// read_document information) alongside each bound chunk. Sibling chunk bodies
+// are excluded, so one source's permission cannot authorize another's content.
+func boundModelBlocks(content string) []modelSourceBlock {
+	blocks := sourceBlocks.FindAllStringIndex(content, -1)
+	documents := documentBlocks.FindAllStringIndex(content, -1)
+	out := make([]modelSourceBlock, 0, len(blocks))
+	for _, at := range blocks {
+		body := content[at[0]:at[1]]
+		bound := body
+		if strings.HasPrefix(body, "<chunk") {
+			for _, doc := range documents {
+				if doc[0] <= at[0] && doc[1] >= at[1] {
+					first := sourceBlocks.FindStringIndex(content[doc[0]:doc[1]])
+					if first != nil {
+						bound = content[doc[0]:doc[0]+first[0]] + body + "</document>"
+					}
+					break
+				}
+			}
+		}
+		out = append(out, modelSourceBlock{identity: body, content: bound})
+	}
+	return out
+}
 
 // RecordModelInput runs AFTER the model-context codec. Only readable content is
 // retained; reasoning fields, tool arguments, images and full system prompts
@@ -103,9 +132,12 @@ func RecordModelInput(ctx context.Context, messages []chat.Message, encode func(
 	// Sources not found inside an actual model block remain candidates. Matching
 	// never upgrades an unrendered tool result to model-visible evidence.
 	for _, m := range actual {
-		blocks := sourceBlocks.FindAllString(m.Content, -1)
+		blocks := boundModelBlocks(m.Content)
 		matched := make([]bool, len(blocks))
 		for _, s := range candidates {
+			if s.Kind == "source_dependency" {
+				continue
+			}
 			if s.ToolCallID != "" && s.ToolCallID != m.ToolCallID {
 				continue
 			}
@@ -122,18 +154,18 @@ func RecordModelInput(ctx context.Context, messages []chat.Message, encode func(
 				continue
 			}
 			for blockIndex, block := range blocks {
-				if !strings.Contains(block, marker) {
+				if !strings.Contains(block.identity, marker) {
 					continue
 				}
-				if s.Slug != "" && s.KBID != "" && !strings.Contains(block, "<knowledge_base_id>"+html.EscapeString(encode(s.KBID))+"</knowledge_base_id>") {
+				if s.Slug != "" && s.KBID != "" && !strings.Contains(block.identity, "<knowledge_base_id>"+html.EscapeString(encode(s.KBID))+"</knowledge_base_id>") {
 					continue
 				}
 				matched[blockIndex] = true
 				sent := s
-				sent.Content = block
+				sent.Content = block.content
 				sent.SentToModel = true
 				sent.ToolCallID = m.ToolCallID
-				if strings.Contains(block, `view="match"`) || strings.Contains(block, `view="excerpt"`) || strings.Contains(block, "truncated") {
+				if strings.Contains(block.identity, `view="match"`) || strings.Contains(block.identity, `view="excerpt"`) || strings.Contains(block.identity, "truncated") {
 					sent.Truncated = true
 				}
 				RecordSources(ctx, []Source{sent})

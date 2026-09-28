@@ -1,5 +1,15 @@
 import { useI18n } from 'vue-i18n'
 const en: Record<string, string> = {
+  reviewReasonHint: "Record the evidence checked, decision rationale or missing materials…",
+  captureSettings: "Capture & diagnosis",
+  triageSettings: "Automatic recording & sampling",
+  budgetSettings: "Diagnosis budgets",
+
+  workspaceLabel: "Workspace",
+  opsReadOnly: "Read-only operations",
+  scopeShort: "New questions after enablement · Reviews do not change knowledge",
+  sourceMetadata: "Source identifiers & call metadata",
+
   searchPlaceholder: "Search questions or keywords",
   searchShort: "Search",
   questionPeriod: "Asked",
@@ -63,8 +73,8 @@ const en: Record<string, string> = {
   rerun: 'Diagnose again', queued: 'Diagnosis queued. Refresh later to view the new version.', model: 'Diagnosis model', policy: 'Prompt / policy version', group: 'Issue group fingerprint',
   sourceCheck: 'Source consistency check', risk: 'Risk', scope: 'Analysis scope', routeReason: 'Routing reason', claims: 'Answer claims', position: 'Position', evidence: 'Evidence', reason: 'Reason',
   facts: 'Observed facts', causes: 'Root cause candidates', supporting: 'Supporting evidence', opposing: 'Counter evidence', unknowns: 'Unknowns', reviewQuestions: 'Questions requiring adjudication', none: 'None recorded',
-  originalEvidence: 'Source excerpts provided to the model at answer time', candidateEvidence: 'Captured candidates · not sent to the model', postEvidence: 'Post hoc investigation materials',
-  postNotice: 'Post hoc materials cannot prove that the original answer had evidence at generation time.', input: 'Actual model input', version: 'Source version', acquired: 'Acquired at', truncated: 'Truncated', notTruncated: 'Not truncated', evidenceMissing: 'Referenced evidence is unavailable',
+  originalEvidence: 'Source excerpts provided to the model at answer time', candidateEvidence: 'Captured candidates · not sent to the model', postEvidence: 'Post hoc materials cited by the selected report',
+  postNotice: 'Only materials explicitly cited by this report are listed, not the complete input to this analysis version. Post hoc materials cannot prove that the original answer had evidence at generation time.', input: 'Actual model input', version: 'Source version', acquired: 'Acquired at', truncated: 'Truncated', notTruncated: 'Not truncated', evidenceMissing: 'Referenced evidence is unavailable',
   answerReview: 'Review answer verdict', causeReview: 'Review root cause conclusion', reviewAction: 'Review action', reviewReason: 'Review reason / required evidence', submit: 'Save this review', saved: 'Review appended', reasonRequired: 'Enter a review reason.',
   reviewer: 'Reviewer', target: 'Review object', analysisID: 'Analysis version ID', created: 'Reviewed at', reviewHistory: 'Human review history', reviewNotice: 'Answer and cause are reviewed independently. Each save appends one record for the current analysis.',
   save: 'Save settings', saving: 'Saving…', auto_record_enabled: 'Enable calibrated automatic recording', calibration_note: 'Business calibration basis', calibrationHint: 'Keep disabled until real business samples have been calibrated. Record the sample scope, false positives / negatives and approval basis.',
@@ -79,6 +89,16 @@ const en: Record<string, string> = {
   answerTarget: 'Answer', causeTarget: 'Root cause', previous: 'Previous', next: 'Next', page: 'Page', budget: 'Diagnosis usage', tokens: 'Input / output tokens', duration: 'Duration (ms)', stratum: 'Sampling stratum', settingsError: 'Unable to load settings or model choices',
 }
 const zh: Record<string, string> = {
+  reviewReasonHint: "记录核对的证据、判断依据或待补材料…",
+  captureSettings: "采集与诊断",
+  triageSettings: "自动记录与抽检",
+  budgetSettings: "诊断预算",
+
+  workspaceLabel: "工作空间",
+  opsReadOnly: "只读运营",
+  scopeShort: "仅采集启用后的新问答 · 复核不修改知识",
+  sourceMetadata: "来源标识与调用信息",
+
   searchPlaceholder: "搜索问题或关键词…",
   searchShort: "搜索",
   questionPeriod: "问答时间",
@@ -137,7 +157,7 @@ const zh: Record<string, string> = {
   loading: '加载中…', empty: '当前范围内暂无记录', emptyHint: '在诊断设置中启用采集并发起新问答，或调整筛选条件。', errorTitle: '知识运营数据加载失败', retry: '重试', detailTitle: '诊断与复核详情', close: '关闭', captureGaps: '采集缺口', noGaps: '未记录采集缺口', metadata: '运行信息', runStatus: '运行状态',
   reports: '分析版本历史', latest: '当前版本', historical: '历史版本 · 只读', noAnalysis: '尚无诊断报告', noAnalysisHint: '任务可能正在等待处理，刷新可查看最新进展。', rerun: '重新诊断', queued: '已加入诊断队列，请稍后刷新查看新版本。', model: '诊断模型', policy: '提示词 / 策略版本', group: '问题组指纹',
   sourceCheck: '知识来源一致性核验', risk: '风险', scope: '分析范围', routeReason: '分流依据', claims: '回答论断判定', position: '位置', evidence: '证据', reason: '理由', facts: '观察事实', causes: '根因候选', supporting: '支持证据', opposing: '反对证据', unknowns: '未知项', reviewQuestions: '待裁决问题', none: '未记录',
-  originalEvidence: '当时提供给模型的来源片段', candidateEvidence: '采集候选材料 · 未送入模型', postEvidence: '事后补查材料', postNotice: '事后材料不能反向证明回答生成时已有依据。', input: '当时实际模型输入', version: '来源版本', acquired: '获取时间', truncated: '已截断', notTruncated: '未截断', evidenceMissing: '引用证据不可用',
+  originalEvidence: '当时提供给模型的来源片段', candidateEvidence: '采集候选材料 · 未送入模型', postEvidence: '所选报告引用的事后材料', postNotice: '仅列出本报告明确引用的材料，不表示该版诊断的全部输入。事后材料不能反向证明回答生成时已有依据。', input: '当时实际模型输入', version: '来源版本', acquired: '获取时间', truncated: '已截断', notTruncated: '未截断', evidenceMissing: '引用证据不可用',
   answerReview: '回答判定复核', causeReview: '根因结论复核', reviewAction: '复核动作', reviewReason: '复核理由 / 所需材料', submit: '保存本项复核', saved: '复核已追加保存', reasonRequired: '请填写复核理由。', reviewer: '复核人', target: '复核对象', analysisID: '分析版本 ID', created: '复核时间', reviewHistory: '人工复核历史', reviewNotice: '回答与根因分别复核，每次保存只追加当前分析版本的一项记录。',
   save: '保存设置', saving: '保存中…', auto_record_enabled: '启用经校准的自动记录', calibration_note: '人工业务校准依据', calibrationHint: '完成真实业务样本校准前保持关闭。请记录样本范围、误报 / 漏报与审批依据。', sample_percent: '质量抽检比例（%）', max_evidence_chars: '证据预算（字符）', max_output_tokens: '输出预算（Token）', timeout_seconds: '诊断超时（秒）', captureSince: '采集启用时间', modelRequired: '启用采集前请选择有效的对话模型。', calibrationRequired: '开启自动记录需要填写人工校准依据。', modelEmpty: '暂无有效对话模型，请先在设置中配置模型。', settingsSaved: '设置已保存', dateInvalid: '结束时间必须晚于开始时间。',
   version_changed: '分析版本已变化，或已有任务在执行。请刷新详情后继续。', forbidden: '仅工作空间管理员或所有者可访问。', not_found: '该运行或来源不可用，或访问权限已撤销。', invalid_input: '设置或复核参数无效，请检查字段及模型配置。', request_timeout: '请求超时，请重试。', knowledge_ops_failed: '请求失败，请重试。',

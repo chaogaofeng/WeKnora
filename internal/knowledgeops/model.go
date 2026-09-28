@@ -3,7 +3,7 @@ package knowledgeops
 
 import "time"
 
-const PolicyVersion = "knowledge-ops-v1.2-1"
+const PolicyVersion = "knowledge-ops-v1.2-2"
 
 type Settings struct {
 	CalibrationNote   string     `json:"calibration_note"`

@@ -18,8 +18,8 @@
         </section>
         <p v-else class="notice">{{ k('noAnalysis') }} · {{ k('noAnalysisHint') }}</p>
         <section><h3>{{ k('question') }}</h3><p class="body-text">{{ detail.run.question }}</p><h3>{{ k('answer') }}</h3><p class="body-text">{{ detail.run.answer || k('none') }}</p></section>
-        <h3>{{ k('reviewEvidence') }}</h3><div class="evidence-review"><div class="evidence-stack">        <section v-for="group in evidenceGroups" :key="group.key"><h3>{{ k(group.key) }}</h3><p v-if="group.key === 'postEvidence'" class="notice">{{ k('postNotice') }}</p><p v-if="!group.items.length">{{ k('none') }}</p><article v-for="item in group.items" :id="`ops-evidence-${item.id}`" :key="item.id" class="item evidence-item" tabindex="-1"><h4>{{ item.title || item.kind }} <small>{{ item.id }}</small></h4><p class="muted">{{ item.kind }} · {{ k('version') }} {{ item.version || k('unknown') }} · {{ date(item.acquired_at) }} · {{ k(item.truncated ? 'truncated' : 'notTruncated') }}</p><dl><dt>KB / Knowledge</dt><dd>{{ item.kb_id || '—' }} / {{ item.knowledge_id || '—' }}</dd><dt>Page / Chunk</dt><dd>{{ item.page_id || item.slug || '—' }} / {{ item.chunk_id || '—' }}</dd><dt>Tool / Round</dt><dd>{{ item.tool_call_id || '—' }} / {{ item.round }}</dd></dl><pre>{{ item.content || k('none') }}</pre></article></section>
-</div><aside id="ops-review-form" tabindex="-1">        <section v-if="analysis"><p v-if="analysis.status === 'failed'" class="notice">{{ k('failedReviewNotice') }}</p><p v-if="!canReview" class="notice">{{ k('reviewUnavailable') }}</p><p class="notice">{{ k('reviewNotice') }}</p><div class="review-grid"><ReviewForm :key="`${analysis.id}:answer:${savedReviews.answer}`" target="answer" :analysisID="analysis.id" :initial-verdict="analysis.report.verdict || 'unverifiable'" :disabled="!canReview" :busy="reviewing.answer" :error="reviewErrors.answer" @submit="saveReview" /><ReviewForm :key="`${analysis.id}:cause:${savedReviews.cause}`" target="cause" :analysisID="analysis.id" :initial-verdict="analysis.report.causes?.[0]?.status || 'unresolved'" :initial-category="analysis.report.causes?.[0]?.category" :disabled="!canReview" :busy="reviewing.cause" :error="reviewErrors.cause" @submit="saveReview" /></div></section>
+        <h3>{{ k('reviewEvidence') }}</h3><div class="evidence-review"><div class="evidence-stack">        <section v-for="group in evidenceGroups" :key="group.key"><h3>{{ k(group.key) }}</h3><p v-if="group.key === 'postEvidence'" class="notice">{{ k('postNotice') }}</p><p v-if="!group.items.length">{{ k('none') }}</p><article v-for="item in group.items" :id="`ops-evidence-${item.id}`" :key="item.id" class="item evidence-item" tabindex="-1"><h4>{{ item.title || item.kind }}</h4><p class="muted">{{ item.kind }} · {{ k('version') }} {{ item.version || k('unknown') }} · {{ date(item.acquired_at) }} · {{ k(item.truncated ? 'truncated' : 'notTruncated') }}</p><details class="evidence-metadata"><summary>{{ k('sourceMetadata') }}</summary><dl><dt>KB / Knowledge</dt><dd>{{ item.kb_id || '—' }} / {{ item.knowledge_id || '—' }}</dd><dt>Page / Chunk</dt><dd>{{ item.page_id || item.slug || '—' }} / {{ item.chunk_id || '—' }}</dd><dt>Tool / Round</dt><dd>{{ item.tool_call_id || '—' }} / {{ item.round }}</dd></dl></details><pre>{{ item.content || k('none') }}</pre></article></section>
+</div><aside id="ops-review-form" tabindex="-1">        <section v-if="analysis"><p v-if="analysis.status === 'failed'" class="notice">{{ k('failedReviewNotice') }}</p><p v-if="!canReview" class="notice">{{ k('reviewUnavailable') }}</p><p class="notice">{{ k('reviewNotice') }}</p><div class="review-grid"><ReviewForm :key="`${analysis.id}:answer:${savedReviews.answer}`" target="answer" :analysisID="analysis.id" :initial-verdict="analysis.report.verdict || 'unverifiable'" :disabled="!canReview" :busy="reviewing.answer" :error="reviewErrors.answer" @submit="saveReview" /><ReviewForm :key="`${analysis.id}:cause:${savedReviews.cause}`" target="cause" :analysisID="analysis.id" :initial-verdict="analysis.report.causes?.[0]?.status || 'unresolved'" :initial-category="analysis.report.causes?.[0]?.category" :machine-causes="analysis.report.causes || []" :disabled="!canReview" :busy="reviewing.cause" :error="reviewErrors.cause" @submit="saveReview" /></div></section>
 </aside></div>
         <details class="secondary-details"><summary>{{ k('diagnosticDetails') }}</summary>        <section>
           <h3>{{ k('reports') }}</h3><select v-if="detail.analyses.length" v-model="selectedID" :aria-label="k('reports')"><option v-for="item in detail.analyses" :key="item.id" :value="item.id">v{{ item.version }} · {{ label(item.status) }} · {{ date(item.created_at) }}{{ item.id === latestID ? ` · ${k('latest')}` : '' }}</option></select>
@@ -44,7 +44,8 @@
   </t-drawer>
 </template>
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onScopeDispose, reactive, ref, watch } from 'vue'
+import { useAuthStore } from '@/stores/auth'
 import { addOpsReview, getOpsDetail, retryOpsRun, opsErrorCode, type OpsDetail, type ReviewInput } from '@/api/knowledge-ops'
 import ReviewForm from './ReviewForm.vue'
 import { useOpsText } from './locales'
@@ -54,17 +55,30 @@ const { k, label, labelVerdict, date } = useOpsText()
 const detail = ref<OpsDetail>(); const loading = ref(false); const loadError = ref(''); const selectedID = ref(''); const retrying = ref(false); const notice = ref('')
 const savedReviews = reactive({ answer: 0, cause: 0 });
 const reviewing = reactive({ answer: false, cause: false }); const reviewErrors = reactive({ answer: '', cause: '' })
+const auth = useAuthStore()
 let requestID = 0
+let scopeID = 0
+function operationScope() {
+  const scope = scopeID; const runID = props.runID; const tenant = auth.effectiveTenantId
+  return () => scope === scopeID && runID === props.runID && tenant === auth.effectiveTenantId
+}
 const latestID = computed(() => detail.value?.run.analysis?.id || [...(detail.value?.analyses || [])].sort((a, b) => b.version - a.version)[0]?.id || '')
 const analysis = computed(() => detail.value?.analyses.find(item => item.id === selectedID.value))
 const isCurrent = computed(() => selectedID.value === latestID.value)
 const canReview = computed(() => isCurrent.value && !!detail.value?.run.finished_at && !!analysis.value)
 const evidenceGroups = computed(() => {
   const items = detail.value?.evidence || []
+  // Supplements are archived per run, not bound to an analysis. Only explicit
+  // citations establish that the selected report used a particular material.
+  const report = analysis.value?.report
+  const referenced = new Set([
+    ...(report?.claims || []).flatMap(claim => claim.evidence_ids || []),
+    ...(report?.causes || []).flatMap(cause => [...(cause.evidence_ids || []), ...(cause.counter_evidence || [])]),
+  ])
   return [
     { key: 'originalEvidence', items: items.filter(item => !item.post_hoc && item.sent_to_model) },
     { key: 'candidateEvidence', items: items.filter(item => !item.post_hoc && !item.sent_to_model) },
-    { key: 'postEvidence', items: items.filter(item => item.post_hoc) },
+    { key: 'postEvidence', items: items.filter(item => item.post_hoc && referenced.has(item.id)) },
   ]
 })
 function hasEvidence(id: string) { return !!detail.value?.evidence.some(item => item.id === id) }
@@ -77,27 +91,48 @@ function showEvidence(id: string) {
 function jumpToReview() {const element = document.getElementById('ops-review-form'); element?.scrollIntoView({block:'start'}); element?.focus()}
 async function load() {
   if (!props.runID) return
-  const token = ++requestID; const id = props.runID
+  const token = ++requestID; const id = props.runID; const current = operationScope()
   loading.value = true; loadError.value = ''
-  try { const value = await getOpsDetail(id); if (token !== requestID) return; detail.value = value; selectedID.value = (props.analysisID && value.analyses.some(a => a.id === props.analysisID) ? props.analysisID : '') || (value.analyses.some(a => a.id === selectedID.value) ? selectedID.value : '') || value.run.analysis?.id || [...value.analyses].sort((a, b) => b.version - a.version)[0]?.id || '' }
-  catch (error) { if (token === requestID) { detail.value = undefined; loadError.value = k(opsErrorCode(error)) } }
-  finally { if (token === requestID) loading.value = false }
+  try { const value = await getOpsDetail(id); if (token !== requestID || !current()) return; detail.value = value; selectedID.value = (props.analysisID && value.analyses.some(a => a.id === props.analysisID) ? props.analysisID : '') || (value.analyses.some(a => a.id === selectedID.value) ? selectedID.value : '') || value.run.analysis?.id || [...value.analyses].sort((a, b) => b.version - a.version)[0]?.id || '' }
+  catch (error) { if (token === requestID && current()) { detail.value = undefined; loadError.value = k(opsErrorCode(error)) } }
+  finally { if (token === requestID && current()) loading.value = false }
 }
 async function rerun() {
+  if (!props.runID || retrying.value) return
+  const runID = props.runID; const current = operationScope()
   retrying.value = true; notice.value = ''
-  try { await retryOpsRun(props.runID); await load(); notice.value = k('queued'); emit('changed') }
-  catch (error) { notice.value = k(opsErrorCode(error)) }
-  finally { retrying.value = false }
+  try {
+    await retryOpsRun(runID)
+    if (!current()) return
+    await load()
+    if (!current()) return
+    notice.value = k('queued'); emit('changed')
+  } catch (error) { if (current()) notice.value = k(opsErrorCode(error)) }
+  finally { if (current()) retrying.value = false }
 }
 async function saveReview(value: ReviewInput) {
-  const target = value.target; const runID = props.runID; reviewing[target] = true; reviewErrors[target] = ''
-  try { await addOpsReview(runID, value); if (props.runID !== runID) { emit('changed'); return }; notice.value = k('saved'); await load(); savedReviews[target]++; emit('changed') }
-  catch (error) { if (props.runID === runID) reviewErrors[target] = k(opsErrorCode(error)) }
-  finally { reviewing[target] = false }
+  const target = value.target; const runID = props.runID; const current = operationScope()
+  if (!runID || reviewing[target]) return
+  reviewing[target] = true; reviewErrors[target] = ''
+  try {
+    await addOpsReview(runID, value)
+    if (!current()) return
+    await load()
+    if (!current()) return
+    notice.value = k('saved'); savedReviews[target]++; emit('changed')
+  } catch (error) { if (current()) reviewErrors[target] = k(opsErrorCode(error)) }
+  finally { if (current()) reviewing[target] = false }
 }
-watch(() => [props.runID, props.analysisID], ([id]) => { selectedID.value = '';  requestID++; detail.value = undefined; notice.value = ''; reviewErrors.answer = ''; reviewErrors.cause = ''; if (id) void load() }, { immediate: true })
+watch(() => [props.runID, props.analysisID, auth.effectiveTenantId], () => {
+  scopeID++; requestID++; selectedID.value = ''; detail.value = undefined; notice.value = ''; loadError.value = ''
+  reviewing.answer = false; reviewing.cause = false; retrying.value = false
+  reviewErrors.answer = ''; reviewErrors.cause = ''
+  if (props.runID) void load()
+}, { immediate: true, flush: 'sync' })
+onScopeDispose(() => { scopeID++; requestID++ })
 </script>
 <style scoped>
-.ops-detail{line-height:1.65;color:var(--td-text-color-primary)}.toolbar{display:flex;gap:12px;justify-content:flex-end;margin-bottom:18px}.chips{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0}.chips span{background:var(--td-bg-color-secondarycontainer);padding:4px 10px;border-radius:5px;font-size:13px}section{border:1px solid var(--td-component-border);border-radius:10px;padding:20px;margin:18px 0}h3{font-size:18px;margin:0 0 14px}h4{margin:20px 0 10px}.body-text{white-space:pre-wrap;overflow-wrap:anywhere}.notice{padding:12px 16px;background:var(--td-brand-color-light);border-radius:8px}.muted,small{color:var(--td-text-color-secondary);font-size:13px}dl{display:grid;grid-template-columns:160px minmax(0,1fr);font-size:13px;gap:6px 12px}dt{color:var(--td-text-color-secondary)}dd{margin:0;overflow-wrap:anywhere}.item{border-top:1px solid var(--td-component-border);padding:14px 0}.item p{margin:7px 0}.evidence-links{display:flex;gap:8px;flex-wrap:wrap}.evidence-links button{background:var(--td-brand-color-light);color:var(--td-brand-color);border:0;padding:5px 10px;border-radius:5px;cursor:pointer;font:inherit;font-size:13px}pre{font:inherit;font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto;background:var(--td-bg-color-secondarycontainer);padding:14px;border-radius:6px}.review-grid{display:grid;grid-template-columns:1fr;gap:16px}.error{color:var(--td-error-color)}.state{padding:48px;text-align:center}.evidence-item:focus{outline:2px solid var(--td-brand-color);outline-offset:6px}select{border:1px solid var(--td-component-border);border-radius:6px;padding:10px;background:var(--td-bg-color-container);color:inherit;max-width:100%;font:inherit}button:focus-visible,select:focus-visible{outline:2px solid var(--td-brand-color);outline-offset:2px}@media(max-width:700px){.review-grid{grid-template-columns:1fr}section{padding:14px}dl{grid-template-columns:1fr}dt{font-weight:500}}
-.diagnosis-first{background:var(--td-brand-color-light);border-color:var(--td-brand-color-light)}.diagnosis-first.high{border-left:4px solid var(--td-error-color);background:var(--td-warning-color-light)}.decision-heading,.decision-tags{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}.decision-heading h3{margin:0}.jump-button{border:0;border-radius:6px;background:var(--td-brand-color);color:white;padding:9px 14px;cursor:pointer;font:inherit}.decision-tags{justify-content:flex-start;margin-top:16px}.evidence-review{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(320px,1fr);gap:20px;align-items:start}.evidence-review section:first-child{margin-top:0}.secondary-details{border:1px solid var(--td-component-border);border-radius:8px;padding:14px;margin:14px 0}.secondary-details summary{cursor:pointer;font-weight:600}.evidence-stack{min-width:0}aside{min-width:0;scroll-margin-top:20px}@media(max-width:950px){.evidence-review{grid-template-columns:1fr}}
+.ops-detail{line-height:1.65;color:var(--td-text-color-primary)}.toolbar{display:flex;gap:12px;justify-content:flex-end;margin-bottom:18px}.chips{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0}.chips span{background:var(--td-bg-color-secondarycontainer);padding:4px 10px;border-radius:5px;font-size:13px}section{border:1px solid var(--td-component-stroke);border-radius:12px;padding:22px;margin:18px 0}h3{font-size:16px;margin:0 0 16px;font-weight:600}h4{margin:20px 0 10px}.body-text{white-space:pre-wrap;overflow-wrap:anywhere}.notice{padding:12px 16px;background:var(--td-brand-color-light);border-radius:8px}.muted,small{color:var(--td-text-color-secondary);font-size:13px}dl{display:grid;grid-template-columns:160px minmax(0,1fr);font-size:13px;gap:6px 12px}dt{color:var(--td-text-color-secondary)}dd{margin:0;overflow-wrap:anywhere}.item{border-top:1px solid var(--td-component-border);padding:14px 0}.item p{margin:7px 0}.evidence-links{display:flex;gap:8px;flex-wrap:wrap}.evidence-links button{background:var(--td-brand-color-light);color:var(--td-brand-color);border:0;padding:5px 10px;border-radius:5px;cursor:pointer;font:inherit;font-size:13px}pre{font:inherit;font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto;background:var(--td-bg-color-secondarycontainer);padding:14px;border-radius:6px}.review-grid{display:grid;grid-template-columns:1fr;gap:16px}.error{color:var(--td-error-color)}.state{padding:48px;text-align:center}.evidence-item:focus{outline:2px solid var(--td-brand-color);outline-offset:6px}select{border:1px solid var(--td-component-border);border-radius:6px;padding:10px;background:var(--td-bg-color-container);color:inherit;max-width:100%;font:inherit}button:focus-visible,select:focus-visible{outline:2px solid var(--td-brand-color);outline-offset:2px}@media(max-width:700px){.review-grid{grid-template-columns:1fr}section{padding:14px}dl{grid-template-columns:1fr}dt{font-weight:500}}
+.diagnosis-first{background:color-mix(in srgb,var(--td-brand-color-light) 30%,var(--td-bg-color-container));border-color:var(--td-component-stroke)}.diagnosis-first.high{border-left:4px solid var(--td-error-color);background:color-mix(in srgb,var(--td-warning-color-light) 40%,var(--td-bg-color-container))}.decision-heading,.decision-tags{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}.decision-heading h3{margin:0}.jump-button{border:0;border-radius:6px;background:var(--td-brand-color);color:white;padding:9px 14px;cursor:pointer;font:inherit}.decision-tags{justify-content:flex-start;margin-top:16px}.evidence-review{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(320px,1fr);gap:20px;align-items:start}.evidence-review section:first-child{margin-top:0}.secondary-details{border:1px solid var(--td-component-border);border-radius:8px;padding:14px;margin:14px 0}.secondary-details summary{cursor:pointer;font-weight:600}.evidence-stack{min-width:0}aside{min-width:0;scroll-margin-top:20px}@media(max-width:950px){.evidence-review{grid-template-columns:1fr}}
+.evidence-metadata{font-size:12px;color:var(--td-text-color-secondary);margin:12px 0}.evidence-metadata summary{cursor:pointer}.evidence-item pre{border-left:3px solid var(--td-component-border);border-radius:0 6px 6px 0;line-height:1.9;padding:16px 18px}.ops-detail .notice{font-size:12px;line-height:1.8}.decision-tags{font-size:13px}.decision-tags>span,.decision-tags>strong{background:var(--td-bg-color-container);padding:5px 9px;border:1px solid var(--td-component-stroke);border-radius:5px}.diagnosis-first h4{font-size:13px}.diagnosis-first p,.diagnosis-first li{font-size:14px}.toolbar{margin-bottom:12px}.chips{margin:12px 0}.secondary-details summary{font-size:13px}.evidence-stack .item:first-of-type{border-top:0;padding-top:0}
 </style>

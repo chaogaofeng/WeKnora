@@ -13,5 +13,6 @@ defineProps<{ stats: OpsOverview }>()
 const { k, label } = useOpsText()
 </script>
 <style scoped>
-.insights{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:20px 0}section{background:var(--td-bg-color-container);border:1px solid var(--td-component-border);border-radius:10px;padding:20px;overflow:auto}h2{font-size:17px;margin:0 0 16px}.stat{display:flex;justify-content:space-between;margin:12px 0}.muted{font-size:13px;color:var(--td-text-color-secondary)}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:12px 8px;border-bottom:1px solid var(--td-component-border)}@media(max-width:1000px){.insights{grid-template-columns:1fr}}
+.insights{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:20px 0}section{background:var(--td-bg-color-container);border:1px solid var(--td-component-stroke);border-radius:12px;padding:22px;overflow:auto}h2{font-size:15px;margin:0 0 20px;font-weight:600}.stat{display:flex;justify-content:space-between;margin:16px 0;font-size:13px}.muted{font-size:12px;color:var(--td-text-color-secondary);line-height:1.7}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:12px 8px;border-bottom:1px solid var(--td-component-stroke)}@media(max-width:1000px){.insights{grid-template-columns:1fr}}
+thead th{font-size:12px;color:var(--td-text-color-secondary);font-weight:500}tbody th{font-weight:500}tbody tr:last-child th,tbody tr:last-child td{border-bottom:0}.stat strong{font-weight:600}table{font-variant-numeric:tabular-nums}
 </style>

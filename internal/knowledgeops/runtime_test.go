@@ -59,3 +59,14 @@ func TestKnowledgeEvidenceWithoutKBCannotBypassAccess(t *testing.T) {
 	ctx := types.WithCaller(context.Background(), types.Caller{TenantID: 1, UserID: "owner", Role: types.TenantRoleAdmin})
 	require.ErrorIs(t, adapter.Check(ctx, Run{TenantID: 1, SessionID: "s"}, []Evidence{{Kind: "chunk", ChunkID: "c", KnowledgeID: "d", Content: "protected"}}), ErrForbidden)
 }
+
+func TestIncompletePermissionBindingsCannotExposeCapturedBodies(t *testing.T) {
+	adapter := RuntimeAdapter{Sessions: sessionReadStub{session: &types.Session{ID: "s", TenantID: 1, UserID: "owner"}}}
+	ctx := types.WithCaller(context.Background(), types.Caller{TenantID: 1, UserID: "owner", Role: types.TenantRoleAdmin})
+	for _, gap := range []string{"evidence_persist_failed", "capture_io_budget", "capture_source_count_budget", "capture_candidate_count_budget", "capture_callback_failed", "capture_interrupted"} {
+		t.Run(gap, func(t *testing.T) {
+			require.ErrorIs(t, adapter.Check(ctx, Run{TenantID: 1, SessionID: "s", Status: "completed", Gaps: []string{gap}}, nil), ErrForbidden)
+		})
+	}
+	require.ErrorIs(t, adapter.Check(ctx, Run{TenantID: 1, SessionID: "s", Status: "running"}, nil), ErrForbidden)
+}

@@ -43,6 +43,17 @@ func (a *RuntimeAdapter) ExecutionContext(ctx context.Context, run Run) (context
 	return context.WithValue(ctx, workerContextKey{}, true), nil
 }
 func (a *RuntimeAdapter) Check(ctx context.Context, run Run, evidence []Evidence) error {
+	// Until capture finishes, or if identity persistence was interrupted, a
+	// missing row may be a permission dependency of another retained excerpt.
+	if run.Status == "running" || len(run.Gaps) >= 64 {
+		return ErrForbidden
+	}
+	for _, gap := range run.Gaps {
+		switch gap {
+		case "evidence_persist_failed", "capture_io_budget", "capture_source_count_budget", "capture_candidate_count_budget", "capture_callback_failed", "capture_interrupted":
+			return ErrForbidden
+		}
+	}
 	caller := types.CallerFromContext(ctx)
 	if caller.TenantID != run.TenantID {
 		return ErrForbidden

@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 
+	"github.com/Tencent/WeKnora/internal/knowledgeops/capture"
 	"github.com/Tencent/WeKnora/internal/searchutil"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -337,6 +338,7 @@ func (p *PluginMerge) resolveParentChunks(
 			})
 			assignScopedImageInfo(r, scopedImageInfo, r.ID)
 			parentContent := searchutil.PruneMarkdownImagesByImageInfo(parent.Content, r.ImageInfo)
+			capture.RecordChunkDependencies(ctx, parent)
 			r.Content = searchutil.JoinChunkContent(parentContent, r.Content, "\n\n")
 			r.ContentRewritten = true
 			if !containsID(r.SubChunkID, r.ID) {
@@ -372,6 +374,7 @@ func (p *PluginMerge) resolveParentChunks(
 			}
 			textContent := searchutil.PruneMarkdownImagesByImageInfo(textParent.Content, r.ImageInfo)
 			parentContent := searchutil.PruneMarkdownImagesByImageInfo(contentSource.Content, r.ImageInfo)
+			capture.RecordChunkDependencies(ctx, textParent, contentSource)
 			r.Content = searchutil.JoinChunkContent(parentContent, textContent, "\n\n")
 			// Re-attach the recognized text after the parent/grandparent
 			// markdown. JoinChunkContent collapses duplicates, so when the

@@ -182,3 +182,26 @@ func TestMultipartPrecedenceAndSystemEvidenceOnly(t *testing.T) {
 		t.Fatalf("lost actual content: %s", all)
 	}
 }
+
+func TestDocumentMetadataRemainsBoundWithoutSiblingBodies(t *testing.T) {
+	r := &memoryRecorder{}
+	ctx := WithRecorder(context.Background(), r)
+	RecordSources(ctx, []Source{{Kind: "chunk", ChunkID: "c1", KBID: "kb1"}, {Kind: "chunk", ChunkID: "c2", KBID: "kb2"}})
+	RecordModelInput(ctx, []chat.Message{{Role: "user", Content: `<retrieval><document id="d1"><metadata>Beijing only</metadata><chunk id="c1">first body</chunk></document><document id="d2"><metadata>Shanghai only</metadata><chunk id="c2">second body</chunk></document></retrieval>`}}, nil)
+	sent := 0
+	for _, s := range r.sources {
+		if !s.SentToModel {
+			continue
+		}
+		sent++
+		if s.ChunkID == "c1" && (!strings.Contains(s.Content, "Beijing only") || strings.Contains(s.Content, "Shanghai") || strings.Contains(s.Content, "second body")) {
+			t.Fatalf("wrong document binding: %+v", s)
+		}
+		if s.ChunkID == "c2" && (!strings.Contains(s.Content, "Shanghai only") || strings.Contains(s.Content, "Beijing") || strings.Contains(s.Content, "first body")) {
+			t.Fatalf("wrong document binding: %+v", s)
+		}
+	}
+	if sent != 2 {
+		t.Fatalf("captured %d visible sources, want 2", sent)
+	}
+}
