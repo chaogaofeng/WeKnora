@@ -44,3 +44,10 @@ test('confirm restores the machine conclusion while corrected preserves the sele
   assert.equal(draft.verdict, 'evidence_backed')
   assert.equal(draft.cause_category, 'source_conflict')
 })
+
+test('review date filters apply to review timestamps with explicit UTC conversion', () => {
+ const result = buildFilters({ review_from: '2026-09-01T08:00', review_to: '2026-09-02T08:00', target: 'cause' })
+ assert.equal(result.review_from, new Date('2026-09-01T08:00').toISOString())
+ assert.equal(result.review_to, new Date('2026-09-02T08:00').toISOString())
+ assert.equal(result.target, 'cause')
+})

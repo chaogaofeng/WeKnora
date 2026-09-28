@@ -36,7 +36,8 @@ func (s *Service) RegisterHTTP(g *gin.RouterGroup) {
 	g.GET("/runs/:id", s.detail)
 	g.POST("/runs/:id/retry", s.retry)
 	g.POST("/runs/:id/reviews", s.review)
-	g.GET("/reviews", s.listReviews)
+	g.GET("/reviews", s.listReviewRecords)
+	g.GET("/groups", s.listGroups)
 }
 func tenant(c *gin.Context) uint64 { return types.CallerFromContext(c.Request.Context()).TenantID }
 func reply(c *gin.Context, data any, err error) {
@@ -191,14 +192,49 @@ func (s *Service) walk(c *gin.Context, visit func(Detail)) error {
 				continue
 			}
 			a := d.Run.Analysis
-			if route := c.Query("route"); route != "" && (a == nil || (a.Route != route && !(route == "technical_followup" && (a.Status == "failed" || d.Run.Status == "failed" || d.Run.Status == "cancelled")))) {
-				continue
+			if route := c.Query("route"); route != "" {
+				match := a != nil && a.Route == route
+				for _, pendingRoute := range queueRoutes(d) {
+					if pendingRoute == route {
+						match = true
+					}
+				}
+				if c.Query("view") == "queue" {
+					match = false
+					for _, pendingRoute := range queueRoutes(d) {
+						if pendingRoute == route {
+							match = true
+						}
+					}
+				}
+				if !match {
+					continue
+				}
 			}
 			if verdict := c.Query("verdict"); verdict != "" && (a == nil || a.Report.Verdict != verdict) {
 				continue
 			}
 			d.Run.ReviewState = reviewState(d)
-			if c.Query("view") == "queue" && (a == nil || a.Route == "auto_record" || (d.Run.ReviewState == "reviewed" && a.Status != "failed")) {
+			if c.Query("view") == "queue" && len(queueRoutes(d)) == 0 {
+				continue
+			}
+			if risk := c.Query("risk"); risk != "" && (a == nil || a.Report.Risk != risk) {
+				continue
+			}
+			if category := c.Query("cause_category"); category != "" {
+				found := false
+				if a != nil {
+					for _, cause := range a.Report.Causes {
+						if cause.Category == category {
+							found = true
+						}
+					}
+				}
+				if !found {
+					continue
+				}
+			}
+			if group := c.Query("group_key"); group != "" && (a == nil || a.GroupKey != group) {
 				continue
 			}
 			visit(d)
@@ -235,10 +271,11 @@ func reviewState(d Detail) string {
 func (s *Service) listRuns(c *gin.Context) {
 	p, n := pagination(c)
 	all := []Run{}
-	total := 0
 	offset := (p - 1) * n
+	total := 0
+	queue := c.Query("view") == "queue"
 	err := s.walk(c, func(d Detail) {
-		if total >= offset && len(all) < n {
+		if queue || (total >= offset && len(all) < n) {
 			all = append(all, d.Run)
 		}
 		total++
@@ -247,11 +284,17 @@ func (s *Service) listRuns(c *gin.Context) {
 		reply(c, nil, err)
 		return
 	}
+	if queue {
+		sort.Slice(all, func(i, j int) bool { return queueBefore(all[i], all[j]) })
+		start := min(offset, len(all))
+		all = all[start:min(start+n, len(all))]
+	}
 	reply(c, Page[Run]{Items: all, Total: total}, nil)
 }
 func (s *Service) overview(c *gin.Context) {
-	v := Overview{ByMode: map[string]int{}, ByRoute: map[string]int{}, ByVerdict: map[string]int{}}
+	v := Overview{WorkbenchStats: newWorkbenchStats(), ByMode: map[string]int{}, ByRoute: map[string]int{}, ByVerdict: map[string]int{}}
 	err := s.walk(c, func(d Detail) {
+		v.WorkbenchStats.observe(d)
 		v.Total++
 		switch d.Run.CaptureStatus {
 		case "complete":
@@ -271,20 +314,6 @@ func (s *Service) overview(c *gin.Context) {
 	})
 	reply(c, v, err)
 }
-func (s *Service) listReviews(c *gin.Context) {
-	p, n := pagination(c)
-	all := []Review{}
-	err := s.walk(c, func(d Detail) { all = append(all, d.Reviews...) })
-	if err != nil {
-		reply(c, nil, err)
-		return
-	}
-	sortReviews(all)
-	total := len(all)
-	start := min((p-1)*n, total)
-	reply(c, Page[Review]{Items: all[start:min(start+n, total)], Total: total}, nil)
-}
-
 func sortRuns(v []Run) {
 	sort.Slice(v, func(i, j int) bool {
 		if v[i].StartedAt.Equal(v[j].StartedAt) {

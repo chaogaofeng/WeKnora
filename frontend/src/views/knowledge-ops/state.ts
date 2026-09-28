@@ -10,7 +10,7 @@ export function buildFilters(values: Record<string, string>): OpsFilters {
   const result: Record<string, string> = {}
   for (const [key, value] of Object.entries(values)) {
     if (!value.trim()) continue
-    result[key] = key === 'from' || key === 'to' ? new Date(value).toISOString() : value.trim()
+    result[key] = ['from', 'to', 'review_from', 'review_to'].includes(key) ? new Date(value).toISOString() : value.trim()
   }
   return result as OpsFilters
 }

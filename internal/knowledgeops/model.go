@@ -167,6 +167,7 @@ type Page[T any] struct {
 	Total int `json:"total"`
 }
 type Overview struct {
+	WorkbenchStats
 	Total        int            `json:"total"`
 	Complete     int            `json:"complete"`
 	Partial      int            `json:"partial"`

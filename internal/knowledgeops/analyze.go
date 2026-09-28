@@ -200,13 +200,16 @@ func Triage(run Run, r Report, s Settings) (string, string) {
 }
 func groupKey(run Run, r Report, e []Evidence) string {
 	// Unresolved applicability cannot safely be grouped automatically.
-	if len(r.Causes) == 0 || len(r.Unknowns) > 0 || r.SourceCheck == "unresolved" {
+	if len(r.Causes) == 0 || strings.TrimSpace(r.Scope) == "" || len(r.Unknowns) > 0 || r.SourceCheck == "unresolved" {
 		return ""
 	}
 	keys := []string{fmt.Sprint(run.TenantID), run.ActorID, r.Scope}
 	for _, x := range e {
-		if x.KBID == "" || x.Version == "" || x.Version == "unknown" {
+		if !x.SentToModel && !x.PostHoc {
 			continue
+		}
+		if x.KBID == "" || x.Version == "" || x.Version == "unknown" {
+			return ""
 		}
 		keys = append(keys, x.KBID+":"+x.KnowledgeID+":"+x.PageID+":"+x.Version+":"+x.Hash)
 	}

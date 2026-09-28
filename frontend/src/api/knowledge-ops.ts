@@ -30,14 +30,20 @@ export interface OpsEvidence {
 export type ReviewTarget = 'answer' | 'cause'
 export type ReviewAction = 'confirmed' | 'corrected' | 'needs_more_evidence'
 export interface ReviewInput { analysis_id: string; target: ReviewTarget; verdict: string; action: ReviewAction; reason: string; cause_category?: string }
-export interface OpsReview extends ReviewInput { id: string; run_id: string; reviewer_id: string; created_at: string }
+export interface OpsReview extends ReviewInput { question: string; analysis_version: number; machine_verdict: string; machine_causes: OpsCause[]; id: string; run_id: string; reviewer_id: string; created_at: string }
 export interface OpsDetail { pending_tasks: number; run: OpsRun; evidence: OpsEvidence[]; analyses: OpsAnalysis[]; reviews: OpsReview[] }
 export interface OpsPage<T> { items: T[]; total: number }
+export interface OpsGroup { key: string; count: number; representative: OpsRun }
 export interface OpsOverview {
+  coverage_by_mode: Record<string, { total: number; complete: number; partial: number; missing: number }>
+  source_checks: Record<string, number>; causes: Record<string, number>; queue_counts: Record<string, number>
+  diagnosis_status: Record<string, number>; sample_total: number; sample_reviewed: number; sample_corrected: number
   total: number; complete: number; partial: number; missing: number; by_mode: Record<string, number>
   by_route: Record<string, number>; by_verdict: Record<string, number>; pending_tasks: number; review_count: number
 }
 export interface OpsFilters {
+  risk?: string; cause_category?: string; group_key?: string
+  target?: string; action?: string; reviewer_id?: string; review_from?: string; review_to?: string; review_search?: string
   from?: string; to?: string; qa_type?: string; channel?: string; capture_status?: string; route?: string
   verdict?: string; search?: string; view?: 'queue'; page?: number; page_size?: number
 }
@@ -52,6 +58,7 @@ export const getOpsSettings = () => unwrap(get<Envelope<OpsSettings>>(`${base}/s
 export const saveOpsSettings = (value: OpsSettings) => unwrap(put<Envelope<OpsSettings>>(`${base}/settings`, value))
 export const getOpsOverview = (params: OpsFilters) => unwrap(get<Envelope<OpsOverview>>(`${base}/overview`, { params }))
 export const getOpsRuns = (params: OpsFilters) => unwrap(get<Envelope<OpsPage<OpsRun>>>(`${base}/runs`, { params }))
+export const getOpsGroups = (params: OpsFilters) => unwrap(get<Envelope<OpsPage<OpsGroup>>>(`${base}/groups`, { params }))
 export const getOpsDetail = (id: string) => unwrap(get<Envelope<OpsDetail>>(`${base}/runs/${encodeURIComponent(id)}`))
 export const retryOpsRun = (id: string) => unwrap(post<Envelope<{ queued: boolean }>>(`${base}/runs/${encodeURIComponent(id)}/retry`))
 export const addOpsReview = (id: string, value: ReviewInput) => unwrap(post<Envelope<OpsReview>>(`${base}/runs/${encodeURIComponent(id)}/reviews`, value))
