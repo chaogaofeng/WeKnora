@@ -10,6 +10,7 @@ import (
 	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
 	"github.com/Tencent/WeKnora/internal/common"
 	"github.com/Tencent/WeKnora/internal/event"
+	"github.com/Tencent/WeKnora/internal/knowledgeops/capture"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modelcontext"
 	"github.com/Tencent/WeKnora/internal/models/chat"
@@ -24,7 +25,13 @@ func (s *sessionService) KnowledgeQA(
 	ctx context.Context,
 	req *types.QARequest,
 	eventBus *event.EventBus,
-) error {
+) (qaErr error) {
+	ctx = s.startKnowledgeOps(ctx, req, "quick-answer")
+	defer func() {
+		if qaErr != nil {
+			capture.Finish(ctx, "", qaErr)
+		}
+	}()
 	webSearchEnabled := resolveWebSearchEnabled(req)
 	logger.Infof(
 		ctx,
@@ -941,6 +948,8 @@ func (s *sessionService) handleFixedFallback(ctx context.Context, chatManage *ty
 	fallbackContent := chatManage.FallbackResponse
 	chatManage.ChatResponse = &types.ChatResponse{Content: fallbackContent}
 	s.emitFallbackAnswer(ctx, chatManage, fallbackContent)
+	capture.Gap(ctx, "fixed_fallback_no_model_input")
+	capture.Finish(ctx, fallbackContent, nil)
 }
 
 // handleModelFallback handles model-based fallback response using streaming
@@ -985,6 +994,8 @@ func (s *sessionService) handleModelFallback(ctx context.Context, chatManage *ty
 
 	// Start streaming response
 	fallbackMessages, modelContext := prepareFallbackMessages(chatManage, promptContent)
+	capture.RecordModelInput(ctx, fallbackMessages, modelContext.CompactKnownText, chatModel.GetModelID())
+	capture.Gap(ctx, "fallback_system_source_listing_not_captured")
 	if leaks := modelContext.LeakedIdentifiers(fallbackMessages); len(leaks) > 0 {
 		logger.Warnf(ctx, "[Fallback][ModelContext] %d message field(s) carry raw identifiers after encoding: %s",
 			len(leaks), modelcontext.SummarizeLeaks(leaks))
@@ -992,6 +1003,7 @@ func (s *sessionService) handleModelFallback(ctx context.Context, chatManage *ty
 	responseChan, err := chatModel.ChatStream(ctx, fallbackMessages, opt)
 	if err != nil {
 		logger.Errorf(ctx, "Failed to start streaming fallback response: %v, falling back to fixed response", err)
+		capture.Gap(ctx, "fallback_model_call_failed")
 		s.handleFixedFallback(ctx, chatManage)
 		return
 	}
@@ -1161,9 +1173,27 @@ func (s *sessionService) consumeFallbackStream(
 	eventBus := chatManage.EventBus
 	var finalContent string
 	streamCompleted := false
+	var captureErr error
+	defer func() { capture.Finish(ctx, finalContent, captureErr) }()
 	decoder := modelContext.StreamDecoder()
 
-	for response := range responseChan {
+streamLoop:
+	for {
+		var response types.StreamResponse
+		select {
+		case <-ctx.Done():
+			captureErr = ctx.Err()
+			return
+		case chunk, ok := <-responseChan:
+			if !ok {
+				break streamLoop
+			}
+			response = chunk
+		}
+		if response.ResponseType == types.ResponseTypeError {
+			captureErr = fmt.Errorf("fallback model stream failed")
+			capture.Gap(ctx, "fallback_stream_failed")
+		}
 		// Emit event for each answer chunk
 		if response.ResponseType == types.ResponseTypeAnswer {
 			response.Content = decoder.Feed(response.Content)
@@ -1188,6 +1218,7 @@ func (s *sessionService) consumeFallbackStream(
 			if response.Done {
 				chatManage.ChatResponse = &types.ChatResponse{Content: finalContent}
 				streamCompleted = true
+				capture.Finish(ctx, finalContent, captureErr)
 				logger.Infof(ctx, "Fallback streaming response completed")
 				break
 			}
@@ -1198,6 +1229,11 @@ func (s *sessionService) consumeFallbackStream(
 	if !streamCompleted {
 		logger.Warnf(ctx, "Fallback stream closed without completion, emitting final event with fixed response")
 		s.emitFallbackAnswer(ctx, chatManage, chatManage.FallbackResponse)
+		finalContent = chatManage.FallbackResponse
+		capture.Gap(ctx, "fallback_stream_incomplete")
+		if captureErr == nil {
+			captureErr = fmt.Errorf("fallback stream ended before completion")
+		}
 	}
 }
 

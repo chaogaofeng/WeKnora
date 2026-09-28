@@ -3,6 +3,7 @@ package chatpipeline
 import (
 	"context"
 
+	"github.com/Tencent/WeKnora/internal/knowledgeops/capture"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
@@ -52,6 +53,14 @@ func (p *PluginChatCompletion) OnEvent(
 	})
 	chatMessages, modelContext := prepareMessagesWithModelContext(ctx, chatManage)
 	chatMessages = modelContext.EncodeMessages(chatMessages)
+	capture.RecordSources(ctx, capture.SearchSources(chatManage.MergeResult, ""))
+	capture.RecordModelInput(ctx, chatMessages, modelContext.CompactKnownText, chatModel.GetModelID())
+	if len(chatManage.History) > 0 {
+		capture.Gap(ctx, "history_source_permissions_unbound")
+	}
+	if len(chatManage.Attachments) > 0 {
+		capture.Gap(ctx, "attachment_source_permissions_unbound")
+	}
 	reportModelContextLeaks(ctx, "Completion", modelContext, chatMessages)
 	ctx = withPromptCacheMetadata(ctx, chatModel, chatMessages, opt, "knowledge_qa")
 
@@ -82,5 +91,6 @@ func (p *PluginChatCompletion) OnEvent(
 		"prompt_tokens":     chatResponse.Usage.PromptTokens,
 	})
 	chatManage.ChatResponse = chatResponse
+	capture.Finish(ctx, chatResponse.Content, nil)
 	return next()
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -694,6 +695,11 @@ func (t *wikiReadPageTool) Execute(ctx context.Context, args json.RawMessage) (*
 	}
 
 	finalOutput, truncatedSlugs, omittedSlugs := renderWikiPagesWithinBudget(pending, OutputBudget(ctx))
+	sourceSnapshots := make([]types.ToolSourceSnapshot, 0, len(pending))
+	for _, page := range pending {
+		sourceSnapshots = append(sourceSnapshots, wikiSourceSnapshot(page.page, page.kbID, slices.Contains(truncatedSlugs, page.page.Slug) || slices.Contains(omittedSlugs, page.page.Slug)))
+	}
+
 	if len(omittedSlugs) > 0 {
 		finalOutput += fmt.Sprintf(
 			"\n\n<omitted_pages reason=\"output budget exceeded\">\n%s\n</omitted_pages>"+
@@ -716,8 +722,9 @@ func (t *wikiReadPageTool) Execute(ctx context.Context, args json.RawMessage) (*
 	}
 
 	return &types.ToolResult{
-		Success: true,
-		Output:  finalOutput,
+		Success:         true,
+		Output:          finalOutput,
+		SourceSnapshots: sourceSnapshots,
 		Data: map[string]interface{}{
 			"found_kbs":       foundKBs,
 			"ambiguous_slugs": ambiguous,
@@ -852,6 +859,7 @@ func (t *wikiSearchTool) Execute(ctx context.Context, args json.RawMessage) (*ty
 	}
 
 	var allOutputs []string
+	var sourceSnapshots []types.ToolSourceSnapshot
 	var searchErrors []string
 	successfulSearchCalls := 0
 	// Per-slug list of KB IDs that produced a match. Multiple KBs may share a
@@ -927,6 +935,7 @@ func (t *wikiSearchTool) Execute(ctx context.Context, args json.RawMessage) (*ty
 		fmt.Fprintf(&sb, "<search_results count=\"%d\" query=\"%s\">\n", len(allHits), query)
 		for _, h := range allHits {
 			p := h.page
+			sourceSnapshots = append(sourceSnapshots, wikiSourceSnapshot(p, h.kbID, true))
 			key := seenLinkKey(h.kbID, p.Slug)
 			t.mu.Lock()
 			seen := t.seenSlugs[key]
@@ -975,8 +984,9 @@ func (t *wikiSearchTool) Execute(ctx context.Context, args json.RawMessage) (*ty
 		output += "\n\n<errors>\n" + strings.Join(searchErrors, "\n") + "\n</errors>"
 	}
 	return &types.ToolResult{
-		Success: true,
-		Output:  output,
+		Success:         true,
+		Output:          output,
+		SourceSnapshots: sourceSnapshots,
 		Data: map[string]interface{}{
 			"found_kbs": foundKBs,
 		},
@@ -1085,4 +1095,14 @@ func truncateRunes(s string, maxRunes int) string {
 		return s
 	}
 	return string(runes[:maxRunes]) + "..."
+}
+
+// Metadata describes the page actually read by this tool, never a later lookup.
+func wikiSourceSnapshot(page *types.WikiPage, kbID string, partial bool) types.ToolSourceSnapshot {
+	version := "unknown"
+	if page.Version > 0 {
+		version = fmt.Sprint(page.Version)
+	}
+	return types.ToolSourceSnapshot{ID: page.ID, Kind: "wiki", KBID: kbID,
+		PageID: page.ID, Slug: page.Slug, Version: version, Title: page.Title, Truncated: partial}
 }

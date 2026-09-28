@@ -16,6 +16,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/handler/session"
+	"github.com/Tencent/WeKnora/internal/knowledgeops"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/mcpserver"
 	"github.com/Tencent/WeKnora/internal/middleware"
@@ -29,6 +30,7 @@ import (
 type RouterParams struct {
 	dig.In
 
+	KnowledgeOps                 *knowledgeops.Service `optional:"true"`
 	Config                       *config.Config
 	FileService                  interfaces.FileService
 	UserService                  interfaces.UserService
@@ -332,6 +334,9 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterDataSourceRoutes(v1, params.DataSourceHandler, params.DataSourceCredentialsHandler, rbacGuards)
 		RegisterWeKnoraCloudRoutes(v1, params.WeKnoraCloudHandler, rbacGuards)
 		RegisterWikiPageRoutes(v1, params.WikiPageHandler, rbacGuards)
+		if params.KnowledgeOps != nil {
+			params.KnowledgeOps.RegisterHTTP(v1.Group("/knowledge-ops", rbacGuards.Admin()))
+		}
 		// [folder-summary] bottom-up folder summaries projected as wiki pages.
 		RegisterFolderSummaryRoutes(v1, params.FolderSummaryWikiHandler, rbacGuards)
 		RegisterMemoryRoutes(v1, params.MemoryHandler, rbacGuards)

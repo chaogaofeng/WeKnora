@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/Tencent/WeKnora/internal/event"
+	"github.com/Tencent/WeKnora/internal/knowledgeops/capture"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/google/uuid"
@@ -56,6 +57,14 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 
 	chatMessages, modelContext := prepareMessagesWithModelContext(ctx, chatManage)
 	chatMessages = modelContext.EncodeMessages(chatMessages)
+	capture.RecordSources(ctx, capture.SearchSources(chatManage.MergeResult, ""))
+	capture.RecordModelInput(ctx, chatMessages, modelContext.CompactKnownText, chatModel.GetModelID())
+	if len(chatManage.History) > 0 {
+		capture.Gap(ctx, "history_source_permissions_unbound")
+	}
+	if len(chatManage.Attachments) > 0 {
+		capture.Gap(ctx, "attachment_source_permissions_unbound")
+	}
 	reportModelContextLeaks(ctx, "Stream", modelContext, chatMessages)
 	ctx = withPromptCacheMetadata(ctx, chatModel, chatMessages, opt, "knowledge_qa")
 	pipelineInfo(ctx, "Stream", "messages_ready", map[string]interface{}{
@@ -114,6 +123,9 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 		answerID := fmt.Sprintf("%s-answer", uuid.New().String()[:8])
 		thinkingOpen := false
 		answerCompleted := false
+		capturedAnswer := capture.NewAnswerBuffer(ctx)
+		var captureErr error
+		defer func() { capture.Finish(ctx, capturedAnswer.String(), captureErr) }()
 
 		closeThinking := func() {
 			if !thinkingOpen {
@@ -146,6 +158,7 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 				})
 			}
 			answerTail := answerDecoder.Flush()
+			capturedAnswer.Append(answerTail)
 			if answerTail != "" {
 				_ = eventBus.Emit(ctx, types.Event{
 					ID:        answerID,
@@ -159,6 +172,7 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 		for {
 			select {
 			case <-ctx.Done():
+				captureErr = ctx.Err()
 				flushDecoders()
 				closeThinking()
 				pipelineInfo(ctx, "Stream", "context_cancelled", map[string]interface{}{
@@ -168,6 +182,10 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 
 			case response, ok := <-responseChan:
 				if !ok {
+					if !answerCompleted && captureErr == nil {
+						captureErr = errors.New("model stream ended before completion")
+						capture.Gap(ctx, "model_stream_incomplete")
+					}
 					flushDecoders()
 					closeThinking()
 					pipelineInfo(ctx, "Stream", "channel_close", map[string]interface{}{
@@ -177,6 +195,7 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 				}
 
 				if response.ResponseType == types.ResponseTypeError {
+					captureErr = errors.New("model stream failed")
 					pipelineError(ctx, "Stream", "stream_error", map[string]interface{}{
 						"session_id": chatManage.SessionID,
 						"error":      response.Content,
@@ -229,6 +248,10 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 					if response.Done {
 						response.Content += answerDecoder.Flush()
 						answerCompleted = true
+					}
+					capturedAnswer.Append(response.Content)
+					if response.Done {
+						capture.Finish(ctx, capturedAnswer.String(), captureErr)
 					}
 					closeThinking()
 					eventBus.Emit(ctx, types.Event{

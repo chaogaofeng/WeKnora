@@ -164,6 +164,7 @@ export default {
     }
   },
   menu: {
+    knowledgeOps: 'Knowledge operations',
     sessionInProgress: 'Conversation in progress',
     knowledgeBase: 'Knowledge Base',
     agents: 'Agents',

@@ -11,6 +11,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/agent"
 	"github.com/Tencent/WeKnora/internal/agent/tools"
 	"github.com/Tencent/WeKnora/internal/event"
+	"github.com/Tencent/WeKnora/internal/knowledgeops/capture"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/models/chat"
 	"github.com/Tencent/WeKnora/internal/models/rerank"
@@ -25,7 +26,13 @@ func (s *sessionService) AgentQA(
 	ctx context.Context,
 	req *types.QARequest,
 	eventBus *event.EventBus,
-) error {
+) (qaErr error) {
+	ctx = s.startKnowledgeOps(ctx, req, "smart-reasoning")
+	defer func() {
+		if qaErr != nil {
+			capture.Finish(ctx, "", qaErr)
+		}
+	}()
 	sessionID := req.Session.ID
 	// Propagate the session ID so stateful sandbox backends (CubeSandbox) can
 	// bind script execution to a per-session MicroVM instance.
@@ -281,7 +288,16 @@ func (s *sessionService) AgentQA(
 	// Execute agent with streaming (asynchronously)
 	// Events will be emitted to EventBus and handled by the Handler layer
 	logger.Info(ctx, "Executing agent with streaming")
-	if _, err := engine.Execute(ctx, sessionID, req.AssistantMessageID, agentQuery, llmContext, agentImageURLs); err != nil {
+	state, executeErr := engine.Execute(ctx, sessionID, req.AssistantMessageID, agentQuery, llmContext, agentImageURLs)
+	answer := ""
+	if state != nil {
+		answer = state.FinalAnswer
+	}
+	if executeErr != nil {
+		capture.Gap(ctx, "agent_execution_failed")
+	}
+	capture.Finish(ctx, answer, executeErr)
+	if err := executeErr; err != nil {
 		logger.Errorf(ctx, "Agent execution failed: %v", err)
 		// Emit error event to the EventBus used by this agent
 		eventBus.Emit(ctx, event.Event{

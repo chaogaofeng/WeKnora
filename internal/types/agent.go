@@ -362,7 +362,17 @@ type Cleanable interface {
 }
 
 // ToolResult represents the result of a tool execution
+// ToolSourceSnapshot carries retrieval-time provenance without changing tool
+// output, stored agent steps or SSE payloads. Content is captured at the model
+// boundary rather than copying whole source pages here.
+type ToolSourceSnapshot struct {
+	ID, Kind, KBID, KnowledgeID, ChunkID, PageID, Slug, Version, Title string
+	Truncated                                                          bool
+}
+
 type ToolResult struct {
+	SourceSnapshots []ToolSourceSnapshot `json:"-"`
+
 	// OutputFiles holds sandbox references for this live result only. History
 	// uses the final answer's persistent resource references instead.
 	// A non-nil empty slice means output inspection found no eligible changes;

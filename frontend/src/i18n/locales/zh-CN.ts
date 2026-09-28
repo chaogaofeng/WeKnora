@@ -7457,6 +7457,7 @@ export default {
     }
   },
   menu: {
+    knowledgeOps: '知识运营',
     sessionInProgress: '会话进行中',
     knowledgeBase: '知识库',
     agents: '智能体',

@@ -1,0 +1,63 @@
+// Browser smoke test uses an isolated context and mocked APIs; no real user data or model calls.
+// Start the frontend separately, then set PLAYWRIGHT_MODULE_PATH if Playwright is not on Node's module path.
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE_PATH || 'playwright');
+const baseURL=process.env.KNOWLEDGE_OPS_UI_URL || 'http://127.0.0.1:5178';
+const fs=require('fs');
+(async()=>{
+ const browser=await chromium.launch({headless:true});const context=await browser.newContext({viewport:{width:1512,height:1100},locale:'zh-CN'});
+ const user={id:'acceptance-user',username:'验收用户',email:'acceptance@example.invalid',tenant_id:1,is_active:true};const tenant={id:1,name:'知识运营验收',owner_id:user.id};const memberships=[{tenant_id:1,tenant_name:tenant.name,role:'owner'}];
+ await context.addInitScript(({user,tenant,memberships})=>{localStorage.setItem('weknora_token','local-ui-fixture');localStorage.setItem('weknora_user',JSON.stringify(user));localStorage.setItem('weknora_tenant',JSON.stringify(tenant));localStorage.setItem('weknora_memberships',JSON.stringify(memberships));localStorage.setItem('locale','zh-CN');localStorage.setItem('weknora:new-user-guide-done:v1','1')},{user,tenant,memberships});
+ const settings={enabled:true,model_id:'fixture-model',auto_record_enabled:false,calibration_note:'',sample_percent:10,max_evidence_chars:48000,max_output_tokens:4096,timeout_seconds:90,capture_enabled_at:'2026-09-28T08:00:00Z',updated_at:'2026-09-28T08:00:00Z'};
+ const evidence=[{id:'ev-1',run_id:'run-1',kind:'wiki',kb_id:'kb-1',knowledge_id:'',chunk_id:'',page_id:'page-1',slug:'产品/适用条件',version:'3',title:'产品适用条件',content:'申请需满足经营满两年、资质审核通过。额度按风险评级另行审批。',hash:'snapshot-hash',tool_call_id:'call-1',round:2,sent_to_model:true,post_hoc:false,truncated:false,acquired_at:'2026-09-28T08:01:00Z'}, {id:'ev-2',run_id:'run-1',kind:'source_document',kb_id:'kb-1',knowledge_id:'doc-1',chunk_id:'chunk-1',page_id:'',slug:'',version:'1',title:'产品政策原文',content:'经营年限与资质需同时满足，额度需独立审批。',hash:'source-hash',tool_call_id:'',round:0,sent_to_model:false,post_hoc:true,truncated:false,acquired_at:'2026-09-28T08:02:00Z'}];
+ const analysis={id:'analysis-1',run_id:'run-1',version:1,status:'succeeded',report:{verdict:'partial',claims:[{text:'经营满两年即可申请固定额度',position:'回答第1句',verdict:'partial',evidence_ids:['ev-1'],reason:'遗漏资质审核与额度独立审批条件。'}],facts:['回答遗漏了来源中的限制条件。'],causes:[{category:'generation',summary:'模型在归纳时遗漏了两个适用条件',evidence_ids:['ev-1','ev-2'],counter_evidence:['尚未覆盖所有相关制度'],status:'evidence_backed'}],unknowns:[],review_questions:['确认资质和额度条件是否适用于当前申请对象。'],source_check:'consistent',risk:'high',scope:'本次回答与捕获页面及其当前关联原文；未扫描全库'},route:'human_review',route_reason:'高风险业务结论，须人工复核',policy_version:'knowledge-ops-v1.2-1',model_id:'fixture-model',model_name:'UI 验收模拟模型',group_key:'same-source-v3',sample_percent:10,sample_stratum:'hybrid-rag-wiki/web/high/consistent',input_tokens:1400,output_tokens:500,duration_ms:2500,created_at:'2026-09-28T08:02:00Z'};
+ const runs=[{id:'run-1',actor_id:'web_user:acceptance-user',session_id:'session-1',message_id:'message-1',request_id:'request-1',channel:'web',qa_type:'hybrid-rag-wiki',execution_mode:'smart-reasoning',agent_id:'agent-1',model_id:'answer-model',question:'经营满两年可以申请多少额度？',answer:'经营满两年即可申请固定额度。',status:'completed',capture_status:'complete',gaps:[],started_at:'2026-09-28T08:01:00Z',finished_at:'2026-09-28T08:01:20Z',updated_at:'2026-09-28T08:01:20Z',review_state:'unreviewed',analysis}];
+ let reviews=[];let simulateConflict=false;let apiFailure=false;let detailDenied=false;const submitted=[];
+ await context.route('**/api/**',async route=>{const req=route.request(),url=new URL(req.url()),path=url.pathname;if(!path.startsWith('/api/')){await route.continue();return};let data=[];let status=200;
+ if(apiFailure && path.endsWith('/knowledge-ops/runs')){await route.fulfill({status:500,json:{success:false,error:'knowledge_ops_failed'}});return};
+ if(detailDenied && path.endsWith('/runs/run-1')){await route.fulfill({status:404,json:{success:false,error:'not_found'}});return};
+ if(path.endsWith('/auth/me')) data={user,tenant,memberships,capabilities:{can_create_tenant:false}};
+ else if(path.includes('/knowledge-ops/settings')){if(req.method()==='PUT')Object.assign(settings,req.postDataJSON());data=settings}
+ else if(path.includes('/knowledge-ops/overview'))data={total:runs.length,complete:runs.length,partial:0,missing:0,by_mode:{'hybrid-rag-wiki':runs.length},by_route:{human_review:runs.length},by_verdict:{partial:runs.length},pending_tasks:0,review_count:reviews.length};
+ else if(path.endsWith('/runs/run-1/reviews')){if(simulateConflict){await route.fulfill({status:409,json:{success:false,error:'version_changed'}});return};const input=req.postDataJSON();submitted.push(input);data={...input,id:'review-'+(reviews.length+1),run_id:'run-1',reviewer_id:user.id,created_at:new Date().toISOString()};reviews.unshift(data)}
+ else if(path.endsWith('/runs/run-1/retry'))data={queued:true};
+ else if(path.endsWith('/runs/run-1'))data={run:runs[0],evidence,analyses:[analysis],reviews};
+ else if(path.endsWith('/knowledge-ops/runs'))data={items:runs,total:runs.length};
+ else if(path.endsWith('/knowledge-ops/reviews'))data={items:reviews,total:reviews.length};
+ else if(path.includes('/models'))data=[{id:'fixture-model',name:'UI 验收模拟模型',type:'KnowledgeQA',status:'active',source:'remote',parameters:{}}];
+ else if(path.includes('capabilities'))data={edition:'standard',capabilities:{}};
+ else if(path.includes('sessions'))data={items:[],total:0};
+ else if(path.includes('initialization'))data={initialized:true};
+ await route.fulfill({status,json:{success:true,data}});
+ });
+ const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto(baseURL+'/platform/knowledge-ops');try{await page.waitForSelector('.ops-workbench',{timeout:10000})}catch(e){console.log(JSON.stringify({url:page.url(),errors,body:await page.locator('body').innerText()}));throw e};await page.getByText('经营满两年可以申请多少额度？',{exact:true}).waitFor();
+ const out=require('path').resolve(__dirname,'../docs/images/knowledge-ops-acceptance');fs.mkdirSync(out,{recursive:true});
+ await page.screenshot({path:out+'/overview.png',fullPage:true});
+ await page.goto(baseURL+'/platform/knowledge-ops?tab=queue&run=run-1');await page.waitForSelector('.ops-detail');await page.getByText('经营满两年即可申请固定额度。',{exact:true}).waitFor();
+ await page.waitForTimeout(350);
+ await page.screenshot({path:out+'/detail.png',fullPage:true});
+ const forms=page.locator('.review-form');
+ await forms.nth(1).locator('textarea').fill('需补充来源适用期核对');
+ await forms.nth(1).locator('select').nth(0).selectOption('needs_more_evidence');
+ await forms.nth(0).locator('textarea').fill('已对照生成时片段，确认部分支持');
+ await forms.nth(0).getByRole('button',{name:'保存本项复核'}).click();
+ await page.getByText('复核已追加保存',{exact:true}).waitFor();
+ if(await forms.nth(1).locator('textarea').inputValue()!=='需补充来源适用期核对')throw new Error('saving answer erased cause draft');
+ await forms.nth(1).getByRole('button',{name:'保存本项复核'}).click();
+ await page.waitForFunction(()=>document.querySelectorAll('.review-form textarea')[1]?.value==='');
+ if(submitted.length!==2||submitted[0].target!=='answer'||submitted[1].target!=='cause'||submitted[1].verdict!=='unresolved')throw new Error('wrong review payload');
+ await page.locator('.review-grid').scrollIntoViewIfNeeded();await page.screenshot({path:out+'/review.png',fullPage:true});
+ simulateConflict=true;await forms.nth(0).locator('textarea').fill('过时版本不得提交');await forms.nth(0).getByRole('button',{name:'保存本项复核'}).click();
+ await forms.nth(0).getByRole('alert').filter({hasText:'分析版本已变化'}).waitFor();simulateConflict=false;
+ await page.goto(baseURL+'/platform/knowledge-ops?tab=records');await page.getByText('已对照生成时片段，确认部分支持',{exact:true}).waitFor();await page.screenshot({path:out+'/records.png',fullPage:true});
+ await page.getByRole('button',{name:'诊断设置',exact:true}).click();await page.locator('.ops-settings select').waitFor();await page.waitForTimeout(350);await page.screenshot({path:out+'/settings.png',fullPage:true});
+ if((await page.locator('.ops-settings select option').allTextContents()).every(x=>!x.includes('UI 验收模拟模型')))throw new Error('model selector empty');
+ await page.locator('.ops-settings input[type=number]').nth(0).fill('25');await page.getByRole('button',{name:'保存设置',exact:true}).click();await page.getByText('设置已保存',{exact:true}).waitFor();if(settings.sample_percent!==25)throw new Error('settings not saved');
+ runs.splice(0);await page.goto(baseURL+'/platform/knowledge-ops');await page.getByText('当前范围内暂无记录',{exact:true}).waitFor();await page.screenshot({path:out+'/empty.png',fullPage:true});
+ await page.setViewportSize({width:800,height:1000});await page.screenshot({path:out+'/compact.png',fullPage:true});
+ apiFailure=true;await page.getByRole('button',{name:'刷新',exact:true}).click();await page.getByText('知识运营数据加载失败',{exact:true}).waitFor();apiFailure=false;
+ await page.evaluate(()=>localStorage.setItem('weknora_memberships',JSON.stringify([{tenant_id:1,role:'viewer'}])));memberships[0].role='viewer';await page.goto(baseURL+'/platform/knowledge-ops');await page.waitForURL('**/platform/knowledge-bases');if(await page.locator('.ops-workbench').count())throw new Error('viewer accessed workbench');
+ console.log(JSON.stringify({checks:['overview','detail','answer review','cause draft preserved','cause review','409 conflict','records','settings save','empty','compact','500 error state','viewer route guard'],submitted,errors},null,2));
+ await browser.close();
+ if(errors.length)throw new Error(`Browser runtime errors: ${errors.join("; ")}`);
+})().catch(e=>{console.error(e);process.exit(1)});

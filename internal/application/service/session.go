@@ -11,6 +11,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/config"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/event"
+	"github.com/Tencent/WeKnora/internal/knowledgeops/capture"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/models/chat"
 	"github.com/Tencent/WeKnora/internal/sandbox"
@@ -110,6 +111,7 @@ func generateEventID(suffix string) string {
 // (see service.LoadAgentHistory and chat_pipeline history loading) — there is no
 // separate cross-turn cache layer.
 type sessionService struct {
+	captureSink           capture.Sink                           // Optional; nil keeps existing QA behavior.
 	cfg                   *config.Config                         // Application configuration
 	sessionRepo           interfaces.SessionRepository           // Repository for session data
 	messageRepo           interfaces.MessageRepository           // Repository for message data
@@ -162,8 +164,14 @@ func NewSessionService(cfg *config.Config,
 	memoryService interfaces.MemoryService,
 	sandboxConfigRepo repository.TenantSandboxConfigRepository,
 	tenantSkillRepo repository.TenantSkillRepository,
+	captureSinks ...capture.Sink,
 ) interfaces.SessionService {
+	var captureSink capture.Sink
+	if len(captureSinks) > 0 {
+		captureSink = captureSinks[0]
+	}
 	return &sessionService{
+		captureSink:           captureSink,
 		cfg:                   cfg,
 		sessionRepo:           sessionRepo,
 		messageRepo:           messageRepo,

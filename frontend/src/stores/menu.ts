@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useDeploymentCapabilitiesStore } from '@/stores/deploymentCapabilities'
 import type { DeploymentCapabilityKey } from '@/config/deploymentCapabilities'
 import type { QuestionOrigin } from '@/utils/questionOrigin'
+import { knowledgeOpsNavigation } from '@/router/knowledge-ops'
 
 type MenuChild = Record<string, any>
 
@@ -35,6 +36,7 @@ export const useMenuStore = defineStore('menuStore', () => {
     { title: '', titleKey: 'menu.artifacts', icon: 'artifact', path: 'artifacts', requiredCapability: 'settings.sandbox' },
     { title: '', titleKey: 'menu.agents', icon: 'agent', path: 'agents', requiredCapability: 'agents' },
     { title: '', titleKey: 'menu.organizations', icon: 'organization', path: 'organizations', requiredCapability: 'organizations' },
+    knowledgeOpsNavigation,
     { title: '', titleKey: 'menu.settings', icon: 'setting', path: 'settings' },
     { title: '', titleKey: 'menu.logout', icon: 'logout', path: 'logout' }
   ])
@@ -77,7 +79,7 @@ export const useMenuStore = defineStore('menuStore', () => {
       if (authStore.isLiteMode && liteHiddenPaths.has(item.path)) {
         return false
       }
-      if (item.path === 'organizations' && !authStore.hasRole('admin')) {
+      if ((item.path === 'organizations' || item.path === 'knowledge-ops') && !authStore.hasRole('admin')) {
         return false
       }
       if (!deploymentCapabilities.isSupported(item.requiredCapability)) {

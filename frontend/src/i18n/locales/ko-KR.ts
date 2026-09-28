@@ -7418,6 +7418,7 @@ export default {
     }
   },
   menu: {
+    knowledgeOps: '지식 운영',
     sessionInProgress: '대화 진행 중',
     knowledgeBase: '지식베이스',
     agents: '에이전트',

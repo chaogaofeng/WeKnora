@@ -12,6 +12,7 @@ import (
 	agenttools "github.com/Tencent/WeKnora/internal/agent/tools"
 	"github.com/Tencent/WeKnora/internal/common"
 	"github.com/Tencent/WeKnora/internal/event"
+	"github.com/Tencent/WeKnora/internal/knowledgeops/capture"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/modelcontext"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
@@ -339,6 +340,7 @@ func (e *AgentEngine) emitToolOutcome(
 	ctx context.Context, toolCall types.ToolCall, iteration int, sessionID string,
 ) {
 	result := toolCall.Result
+	capture.RecordToolResult(ctx, toolCall.ID, toolCall.ExecutionName(), result)
 	if result == nil {
 		result = &types.ToolResult{Success: false, Error: "no result"}
 	}

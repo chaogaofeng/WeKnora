@@ -164,6 +164,7 @@ export default {
     }
   },
   menu: {
+    knowledgeOps: 'ナレッジ運用',
     sessionInProgress: '会話中',
     knowledgeBase: 'ナレッジベース',
     agents: 'エージェント',

@@ -7418,6 +7418,7 @@ export default {
     }
   },
   menu: {
+    knowledgeOps: 'Управление знаниями',
     sessionInProgress: 'Диалог выполняется',
     knowledgeBase: 'База знаний',
     agents: 'Агенты',
