@@ -35,9 +35,9 @@ const fs = require('fs')
     auto_record_enabled: false,
     calibration_note: '',
     sample_percent: 10,
-    max_evidence_chars: 48000,
-    max_output_tokens: 4096,
-    timeout_seconds: 90,
+    max_evidence_chars: 96000,
+    max_output_tokens: 8192,
+    timeout_seconds: 180,
     capture_enabled_at: '2026-09-28T08:00:00Z',
     updated_at: '2026-09-28T08:00:00Z',
   }

@@ -3,8 +3,6 @@ package knowledgeops
 
 import "time"
 
-const PolicyVersion = "knowledge-ops-v1.2-2"
-
 type Settings struct {
 	CalibrationNote   string     `json:"calibration_note"`
 	TenantID          uint64     `json:"-" gorm:"primaryKey"`
@@ -21,7 +19,7 @@ type Settings struct {
 
 func (Settings) TableName() string { return "knowledge_ops_settings" }
 func DefaultSettings(tenant uint64) Settings {
-	return Settings{TenantID: tenant, SamplePercent: 10, MaxEvidenceChars: 48000, MaxOutputTokens: 4096, TimeoutSeconds: 90}
+	return Settings{TenantID: tenant, SamplePercent: 10, MaxEvidenceChars: defaultMaxEvidenceChars, MaxOutputTokens: defaultMaxOutputTokens, TimeoutSeconds: defaultTimeoutSeconds}
 }
 
 type Run struct {

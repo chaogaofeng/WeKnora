@@ -89,6 +89,10 @@ func TestIncompleteCaptureCannotClaimUnsupported(t *testing.T) {
 
 func TestDocumentMetadataUsesCaptureBudget(t *testing.T) {
 	svc, repo := enabledTestService(t)
+	settings, err := repo.Settings(context.Background(), 1)
+	require.NoError(t, err)
+	settings.MaxEvidenceChars = 48000 // Explicit tenant limits survive default changes.
+	require.NoError(t, repo.SaveSettings(context.Background(), 1, settings))
 	ctx := capture.Begin(context.Background(), svc, capture.Start{TenantID: 1, MessageID: "large-metadata", StartedAt: time.Now()})
 	capture.RecordSources(ctx, []capture.Source{{Kind: "chunk", ChunkID: "c1", KBID: "kb", Version: "1"}})
 	capture.RecordModelInput(ctx, []chat.Message{{Role: "user", Content: `<retrieval><document><metadata>` + strings.Repeat("condition ", 6000) + `</metadata><chunk id="c1">body</chunk></document></retrieval>`}}, nil, "model")

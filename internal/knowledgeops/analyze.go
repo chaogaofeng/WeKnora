@@ -213,8 +213,13 @@ func Triage(run Run, r Report, s Settings) (string, string) {
 }
 func groupKey(run Run, r Report, e []Evidence) string {
 	// Unresolved applicability cannot safely be grouped automatically.
-	if len(r.Causes) == 0 || strings.TrimSpace(r.Scope) == "" || len(r.Unknowns) > 0 || r.SourceCheck == "unresolved" {
+	if len(r.Causes) == 0 || strings.TrimSpace(r.Scope) == "" || len(r.Unknowns) > 0 || len(r.ReviewQuestions) > 0 || r.SourceCheck == "unresolved" {
 		return ""
+	}
+	for _, c := range r.Causes {
+		if c.Status == "unresolved" {
+			return ""
+		}
 	}
 	keys := []string{fmt.Sprint(run.TenantID), run.ActorID, r.Scope}
 	for _, x := range e {
@@ -239,8 +244,9 @@ func groupKey(run Run, r Report, e []Evidence) string {
 
 func highRisk(run Run, r Report) bool {
 	high := r.Risk == "high"
-	for _, word := range []string{"准入", "额度", "期限", "利率", "违约", "担保", "保证金", "授信", "eligibility", "credit limit", "interest rate"} {
-		if strings.Contains(strings.ToLower(run.Question+" "+run.Answer), word) {
+	text := strings.ToLower(run.Question + " " + run.Answer)
+	for _, word := range highRiskKeywords {
+		if strings.Contains(text, word) {
 			high = true
 		}
 	}
