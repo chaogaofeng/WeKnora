@@ -25,7 +25,7 @@ func SearchSources(results []*types.SearchResult, callID string) []Source {
 			kbID = ""
 			docID = ""
 		}
-		sources = append(sources, Source{ID: r.ID, Kind: kind, KBID: kbID, KnowledgeID: docID, ChunkID: chunkID, Content: r.Content, Title: r.KnowledgeTitle, Version: r.Metadata["version"], ToolCallID: callID})
+		sources = append(sources, Source{ID: r.ID, Kind: kind, KBID: kbID, KnowledgeID: docID, ChunkID: chunkID, Content: r.Content, Title: r.KnowledgeTitle, Version: SearchVersion(r), ToolCallID: callID})
 		if kind == "chunk" {
 			for _, id := range r.SubChunkID {
 				if id != "" && id != chunkID {
@@ -39,7 +39,10 @@ func SearchSources(results []*types.SearchResult, callID string) []Source {
 
 // RecordSearchDependencies retains permission bindings before a merge can
 // discard a contributing result. These identities are never answer evidence.
-func RecordSearchDependencies(ctx context.Context, result *types.SearchResult) {
+func RecordSearchDependencies(ctx context.Context, result *types.SearchResult, targets ...*types.SearchResult) {
+	for _, target := range targets {
+		mergeSourceRevisions(target, result)
+	}
 	if FromContext(ctx) == nil || result == nil {
 		return
 	}
@@ -60,7 +63,7 @@ func RecordChunkDependencies(ctx context.Context, chunks ...*types.Chunk) {
 	sources := make([]Source, 0, len(chunks))
 	for _, c := range chunks {
 		if c != nil {
-			sources = append(sources, Source{Kind: "source_dependency", KBID: c.KnowledgeBaseID, KnowledgeID: c.KnowledgeID, ChunkID: c.ID})
+			sources = append(sources, Source{Kind: "source_dependency", KBID: c.KnowledgeBaseID, KnowledgeID: c.KnowledgeID, ChunkID: c.ID, Version: ChunkVersion(c)})
 		}
 	}
 	RecordSources(ctx, sources)

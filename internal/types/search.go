@@ -219,6 +219,11 @@ type SearchResult struct {
 	// there. Keep the gorm column explicit so direct row scans populate it.
 	ContentRevision int `gorm:"column:content_revision" json:"-"`
 
+	// SourceRevisions binds each contributing chunk to its revision when read.
+	// Nil means unknown (including restored JSON references); revision 0 is valid.
+	// Merge/expansion must carry all contributors. Never reconstruct from current DB state.
+	SourceRevisions map[string]int `gorm:"-" json:"-"`
+
 	// ContentRewritten reports that the merge pipeline replaced Content
 	// (parent or neighbor expansion) after retrieval, so StartAt/EndAt no
 	// longer describe the body. Internal only: used by the merge pipeline,

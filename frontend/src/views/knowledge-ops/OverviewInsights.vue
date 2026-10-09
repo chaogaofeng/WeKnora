@@ -11,6 +11,19 @@
         <template #mode="{ row }">{{ label(row.mode) }}</template>
         <template #empty><EmptyState :title="k('none')" compact /></template>
       </t-table>
+      <p class="muted">{{ k('contentCoverageNotice') }}</p>
+      <div class="provenance-summary">
+        <h3>{{ k('provenanceStats') }}</h3>
+        <p
+          v-for="status in ['known', 'pending', 'unknown']"
+          :key="status"
+          class="stat"
+        >
+          <span>{{ k(`provenance_${status}`) }}</span>
+          <strong>{{ stats.provenance_counts?.[status] || 0 }}</strong>
+        </p>
+        <p class="muted">{{ k('provenanceNotice') }}</p>
+      </div>
     </section>
     <section>
       <h2>{{ k('sourceStats') }}</h2>
@@ -68,16 +81,21 @@ import { useOpsText } from './locales'
 const props = defineProps<{ stats: OpsOverview }>()
 const { k, label } = useOpsText()
 const coverageRows = computed(() =>
-  Object.entries(props.stats.coverage_by_mode || {}).map(([mode, row]) => ({
-    mode,
-    ...row,
-  })),
+  Object.entries(props.stats.content_coverage_by_mode || {}).map(
+    ([mode, row]) => ({ mode, ...row }),
+  ),
 )
 const coverageColumns = computed(() => [
   { colKey: 'mode', title: k('qa_type'), width: 150 },
   ...['total', 'complete', 'partial', 'missing'].map((key) => ({
     colKey: key,
-    title: k(key),
+    title: k(
+      key === 'total'
+        ? key
+        : key === 'missing'
+          ? 'content_missing_unknown'
+          : `content_${key}`,
+    ),
     width: 70,
   })),
 ])
@@ -100,6 +118,16 @@ h2 {
   font-size: var(--app-text-lg);
   margin: 0 0 var(--app-space-5);
   font-weight: 600;
+}
+.provenance-summary {
+  margin-top: var(--app-space-5);
+  padding-top: var(--app-space-4);
+  border-top: 1px solid var(--td-component-stroke);
+}
+.provenance-summary h3 {
+  margin: 0;
+  font-size: var(--app-text-md);
+  font-weight: 500;
 }
 .stat {
   display: flex;

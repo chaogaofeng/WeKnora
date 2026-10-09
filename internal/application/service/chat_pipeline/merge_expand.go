@@ -3,6 +3,7 @@ package chatpipeline
 import (
 	"context"
 
+	"github.com/Tencent/WeKnora/internal/knowledgeops/capture"
 	"github.com/Tencent/WeKnora/internal/searchutil"
 	"github.com/Tencent/WeKnora/internal/types"
 )
@@ -216,6 +217,11 @@ func (p *PluginMerge) expandShortContextWithNeighbors(
 		beforeLen := runeLen(res.Content)
 		res.Content = merged
 		res.ContentRewritten = true
+		contributors := []*types.Chunk{baseChunk}
+		for _, id := range append(append([]string{}, prevIDs...), nextIDs...) {
+			contributors = append(contributors, chunkMap[id])
+		}
+		capture.RecordChunkReplacement(ctx, res, contributors...)
 
 		for _, id := range prevIDs {
 			if id != "" && !containsID(res.SubChunkID, id) {

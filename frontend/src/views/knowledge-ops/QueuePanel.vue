@@ -51,9 +51,9 @@
           <h3>{{ row.run.question }}</h3>
           <p class="muted">
             {{ label(row.run.qa_type) }} · {{ row.run.channel }} ·
-            {{ label(row.run.capture_status) }} ·
             {{ label(row.run.review_state) }}
           </p>
+          <CaptureCoverage :coverage="row.run.coverage" />
           <p>
             <strong>{{ k('verdict') }}:</strong>
             {{ labelVerdict(row.run.analysis?.report.verdict) }} ·
@@ -68,7 +68,7 @@
         <div class="diagnosis">
           <h4>{{ k('diagnosisSummary') }}</h4>
           <p v-if="row.run.analysis?.error" class="failure">
-            {{ row.run.analysis.error }}
+            {{ label(row.run.analysis.error) }}
           </p>
           <p
             v-for="(cause, i) in row.run.analysis?.report.causes || []"
@@ -118,6 +118,7 @@
 <script setup lang="ts">
 import EmptyState from '@/components/EmptyState.vue'
 import StatusBadge from './StatusBadge.vue'
+import CaptureCoverage from './CaptureCoverage.vue'
 import { computed } from 'vue'
 import type { OpsRun, OpsGroup } from '@/api/knowledge-ops'
 import { useOpsText } from './locales'

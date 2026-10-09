@@ -212,6 +212,7 @@ func chunk2SearchResult(chunk *types.Chunk, knowledge *types.Knowledge) *types.S
 		ID:                chunk.ID,
 		Content:           chunk.Content,
 		ContentRevision:   chunk.ContentRevision,
+		SourceRevisions:   map[string]int{chunk.ID: chunk.ContentRevision},
 		KnowledgeID:       chunk.KnowledgeID,
 		ChunkIndex:        chunk.ChunkIndex,
 		KnowledgeTitle:    knowledge.Title,

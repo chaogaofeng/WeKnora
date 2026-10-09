@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/Tencent/WeKnora/internal/knowledgeops/capture"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
@@ -84,6 +85,7 @@ func (p *PluginMerge) populateFAQAnswers(
 				continue
 			}
 			r.Content = content
+			capture.RecordChunkReplacement(ctx, r, chunk)
 			updated++
 		}
 	}

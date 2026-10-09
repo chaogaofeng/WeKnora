@@ -272,6 +272,7 @@ func (s *Service) loadDetail(ctx context.Context, tenant uint64, id string, full
 	if err = s.access(ctx, d.Run, d.Evidence); err != nil {
 		return Detail{}, ErrForbidden
 	}
+	d.Run.Coverage = captureCoverage(d.Run, d.Evidence)
 	if full {
 		d.Analyses, err = s.repo.Analyses(ctx, tenant, id)
 	} else {
@@ -353,7 +354,7 @@ func (s *Service) RunOnce(ctx context.Context) error {
 		a.Status = "failed"
 		a.Route = "technical_followup"
 		a.RouteReason = "诊断执行失败，未形成有效结论"
-		a.Error = "analysis_failed"
+		a.Error = analysisErrorCode(err)
 		a.Report = Report{Verdict: "unverifiable", SourceCheck: "unresolved", Risk: "unknown", Scope: "诊断未完成"}
 		if highRisk(run, a.Report) {
 			a.Route = "human_review"

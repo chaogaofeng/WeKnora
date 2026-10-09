@@ -188,6 +188,12 @@ func (s *Service) walk(c *gin.Context, visit func(Detail)) error {
 			if err != nil {
 				return err
 			}
+			if status := c.Query("content_status"); status != "" && status != d.Run.Coverage.ContentStatus {
+				continue
+			}
+			if status := c.Query("provenance_status"); status != "" && status != d.Run.Coverage.ProvenanceStatus {
+				continue
+			}
 			if search := strings.TrimSpace(c.Query("search")); search != "" && !strings.Contains(strings.ToLower(r.Question), strings.ToLower(search)) {
 				continue
 			}

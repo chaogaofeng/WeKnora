@@ -27,6 +27,8 @@ export interface OpsCause {
   status: string
 }
 export interface OpsReport {
+  model_verdict?: string
+  verdict_adjustment?: string
   verdict: string
   claims: OpsClaim[]
   facts: string[]
@@ -57,6 +59,12 @@ export interface OpsAnalysis {
   output_tokens: number
   duration_ms: number
 }
+export interface OpsCaptureCoverage {
+  content_status: 'complete' | 'partial' | 'missing' | 'unknown'
+  provenance_status: 'known' | 'pending' | 'unknown'
+  content_gaps: string[]
+  provenance_gaps: string[]
+}
 export interface OpsRun {
   id: string
   actor_id: string
@@ -72,6 +80,7 @@ export interface OpsRun {
   answer: string
   status: string
   capture_status: string
+  coverage: OpsCaptureCoverage
   gaps: string[]
   started_at: string
   finished_at: string | null
@@ -136,6 +145,17 @@ export interface OpsGroup {
   representative: OpsRun
 }
 export interface OpsOverview {
+  content_coverage: {
+    total: number
+    complete: number
+    partial: number
+    missing: number
+  }
+  content_coverage_by_mode: Record<
+    string,
+    { total: number; complete: number; partial: number; missing: number }
+  >
+  provenance_counts: Record<string, number>
   coverage_by_mode: Record<
     string,
     { total: number; complete: number; partial: number; missing: number }
@@ -172,6 +192,8 @@ export interface OpsFilters {
   qa_type?: string
   channel?: string
   capture_status?: string
+  content_status?: string
+  provenance_status?: string
   route?: string
   verdict?: string
   search?: string

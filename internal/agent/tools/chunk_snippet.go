@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/Tencent/WeKnora/internal/knowledgeops/capture"
 	"github.com/Tencent/WeKnora/internal/searchutil"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -314,6 +315,7 @@ func chunkDataMap(seq int, c *types.Chunk) map[string]interface{} {
 	chunkData := map[string]interface{}{
 		"seq":             seq,
 		"chunk_id":        c.ID,
+		"version":         capture.ChunkVersion(c),
 		"chunk_index":     c.ChunkIndex,
 		"content":         c.Content,
 		"chunk_type":      c.ChunkType,

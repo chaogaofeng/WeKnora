@@ -16,18 +16,33 @@ type Coverage struct {
 	Missing  int `json:"missing"`
 }
 type WorkbenchStats struct {
-	CoverageByMode  map[string]*Coverage `json:"coverage_by_mode"`
-	SourceChecks    map[string]int       `json:"source_checks"`
-	Causes          map[string]int       `json:"causes"`
-	QueueCounts     map[string]int       `json:"queue_counts"`
-	DiagnosisStatus map[string]int       `json:"diagnosis_status"`
-	SampleTotal     int                  `json:"sample_total"`
-	SampleReviewed  int                  `json:"sample_reviewed"`
-	SampleCorrected int                  `json:"sample_corrected"`
+	ContentCoverage       Coverage             `json:"content_coverage"`
+	ContentCoverageByMode map[string]*Coverage `json:"content_coverage_by_mode"`
+	ProvenanceCounts      map[string]int       `json:"provenance_counts"`
+	CoverageByMode        map[string]*Coverage `json:"coverage_by_mode"`
+	SourceChecks          map[string]int       `json:"source_checks"`
+	Causes                map[string]int       `json:"causes"`
+	QueueCounts           map[string]int       `json:"queue_counts"`
+	DiagnosisStatus       map[string]int       `json:"diagnosis_status"`
+	SampleTotal           int                  `json:"sample_total"`
+	SampleReviewed        int                  `json:"sample_reviewed"`
+	SampleCorrected       int                  `json:"sample_corrected"`
 }
 
 func newWorkbenchStats() WorkbenchStats {
-	return WorkbenchStats{CoverageByMode: map[string]*Coverage{}, SourceChecks: map[string]int{}, Causes: map[string]int{}, QueueCounts: map[string]int{}, DiagnosisStatus: map[string]int{}}
+	return WorkbenchStats{ContentCoverageByMode: map[string]*Coverage{}, ProvenanceCounts: map[string]int{}, CoverageByMode: map[string]*Coverage{}, SourceChecks: map[string]int{}, Causes: map[string]int{}, QueueCounts: map[string]int{}, DiagnosisStatus: map[string]int{}}
+}
+
+func (v *Coverage) observe(status string) {
+	v.Total++
+	switch status {
+	case "complete":
+		v.Complete++
+	case "partial":
+		v.Partial++
+	default:
+		v.Missing++
+	}
 }
 func queueRoutes(d Detail) []string {
 	a := d.Run.Analysis
@@ -75,6 +90,13 @@ func (v *WorkbenchStats) observe(d Detail) {
 	if mode == "" {
 		mode = "unknown"
 	}
+	assessment := captureCoverage(d.Run, d.Evidence)
+	v.ContentCoverage.observe(assessment.ContentStatus)
+	if v.ContentCoverageByMode[mode] == nil {
+		v.ContentCoverageByMode[mode] = &Coverage{}
+	}
+	v.ContentCoverageByMode[mode].observe(assessment.ContentStatus)
+	v.ProvenanceCounts[assessment.ProvenanceStatus]++
 	if v.CoverageByMode[mode] == nil {
 		v.CoverageByMode[mode] = &Coverage{}
 	}

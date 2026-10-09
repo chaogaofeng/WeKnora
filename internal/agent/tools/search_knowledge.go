@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/Tencent/WeKnora/internal/config"
+	"github.com/Tencent/WeKnora/internal/knowledgeops/capture"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/models/rerank"
 	"github.com/Tencent/WeKnora/internal/searchutil"
@@ -934,6 +935,7 @@ func (t *SearchKnowledgeTool) formatOutput(
 
 		row := map[string]interface{}{
 			"result_index":        i + 1,
+			"version":             capture.SearchVersion(result.SearchResult),
 			"content":             result.Content,
 			"knowledge_id":        result.KnowledgeID,
 			"knowledge_base_id":   result.KnowledgeBaseID,
@@ -950,6 +952,9 @@ func (t *SearchKnowledgeTool) formatOutput(
 			row["images"] = images
 		}
 		if isFAQ {
+			// FAQ metadata is re-read separately; do not stamp its live answers
+			// with the earlier retrieval revision.
+			row["version"] = "unknown"
 			row["faq_id"] = result.ID
 			row["index"] = result.ChunkIndex
 			if faqMeta.StandardQuestion != "" {

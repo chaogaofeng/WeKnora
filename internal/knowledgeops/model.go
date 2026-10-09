@@ -23,27 +23,28 @@ func DefaultSettings(tenant uint64) Settings {
 }
 
 type Run struct {
-	ReviewState   string     `json:"review_state" gorm:"-"`
-	ID            string     `json:"id" gorm:"primaryKey"`
-	TenantID      uint64     `json:"-"`
-	ActorID       string     `json:"actor_id"`
-	SessionID     string     `json:"session_id"`
-	MessageID     string     `json:"message_id"`
-	RequestID     string     `json:"request_id"`
-	Channel       string     `json:"channel"`
-	QAType        string     `json:"qa_type"`
-	ExecutionMode string     `json:"execution_mode"`
-	AgentID       string     `json:"agent_id"`
-	ModelID       string     `json:"model_id"`
-	Question      string     `json:"question"`
-	Answer        string     `json:"answer"`
-	Status        string     `json:"status"`
-	CaptureStatus string     `json:"capture_status"`
-	Gaps          []string   `json:"gaps" gorm:"serializer:json;type:text"`
-	StartedAt     time.Time  `json:"started_at"`
-	FinishedAt    *time.Time `json:"finished_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	Analysis      *Analysis  `json:"analysis,omitempty" gorm:"-"`
+	Coverage      CaptureCoverage `json:"coverage" gorm:"-"`
+	ReviewState   string          `json:"review_state" gorm:"-"`
+	ID            string          `json:"id" gorm:"primaryKey"`
+	TenantID      uint64          `json:"-"`
+	ActorID       string          `json:"actor_id"`
+	SessionID     string          `json:"session_id"`
+	MessageID     string          `json:"message_id"`
+	RequestID     string          `json:"request_id"`
+	Channel       string          `json:"channel"`
+	QAType        string          `json:"qa_type"`
+	ExecutionMode string          `json:"execution_mode"`
+	AgentID       string          `json:"agent_id"`
+	ModelID       string          `json:"model_id"`
+	Question      string          `json:"question"`
+	Answer        string          `json:"answer"`
+	Status        string          `json:"status"`
+	CaptureStatus string          `json:"capture_status"`
+	Gaps          []string        `json:"gaps" gorm:"serializer:json;type:text"`
+	StartedAt     time.Time       `json:"started_at"`
+	FinishedAt    *time.Time      `json:"finished_at"`
+	UpdatedAt     time.Time       `json:"updated_at"`
+	Analysis      *Analysis       `json:"analysis,omitempty" gorm:"-"`
 }
 
 func (Run) TableName() string { return "knowledge_ops_runs" }
@@ -87,15 +88,18 @@ type Cause struct {
 	Status          string   `json:"status"`
 }
 type Report struct {
-	Verdict         string   `json:"verdict"`
-	Claims          []Claim  `json:"claims"`
-	Facts           []string `json:"facts"`
-	Causes          []Cause  `json:"causes"`
-	Unknowns        []string `json:"unknowns"`
-	ReviewQuestions []string `json:"review_questions"`
-	SourceCheck     string   `json:"source_check"`
-	Risk            string   `json:"risk"`
-	Scope           string   `json:"scope"`
+	// These audit fields are populated by policy, never trusted from model output.
+	ModelVerdict      string   `json:"model_verdict,omitempty"`
+	VerdictAdjustment string   `json:"verdict_adjustment,omitempty"`
+	Verdict           string   `json:"verdict"`
+	Claims            []Claim  `json:"claims"`
+	Facts             []string `json:"facts"`
+	Causes            []Cause  `json:"causes"`
+	Unknowns          []string `json:"unknowns"`
+	ReviewQuestions   []string `json:"review_questions"`
+	SourceCheck       string   `json:"source_check"`
+	Risk              string   `json:"risk"`
+	Scope             string   `json:"scope"`
 }
 type Analysis struct {
 	SamplePercent int       `json:"sample_percent"`

@@ -84,7 +84,7 @@
         <div class="metrics">
           <article v-for="item in metrics" :key="item.key" class="metric">
             <div class="metric-label">
-              <span>{{ k(item.key) }}</span>
+              <span>{{ k(item.label) }}</span>
               <span class="metric-marker" :class="item.key" />
             </div>
             <strong :class="item.key">{{ item.value.toLocaleString() }}</strong>
@@ -182,10 +182,27 @@
         @group="selectGroup"
         @toggle="toggleGroups"
       />
-      <section v-if="tab !== 'queue'" class="panel list-panel">
+      <section
+        v-if="tab !== 'queue'"
+        class="panel list-panel"
+        :aria-busy="refreshing"
+      >
         <div class="section-header">
           <h2>{{ k(tab === 'overview' ? 'runs' : tab) }}</h2>
-          <span class="muted">{{ total }} {{ k('count') }}</span>
+          <div class="list-actions">
+            <t-button
+              variant="outline"
+              theme="default"
+              size="small"
+              :loading="refreshing"
+              :disabled="loading"
+              @click="refreshList"
+            >
+              <template #icon><RefreshIcon /></template>
+              {{ k('refresh') }}
+            </t-button>
+            <span class="muted">{{ total }} {{ k('count') }}</span>
+          </div>
         </div>
         <p class="scope-note">{{ k('autoNotice') }}</p>
         <EmptyState
@@ -227,6 +244,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { MessagePlugin } from 'tdesign-vue-next'
+import { RefreshIcon } from 'tdesign-icons-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import {
   getOpsSettings,
@@ -266,6 +284,7 @@ const overview = ref<OpsOverview>()
 const runs = ref<OpsRun[]>([])
 const reviews = ref<OpsReview[]>([])
 const loading = ref(false)
+const refreshing = ref(false)
 const error = ref('')
 const settingsVisible = ref(false)
 const filterError = ref('')
@@ -295,7 +314,8 @@ const blankFilters = () => ({
   to: '',
   qa_type: '',
   channel: '',
-  capture_status: '',
+  content_status: '',
+  provenance_status: '',
   route: '',
   verdict: '',
   search: '',
@@ -306,10 +326,22 @@ const draftFilters = reactive(blankFilters())
 const filters = ref<OpsFilters>({})
 let token = 0
 const metrics = computed(() => [
-  { key: 'total', value: overview.value?.total || 0 },
-  { key: 'complete', value: overview.value?.complete || 0 },
-  { key: 'partial', value: overview.value?.partial || 0 },
-  { key: 'missing', value: overview.value?.missing || 0 },
+  { key: 'total', label: 'total', value: overview.value?.total || 0 },
+  {
+    key: 'complete',
+    label: 'content_complete',
+    value: overview.value?.content_coverage?.complete || 0,
+  },
+  {
+    key: 'partial',
+    label: 'content_partial',
+    value: overview.value?.content_coverage?.partial || 0,
+  },
+  {
+    key: 'missing',
+    label: 'content_missing_unknown',
+    value: overview.value?.content_coverage?.missing || 0,
+  },
 ])
 const distributions = computed(() => [
   { key: 'diagnosisStates', values: overview.value?.diagnosis_status || {} },
@@ -317,8 +349,16 @@ const distributions = computed(() => [
   { key: 'routing', values: overview.value?.by_route || {} },
 ])
 async function reload() {
+  await loadData()
+}
+async function refreshList() {
+  if (loading.value || refreshing.value) return
+  await loadData(true)
+}
+async function loadData(background = false) {
   const current = ++token
-  loading.value = true
+  loading.value = !background
+  refreshing.value = background
   error.value = ''
   const params = {
     ...(tab.value === 'records' ? recordFilters.value : filters.value),
@@ -363,14 +403,21 @@ async function reload() {
     }
   } catch (failure) {
     if (current === token) {
-      error.value = k(opsErrorCode(failure))
-      runs.value = []
-      reviews.value = []
-      overview.value = undefined
-      total.value = 0
+      if (background) {
+        MessagePlugin.error(k(opsErrorCode(failure)))
+      } else {
+        error.value = k(opsErrorCode(failure))
+        runs.value = []
+        reviews.value = []
+        overview.value = undefined
+        total.value = 0
+      }
     }
   } finally {
-    if (current === token) loading.value = false
+    if (current === token) {
+      loading.value = false
+      refreshing.value = false
+    }
   }
 }
 function changeFilter(key: string, value: string) {
@@ -733,9 +780,17 @@ h2 {
 }
 .section-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--app-space-3);
   padding: 0 var(--app-space-5);
+}
+.list-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-3);
+  white-space: nowrap;
 }
 .section-header h2 {
   margin: 0;

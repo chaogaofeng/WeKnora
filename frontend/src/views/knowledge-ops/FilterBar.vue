@@ -203,9 +203,14 @@ const recordFields: Field[] = [
 ]
 const advancedFields: Field[] = [
   {
-    key: 'capture_status',
-    title: 'capture_status',
+    key: 'content_status',
+    title: 'content_status',
     values: ['complete', 'partial', 'missing', 'unknown'],
+  },
+  {
+    key: 'provenance_status',
+    title: 'provenance_status',
+    values: ['known', 'pending', 'unknown'],
   },
   { key: 'verdict', title: 'verdict', values: answerVerdicts },
   { key: 'risk', title: 'risk', values: ['high', 'medium', 'low', 'unknown'] },
@@ -226,6 +231,8 @@ const advancedFields: Field[] = [
 ]
 const primaryFields = computed(() => (props.records ? recordFields : runFields))
 function displayValue(key: string, value: string) {
+  if (key === 'content_status') return k(`content_${value}`)
+  if (key === 'provenance_status') return k(`provenance_${value}`)
   if (key === 'target')
     return k(value === 'answer' ? 'answerTarget' : 'causeTarget')
   return key === 'verdict' ? labelVerdict(value) : label(value)

@@ -39,9 +39,27 @@
         <div class="chips">
           <span>{{ label(detail.run.qa_type) }}</span>
           <span>{{ detail.run.channel || k('unknown') }}</span>
-          <span>{{ label(detail.run.capture_status) }}</span>
           <span>{{ label(detail.run.review_state) }}</span>
         </div>
+        <section>
+          <h3>{{ k('captureCoverage') }}</h3>
+          <CaptureCoverage :coverage="detail.run.coverage" />
+          <p class="muted">{{ k('contentCoverageNotice') }}</p>
+          <p
+            v-for="gap in detail.run.coverage?.content_gaps || []"
+            :key="`content-${gap}`"
+            class="notice"
+          >
+            {{ k('contentGaps') }}: {{ label(gap) }}
+          </p>
+          <p
+            v-for="gap in detail.run.coverage?.provenance_gaps || []"
+            :key="`provenance-${gap}`"
+            class="notice"
+          >
+            {{ k('provenanceGaps') }}: {{ label(gap) }}
+          </p>
+        </section>
         <section
           v-if="analysis"
           class="diagnosis-first"
@@ -63,8 +81,20 @@
             </span>
             <span>{{ k('risk') }}: {{ label(analysis.report.risk) }}</span>
           </div>
+          <p class="muted">{{ k('supportScopeNotice') }}</p>
+          <p v-if="analysis.report.model_verdict">
+            {{ k('modelVerdict') }}:
+            {{ labelVerdict(analysis.report.model_verdict) }}
+            · {{ k('policyVerdict') }}:
+            {{ labelVerdict(analysis.report.verdict) }}
+          </p>
+          <p v-else class="muted">{{ k('legacyModelVerdict') }}</p>
+          <p v-if="analysis.report.verdict_adjustment" class="notice">
+            {{ k('adjustmentReason') }}:
+            {{ label(analysis.report.verdict_adjustment) }}
+          </p>
           <p>{{ label(analysis.route) }} · {{ analysis.route_reason }}</p>
-          <p v-if="analysis.error" class="error">{{ analysis.error }}</p>
+          <p v-if="analysis.error" class="error">{{ label(analysis.error) }}</p>
           <p v-for="(cause, i) in analysis.report.causes || []" :key="i">
             <strong>
               {{ label(cause.category) }} · {{ label(cause.status) }}
@@ -198,7 +228,7 @@
             <template v-if="analysis">
               <p v-if="!isCurrent" class="notice">{{ k('historical') }}</p>
               <p v-if="analysis.error" class="error" role="alert">
-                {{ analysis.error }}
+                {{ label(analysis.error) }}
               </p>
               <dl>
                 <dt>{{ k('model') }}</dt>
@@ -351,7 +381,7 @@
             </dl>
             <h4>{{ k('captureGaps') }}</h4>
             <ul v-if="detail.run.gaps?.length">
-              <li v-for="gap in detail.run.gaps" :key="gap">{{ gap }}</li>
+              <li v-for="gap in detail.run.gaps" :key="gap">{{ label(gap) }}</li>
             </ul>
             <p v-else>{{ k('noGaps') }}</p>
           </section>
@@ -392,6 +422,7 @@
 <script setup lang="ts">
 import { computed, onScopeDispose, reactive, ref, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import CaptureCoverage from './CaptureCoverage.vue'
 import {
   addOpsReview,
   getOpsDetail,

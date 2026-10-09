@@ -14,11 +14,19 @@
         </div>
       </template>
       <template #capture="{ row: run }">
-        <div><StatusBadge :value="run.capture_status" /></div>
+        <CaptureCoverage :coverage="run.coverage" />
       </template>
       <template #verdict="{ row: run }">
         <div>
-          <StatusBadge :value="run.analysis?.report.verdict" verdict />
+          <t-tooltip :content="k('supportScopeNotice')">
+            <StatusBadge :value="run.analysis?.report.verdict" verdict />
+          </t-tooltip>
+          <small v-if="run.analysis?.report.verdict === 'supported'">
+            {{ k('capturedSupport') }}
+          </small>
+          <small v-if="run.analysis?.report.verdict_adjustment">
+            {{ k('systemAdjusted') }}
+          </small>
         </div>
       </template>
       <template #route="{ row: run }">
@@ -54,6 +62,7 @@
 import { computed } from 'vue'
 import type { OpsRun } from '@/api/knowledge-ops'
 import StatusBadge from './StatusBadge.vue'
+import CaptureCoverage from './CaptureCoverage.vue'
 import { useOpsText } from './locales'
 defineProps<{ runs: OpsRun[] }>()
 const emit = defineEmits<{ open: [id: string, analysis?: string] }>()
@@ -61,7 +70,7 @@ const { k, label, date } = useOpsText()
 const columns = computed(() => [
   { colKey: 'question', title: k('question'), width: 260 },
   { colKey: 'type', title: `${k('qa_type')} / ${k('channel')}`, width: 170 },
-  { colKey: 'capture', title: k('capture_status'), width: 120 },
+  { colKey: 'capture', title: k('captureCoverage'), width: 160 },
   { colKey: 'verdict', title: k('verdict'), width: 150 },
   { colKey: 'route', title: k('route'), width: 140 },
   { colKey: 'diagnosis', title: k('diagnosis'), width: 120 },

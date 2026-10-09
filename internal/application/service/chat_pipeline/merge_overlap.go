@@ -154,7 +154,7 @@ func classifyMerge(lastChunk *types.SearchResult, lastIndex int, current *types.
 // to SubChunkID (deduplicated) and merges its ImageInfo, warning on failure.
 // warnKey distinguishes merge contexts in pipeline diagnostics.
 func recordMergedChild(ctx context.Context, knowledgeID string, target, source *types.SearchResult, warnKey string) {
-	capture.RecordSearchDependencies(ctx, source)
+	capture.RecordSearchDependencies(ctx, source, target)
 	if !containsID(target.SubChunkID, source.ID) {
 		target.SubChunkID = append(target.SubChunkID, source.ID)
 	}
