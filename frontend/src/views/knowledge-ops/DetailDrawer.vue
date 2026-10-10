@@ -8,18 +8,27 @@
   >
     <div class="ops-detail">
       <div class="toolbar">
-        <t-button variant="outline" :loading="loading" @click="load">
-          {{ k('refresh') }}
-        </t-button>
-        <t-button
-          :loading="retrying"
-          :disabled="
-            !enabled || !detail?.run.finished_at || !!detail?.pending_tasks
-          "
-          @click="rerun"
-        >
-          {{ k('rerun') }}
-        </t-button>
+        <div v-if="detail?.analyses.length" class="version-picker">
+          <span>{{ k('reports') }}</span>
+          <t-select
+            v-model="selectedID"
+            :options="analysisOptions"
+            :aria-label="k('reports')"
+          />
+        </div>
+        <div class="toolbar-actions">
+          <t-button variant="outline" :loading="loading" @click="load">{{
+            k('refresh')
+          }}</t-button>
+          <t-button
+            :loading="retrying"
+            :disabled="
+              !enabled || !detail?.run.finished_at || !!detail?.pending_tasks
+            "
+            @click="rerun"
+            >{{ k('rerun') }}</t-button
+          >
+        </div>
       </div>
       <div v-if="loading && !detail" class="state" role="status">
         {{ k('loading') }}
@@ -36,366 +45,320 @@
       </div>
       <template v-else-if="detail">
         <p v-if="notice" class="notice" role="status">{{ notice }}</p>
-        <div class="chips">
-          <span>{{ label(detail.run.qa_type) }}</span>
-          <span>{{ detail.run.channel || k('unknown') }}</span>
-          <span>{{ label(detail.run.review_state) }}</span>
+        <div class="run-heading">
+          <h2>{{ detail.run.question }}</h2>
+          <div class="run-meta">
+            <span>{{ label(detail.run.qa_type) }}</span
+            ><span>{{ detail.run.channel || k('unknown') }}</span>
+            <span>{{ date(detail.run.started_at) }}</span
+            ><StatusBadge :value="detail.run.review_state" />
+          </div>
         </div>
-        <section>
-          <h3>{{ k('captureCoverage') }}</h3>
-          <CaptureCoverage :coverage="detail.run.coverage" />
-          <p class="muted">{{ k('contentCoverageNotice') }}</p>
-          <p
-            v-for="gap in detail.run.coverage?.content_gaps || []"
-            :key="`content-${gap}`"
-            class="notice"
-          >
-            {{ k('contentGaps') }}: {{ label(gap) }}
-          </p>
-          <p
-            v-for="gap in detail.run.coverage?.provenance_gaps || []"
-            :key="`provenance-${gap}`"
-            class="notice"
-          >
-            {{ k('provenanceGaps') }}: {{ label(gap) }}
-          </p>
-        </section>
+        <p v-if="detail.pending_tasks" class="notice" role="status">
+          {{ k('diagnosisInProgress') }}
+        </p>
         <section
           v-if="analysis"
           class="diagnosis-first"
           :class="analysis.report.risk"
         >
-          <div class="decision-heading">
-            <h3>{{ k('currentDecision') }} · v{{ analysis.version }}</h3>
-            <t-button class="jump-button" @click="jumpToReview">
-              {{ k('reviewNow') }}
-            </t-button>
+          <div class="section-heading">
+            <h3>{{ k('diagnosisSummaryTitle') }} · v{{ analysis.version }}</h3>
+            <StatusBadge :value="analysis.status" />
           </div>
           <p v-if="!isCurrent" class="notice">{{ k('historical') }}</p>
-          <div class="decision-tags">
-            <strong>
-              {{ k('verdict') }}: {{ labelVerdict(analysis.report.verdict) }}
-            </strong>
-            <span>
-              {{ k('sourceCheck') }}: {{ label(analysis.report.source_check) }}
-            </span>
-            <span>{{ k('risk') }}: {{ label(analysis.report.risk) }}</span>
+          <div class="decision-grid">
+            <div>
+              <span class="field-label">{{ k('verdict') }}</span
+              ><StatusBadge
+                :value="analysis.report.verdict"
+                :text="labelVerdict(analysis.report.verdict)"
+              />
+            </div>
+            <div>
+              <span class="field-label">{{ k('sourceCheck') }}</span
+              ><StatusBadge :value="analysis.report.source_check" />
+            </div>
+            <div>
+              <span class="field-label">{{ k('risk') }}</span
+              ><StatusBadge :value="analysis.report.risk" />
+            </div>
+            <div>
+              <span class="field-label">{{ k('captureCoverage') }}</span
+              ><CaptureCoverage :coverage="detail.run.coverage" />
+            </div>
           </div>
           <p class="muted">{{ k('supportScopeNotice') }}</p>
-          <p v-if="analysis.report.model_verdict">
-            {{ k('modelVerdict') }}:
-            {{ labelVerdict(analysis.report.model_verdict) }}
-            · {{ k('policyVerdict') }}:
-            {{ labelVerdict(analysis.report.verdict) }}
+          <p class="route-reason">
+            <strong>{{ label(analysis.route) }}</strong
+            ><span>{{ analysis.route_reason }}</span>
           </p>
-          <p v-else class="muted">{{ k('legacyModelVerdict') }}</p>
+          <p v-if="analysis.error" class="error" role="alert">
+            {{ label(analysis.error) }}
+          </p>
           <p v-if="analysis.report.verdict_adjustment" class="notice">
             {{ k('adjustmentReason') }}:
             {{ label(analysis.report.verdict_adjustment) }}
           </p>
-          <p>{{ label(analysis.route) }} · {{ analysis.route_reason }}</p>
-          <p v-if="analysis.error" class="error">{{ label(analysis.error) }}</p>
-          <p v-for="(cause, i) in analysis.report.causes || []" :key="i">
-            <strong>
-              {{ label(cause.category) }} · {{ label(cause.status) }}
-            </strong>
-            — {{ cause.summary }}
-          </p>
-          <h4>{{ k('reviewQuestions') }}</h4>
-          <ul v-if="analysis.report.review_questions?.length">
-            <li v-for="(q, i) in analysis.report.review_questions" :key="i">
-              {{ q }}
-            </li>
-          </ul>
-          <p v-else>{{ k('none') }}</p>
           <p
-            v-for="(unknown, i) in analysis.report.unknowns || []"
-            :key="`unknown-${i}`"
+            v-for="gap in detail.run.coverage?.content_gaps || []"
+            :key="gap"
+            class="notice"
           >
-            {{ k('unknowns') }}: {{ unknown }}
+            {{ k('contentGaps') }}: {{ label(gap) }}
           </p>
         </section>
-        <p v-else class="notice">
-          {{ k('noAnalysis') }} · {{ k('noAnalysisHint') }}
-        </p>
-        <section>
-          <h3>{{ k('question') }}</h3>
-          <p class="body-text">{{ detail.run.question }}</p>
-          <h3>{{ k('answer') }}</h3>
-          <p class="body-text">{{ detail.run.answer || k('none') }}</p>
+        <section v-else>
+          <CaptureCoverage :coverage="detail.run.coverage" />
+          <p class="notice">
+            {{ k('noAnalysis') }} · {{ k('noAnalysisHint') }}
+          </p>
         </section>
-        <h3>{{ k('reviewEvidence') }}</h3>
-        <div class="evidence-review">
-          <div class="evidence-stack">
-            <section v-for="group in evidenceGroups" :key="group.key">
-              <h3>{{ k(group.key) }}</h3>
-              <p v-if="group.key === 'postEvidence'" class="notice">
-                {{ k('postNotice') }}
-              </p>
-              <p v-if="!group.items.length">{{ k('none') }}</p>
-              <article
-                v-for="item in group.items"
-                :id="`ops-evidence-${item.id}`"
-                :key="item.id"
-                class="item evidence-item"
-                tabindex="-1"
-              >
-                <h4>{{ item.title || item.kind }}</h4>
-                <p class="muted">
-                  {{ item.kind }} · {{ k('version') }}
-                  {{ item.version || k('unknown') }} ·
-                  {{ date(item.acquired_at) }} ·
-                  {{ k(item.truncated ? 'truncated' : 'notTruncated') }}
-                </p>
-                <details class="evidence-metadata">
-                  <summary>{{ k('sourceMetadata') }}</summary>
-                  <dl>
-                    <dt>KB / Knowledge</dt>
-                    <dd>
-                      {{ item.kb_id || '—' }} / {{ item.knowledge_id || '—' }}
-                    </dd>
-                    <dt>Page / Chunk</dt>
-                    <dd>
-                      {{ item.page_id || item.slug || '—' }} /
-                      {{ item.chunk_id || '—' }}
-                    </dd>
-                    <dt>Tool / Round</dt>
-                    <dd>{{ item.tool_call_id || '—' }} / {{ item.round }}</dd>
-                  </dl>
-                </details>
-                <pre>{{ item.content || k('none') }}</pre>
-              </article>
-            </section>
-          </div>
-          <aside id="ops-review-form" tabindex="-1">
-            <section v-if="analysis">
-              <p v-if="analysis.status === 'failed'" class="notice">
-                {{ k('failedReviewNotice') }}
-              </p>
-              <p v-if="!canReview" class="notice">
-                {{ k('reviewUnavailable') }}
-              </p>
-              <p class="notice">{{ k('reviewNotice') }}</p>
-              <div class="review-grid">
-                <ReviewForm
-                  :key="`${analysis.id}:answer:${savedReviews.answer}`"
-                  target="answer"
-                  :analysisID="analysis.id"
-                  :initial-verdict="analysis.report.verdict || 'unverifiable'"
-                  :disabled="!canReview"
-                  :busy="reviewing.answer"
-                  :error="reviewErrors.answer"
-                  @submit="saveReview"
-                />
-                <ReviewForm
-                  :key="`${analysis.id}:cause:${savedReviews.cause}`"
-                  target="cause"
-                  :analysisID="analysis.id"
-                  :initial-verdict="
-                    analysis.report.causes?.[0]?.status || 'unresolved'
-                  "
-                  :initial-category="analysis.report.causes?.[0]?.category"
-                  :machine-causes="analysis.report.causes || []"
-                  :disabled="!canReview"
-                  :busy="reviewing.cause"
-                  :error="reviewErrors.cause"
-                  @submit="saveReview"
-                />
-              </div>
-            </section>
-          </aside>
-        </div>
-        <details class="secondary-details">
-          <summary>{{ k('diagnosticDetails') }}</summary>
-          <section>
-            <h3>{{ k('reports') }}</h3>
-            <select
-              v-if="detail.analyses.length"
-              v-model="selectedID"
-              :aria-label="k('reports')"
-            >
-              <option
-                v-for="item in detail.analyses"
-                :key="item.id"
-                :value="item.id"
-              >
-                v{{ item.version }} · {{ label(item.status) }} ·
-                {{ date(item.created_at)
-                }}{{ item.id === latestID ? ` · ${k('latest')}` : '' }}
-              </option>
-            </select>
-            <p v-else>{{ k('noAnalysis') }} · {{ k('noAnalysisHint') }}</p>
-            <template v-if="analysis">
-              <p v-if="!isCurrent" class="notice">{{ k('historical') }}</p>
-              <p v-if="analysis.error" class="error" role="alert">
-                {{ label(analysis.error) }}
-              </p>
-              <dl>
-                <dt>{{ k('model') }}</dt>
-                <dd>
-                  {{ analysis.model_name || analysis.model_id || k('unknown') }}
-                </dd>
-                <dt>{{ k('policy') }}</dt>
-                <dd>{{ analysis.policy_version || k('unknown') }}</dd>
-                <dt>{{ k('verdict') }}</dt>
-                <dd>{{ labelVerdict(analysis.report.verdict) }}</dd>
-                <dt>{{ k('sourceCheck') }}</dt>
-                <dd>{{ label(analysis.report.source_check) }}</dd>
-                <dt>{{ k('risk') }}</dt>
-                <dd>{{ label(analysis.report.risk) }}</dd>
-                <dt>{{ k('scope') }}</dt>
-                <dd>{{ analysis.report.scope || k('unknown') }}</dd>
-                <dt>{{ k('route') }}</dt>
-                <dd>
-                  {{ label(analysis.route) }} · {{ analysis.route_reason }}
-                </dd>
-                <dt>{{ k('group') }}</dt>
-                <dd>{{ analysis.group_key || k('none') }}</dd>
-                <dt>{{ k('tokens') }}</dt>
-                <dd>
-                  {{ analysis.input_tokens }} / {{ analysis.output_tokens }}
-                </dd>
-                <dt>{{ k('duration') }}</dt>
-                <dd>{{ analysis.duration_ms }}</dd>
-                <dt>{{ k('stratum') }}</dt>
-                <dd>
-                  {{ analysis.sample_stratum || k('none') }} ·
-                  {{ analysis.sample_percent }}%
-                </dd>
-              </dl>
-              <h4>{{ k('claims') }}</h4>
-              <article
-                v-for="(claim, index) in analysis.report.claims || []"
-                :key="index"
-                class="item"
-              >
-                <strong>{{ labelVerdict(claim.verdict) }}</strong>
-                <p class="body-text">{{ claim.text }}</p>
-                <p class="muted">
-                  {{ k('position') }}: {{ claim.position }} · {{ claim.reason }}
-                </p>
-                <div class="evidence-links">
-                  <button
-                    v-for="id in claim.evidence_ids"
-                    :key="id"
-                    type="button"
-                    @click="showEvidence(id)"
-                  >
-                    {{ evidenceTitle(id) }}
-                  </button>
-                </div>
-              </article>
-              <p v-if="!analysis.report.claims?.length">{{ k('none') }}</p>
-              <h4>{{ k('facts') }}</h4>
-              <ul v-if="analysis.report.facts?.length">
-                <li v-for="(fact, index) in analysis.report.facts" :key="index">
-                  {{ fact }}
-                </li>
-              </ul>
-              <p v-else>{{ k('none') }}</p>
-              <h4>{{ k('causes') }}</h4>
-              <article
-                v-for="(cause, index) in analysis.report.causes || []"
-                :key="index"
-                class="item"
-              >
-                <strong>
-                  {{ label(cause.category) }} · {{ label(cause.status) }}
-                </strong>
-                <p>{{ cause.summary }}</p>
-                <p>{{ k('supporting') }}</p>
-                <div class="evidence-links">
-                  <button
-                    v-for="id in cause.evidence_ids"
-                    :key="id"
-                    type="button"
-                    @click="showEvidence(id)"
-                  >
-                    {{ evidenceTitle(id) }}
-                  </button>
-                  <span v-if="!cause.evidence_ids?.length">
-                    {{ k('none') }}
-                  </span>
-                </div>
-                <p>{{ k('opposing') }}</p>
-                <div class="evidence-links">
-                  <template
-                    v-for="(item, counterIndex) in cause.counter_evidence"
-                    :key="counterIndex"
-                  >
-                    <button
-                      v-if="hasEvidence(item)"
-                      type="button"
-                      @click="showEvidence(item)"
-                    >
-                      {{ evidenceTitle(item) }}
-                    </button>
-                    <span v-else class="body-text">{{ item }}</span>
-                  </template>
-                  <span v-if="!cause.counter_evidence?.length">
-                    {{ k('none') }}
-                  </span>
-                </div>
-              </article>
-              <p v-if="!analysis.report.causes?.length">{{ k('none') }}</p>
-              <h4>{{ k('unknowns') }}</h4>
-              <ul v-if="analysis.report.unknowns?.length">
-                <li
-                  v-for="(item, index) in analysis.report.unknowns"
-                  :key="index"
-                >
-                  {{ item }}
-                </li>
-              </ul>
-              <p v-else>{{ k('none') }}</p>
-              <h4>{{ k('reviewQuestions') }}</h4>
-              <ul v-if="analysis.report.review_questions?.length">
-                <li
-                  v-for="(item, index) in analysis.report.review_questions"
-                  :key="index"
-                >
-                  {{ item }}
-                </li>
-              </ul>
-              <p v-else>{{ k('none') }}</p>
-            </template>
-          </section>
-        </details>
-        <details class="secondary-details">
-          <summary>{{ k('runDetails') }}</summary>
-          <section>
-            <h3>{{ k('metadata') }}</h3>
-            <dl>
-              <dt>ID</dt>
-              <dd>{{ detail.run.id }}</dd>
-              <dt>{{ k('time') }}</dt>
-              <dd>{{ date(detail.run.started_at) }}</dd>
-              <dt>{{ k('execution') }}</dt>
-              <dd>{{ detail.run.execution_mode || k('unknown') }}</dd>
-              <dt>{{ k('runStatus') }}</dt>
-              <dd>{{ label(detail.run.status) }}</dd>
-              <dt>{{ k('pendingTasks') }}</dt>
-              <dd>{{ detail.pending_tasks ?? 0 }}</dd>
-              <dt>{{ k('generationModel') }}</dt>
-              <dd>{{ detail.run.model_id || k('unknown') }}</dd>
-            </dl>
-            <h4>{{ k('captureGaps') }}</h4>
-            <ul v-if="detail.run.gaps?.length">
-              <li v-for="gap in detail.run.gaps" :key="gap">{{ label(gap) }}</li>
-            </ul>
-            <p v-else>{{ k('noGaps') }}</p>
-          </section>
-        </details>
+
         <section>
-          <h3>{{ k('reviewHistory') }}</h3>
-          <p v-if="!detail.reviews.length">{{ k('none') }}</p>
+          <div class="section-heading">
+            <h3>{{ k('claimAssessment') }}</h3>
+            <span v-if="analysis?.report.claims?.length" class="count"
+              >{{ analysis.report.claims.length }} {{ k('claimCount') }}</span
+            >
+          </div>
+          <details class="answer-disclosure">
+            <summary>{{ k('originalAnswer') }}</summary>
+            <AnswerContent
+              v-if="detail.run.answer"
+              :content="detail.run.answer"
+            />
+            <p v-else class="muted">{{ k('none') }}</p>
+          </details>
+          <div v-if="analysis?.report.claims?.length" class="claims">
+            <article
+              v-for="(claim, index) in analysis.report.claims"
+              :key="index"
+              class="claim"
+            >
+              <div class="claim-heading">
+                <span class="claim-number">{{
+                  String(index + 1).padStart(2, '0')
+                }}</span
+                ><StatusBadge
+                  :value="claim.verdict"
+                  :text="labelVerdict(claim.verdict)"
+                /><span class="muted">{{ claim.position }}</span>
+              </div>
+              <p class="body-text claim-text">{{ claim.text }}</p>
+              <p class="muted">{{ claim.reason }}</p>
+              <div class="evidence-links">
+                <button
+                  v-for="id in claim.evidence_ids"
+                  :key="id"
+                  type="button"
+                  @click="showEvidence(id)"
+                >
+                  {{ evidenceTitle(id) }}
+                </button>
+              </div>
+            </article>
+          </div>
+          <p v-else class="muted">{{ k('noClaims') }}</p>
+        </section>
+
+        <section v-if="analysis" id="ops-source-check">
+          <div class="section-heading">
+            <h3>{{ k('sourceReviewTitle') }}</h3>
+            <StatusBadge :value="analysis.report.source_check" />
+          </div>
+          <p v-if="sourcePending" class="notice">
+            {{ k('sourceFollowupNotice') }}
+          </p>
+          <div v-if="sourceIssues.length" class="source-issues">
+            <article
+              v-for="issue in sourceIssues"
+              :key="issue"
+              class="source-issue"
+            >
+              <strong>{{ label(issue) }}</strong>
+              <p>{{ sourceAction(issue) }}</p>
+            </article>
+          </div>
+          <p v-if="analysis.report.source_audit" class="muted">
+            {{ k('sourceBudget') }}:
+            {{ analysis.report.source_audit.chars.toLocaleString() }}
+            <template v-if="analysis.report.source_audit.char_limit">
+              /
+              {{
+                analysis.report.source_audit.char_limit.toLocaleString()
+              }}</template
+            >
+            {{ k('characters') }} · {{ postEvidence.length }}
+            {{ k('materials') }}
+          </p>
+          <p v-else class="muted">{{ k('legacySourceAudit') }}</p>
+          <details v-if="postEvidence.length" class="material-disclosure">
+            <summary>
+              {{
+                k(
+                  analysis.report.source_audit
+                    ? 'analysisSourceEvidence'
+                    : 'postEvidence',
+                )
+              }}
+              · {{ postEvidence.length }}
+            </summary>
+            <p class="muted">{{ sourceEvidenceNotice }}</p>
+            <EvidenceList :items="postEvidence" />
+          </details>
+          <p v-else class="muted">{{ k('noBoundSourceEvidence') }}</p>
+          <div
+            v-if="analysis.report.review_questions?.length"
+            class="review-questions"
+          >
+            <h4>{{ k('reviewQuestions') }}</h4>
+            <ul>
+              <li v-for="(q, i) in analysis.report.review_questions" :key="i">
+                {{ q }}
+              </li>
+            </ul>
+          </div>
+          <details
+            v-if="analysis.report.unknowns?.length"
+            class="report-limitations"
+          >
+            <summary>
+              {{ k('diagnosisLimitations') }} ·
+              {{ analysis.report.unknowns.length }}
+            </summary>
+            <ul>
+              <li v-for="(unknown, i) in analysis.report.unknowns" :key="i">
+                {{ unknown }}
+              </li>
+            </ul>
+          </details>
+        </section>
+
+        <section v-if="analysis?.report.causes?.length">
+          <h3>{{ k('causes') }}</h3>
+          <article
+            v-for="(cause, index) in analysis.report.causes"
+            :key="index"
+            class="cause"
+          >
+            <div class="section-heading">
+              <strong>{{ label(cause.category) }}</strong
+              ><StatusBadge :value="cause.status" />
+            </div>
+            <p>{{ cause.summary }}</p>
+            <p class="field-label">{{ k('supporting') }}</p>
+            <div class="evidence-links">
+              <button
+                v-for="id in cause.evidence_ids"
+                :key="id"
+                type="button"
+                @click="showEvidence(id)"
+              >
+                {{ evidenceTitle(id) }}</button
+              ><span v-if="!cause.evidence_ids?.length" class="muted">{{
+                k('none')
+              }}</span>
+            </div>
+            <p class="field-label">{{ k('opposing') }}</p>
+            <div class="evidence-links">
+              <template v-for="(item, i) in cause.counter_evidence" :key="i"
+                ><button
+                  v-if="hasEvidence(item)"
+                  type="button"
+                  @click="showEvidence(item)"
+                >
+                  {{ evidenceTitle(item) }}</button
+                ><span v-else class="body-text">{{ item }}</span></template
+              ><span v-if="!cause.counter_evidence?.length" class="muted">{{
+                k('none')
+              }}</span>
+            </div>
+          </article>
+        </section>
+
+        <section v-if="analysis" id="ops-review-form" tabindex="-1">
+          <div class="section-heading">
+            <h3>{{ k('humanDecision') }}</h3>
+            <span class="muted"
+              >{{ k('reviewBoundVersion') }} v{{ analysis.version }}</span
+            >
+          </div>
+          <p v-if="analysis.status === 'failed'" class="notice">
+            {{ k('failedReviewNotice') }}
+          </p>
+          <p v-if="!canReview" class="notice">{{ k('reviewUnavailable') }}</p>
+          <p class="muted">{{ k('reviewNotice') }}</p>
+          <p v-if="sourcePending" class="notice">
+            {{ k('answerReviewKeepsSourceOpen') }}
+          </p>
+          <div
+            class="review-grid"
+            :class="{
+              'with-causes': analysis.report.causes?.length || showCauseEditor,
+            }"
+          >
+            <ReviewForm
+              :key="`${analysis.id}:answer:${savedReviews.answer}`"
+              target="answer"
+              :analysisID="analysis.id"
+              :initial-verdict="analysis.report.verdict || 'unverifiable'"
+              :disabled="!canReview"
+              :busy="reviewing.answer"
+              :error="reviewErrors.answer"
+              @submit="saveReview"
+            />
+            <ReviewForm
+              v-if="analysis.report.causes?.length || showCauseEditor"
+              :key="`${analysis.id}:cause:${savedReviews.cause}`"
+              target="cause"
+              :analysisID="analysis.id"
+              :initial-verdict="
+                analysis.report.causes?.[0]?.status || 'unresolved'
+              "
+              :initial-category="analysis.report.causes?.[0]?.category"
+              :initial-action="
+                analysis.report.causes?.length ? undefined : 'corrected'
+              "
+              :machine-causes="analysis.report.causes || []"
+              :disabled="!canReview"
+              :busy="reviewing.cause"
+              :error="reviewErrors.cause"
+              @submit="saveReview"
+            />
+          </div>
+          <div v-if="!analysis.report.causes?.length" class="no-cause">
+            <span>{{
+              k(
+                analysis.status === 'failed'
+                  ? 'noCauseAfterFailure'
+                  : 'noCauseReviewNeeded',
+              )
+            }}</span>
+            <t-button
+              v-if="canReview && !showCauseEditor"
+              variant="text"
+              @click="showCauseEditor = true"
+              >{{ k('addCauseCorrection') }}</t-button
+            >
+          </div>
+        </section>
+
+        <section>
+          <div class="section-heading">
+            <h3>{{ k('reviewHistory') }}</h3>
+            <span class="count">{{ detail.reviews.length }}</span>
+          </div>
+          <p v-if="!detail.reviews.length" class="muted">
+            {{ k('noReviewHistory') }}
+          </p>
           <article
             v-for="review in detail.reviews"
             :key="review.id"
-            class="item"
+            class="review-record"
           >
-            <strong>
-              {{
+            <strong
+              >{{
                 k(review.target === 'answer' ? 'answerTarget' : 'causeTarget')
               }}
               · {{ label(review.action) }} ·
@@ -403,26 +366,130 @@
                 review.target === 'answer'
                   ? labelVerdict(review.verdict)
                   : label(review.verdict)
-              }}
-              <template v-if="review.cause_category">
-                · {{ label(review.cause_category) }}
-              </template>
-            </strong>
+              }}<template v-if="review.cause_category">
+                · {{ label(review.cause_category) }}</template
+              ></strong
+            >
             <p class="body-text">{{ review.reason }}</p>
-            <small>
-              {{ date(review.created_at) }} · {{ review.reviewer_id }} ·
-              {{ review.analysis_id }}
-            </small>
+            <small
+              >{{ date(review.created_at) }} · {{ review.reviewer_id }} ·
+              {{ reviewVersion(review.analysis_id) }}</small
+            >
           </article>
         </section>
+
+        <div class="supporting-details">
+          <details v-if="originalEvidence.length" class="secondary-details">
+            <summary>
+              {{ k('originalEvidence') }} · {{ originalEvidence.length }}
+            </summary>
+            <p class="muted">{{ k('originalEvidenceNotice') }}</p>
+            <EvidenceList :items="originalEvidence" />
+          </details>
+          <details v-if="candidateEvidence.length" class="secondary-details">
+            <summary>
+              {{ k('candidateEvidence') }} · {{ candidateEvidence.length }}
+            </summary>
+            <p class="muted">{{ k('candidateMetadataNotice') }}</p>
+            <EvidenceList :items="candidateEvidence" metadata-only />
+          </details>
+          <details v-if="unboundEvidence.length" class="secondary-details">
+            <summary>
+              {{ k('unboundEvidence') }} · {{ unboundEvidence.length }}
+            </summary>
+            <p class="notice">{{ k('unboundEvidenceNotice') }}</p>
+            <EvidenceList :items="unboundEvidence" />
+          </details>
+          <details class="secondary-details">
+            <summary>{{ k('diagnosticDetails') }}</summary>
+            <template v-if="analysis">
+              <h4>{{ k('analysisRecord') }}</h4>
+              <dl>
+                <dt>{{ k('model') }}</dt>
+                <dd>
+                  {{ analysis.model_name || analysis.model_id || k('unknown') }}
+                </dd>
+                <dt>{{ k('policy') }}</dt>
+                <dd>{{ analysis.policy_version || k('unknown') }}</dd>
+                <dt>{{ k('analysisTime') }}</dt>
+                <dd>{{ date(analysis.created_at) }}</dd>
+                <dt>{{ k('modelVerdict') }}</dt>
+                <dd>
+                  {{
+                    analysis.report.model_verdict
+                      ? labelVerdict(analysis.report.model_verdict)
+                      : k('legacyModelVerdict')
+                  }}
+                </dd>
+                <dt>{{ k('policyVerdict') }}</dt>
+                <dd>{{ labelVerdict(analysis.report.verdict) }}</dd>
+                <dt>{{ k('tokens') }}</dt>
+                <dd>
+                  {{ analysis.input_tokens }} / {{ analysis.output_tokens }}
+                </dd>
+                <dt>{{ k('duration') }}</dt>
+                <dd>{{ (analysis.duration_ms / 1000).toFixed(1) }} s</dd>
+                <dt>{{ k('scope') }}</dt>
+                <dd>{{ analysis.report.scope || k('unknown') }}</dd>
+                <dt v-if="analysis.group_key">{{ k('group') }}</dt>
+                <dd v-if="analysis.group_key">{{ analysis.group_key }}</dd>
+                <dt v-if="analysis.sample_stratum">{{ k('stratum') }}</dt>
+                <dd v-if="analysis.sample_stratum">
+                  {{ analysis.sample_stratum }} · {{ analysis.sample_percent }}%
+                </dd>
+              </dl>
+              <p class="muted">{{ k('originalReportNotice') }}</p>
+              <template v-if="analysis.report.facts?.length"
+                ><h4>{{ k('facts') }}</h4>
+                <ul>
+                  <li v-for="(fact, i) in analysis.report.facts" :key="i">
+                    {{ fact }}
+                  </li>
+                </ul></template
+              >
+            </template>
+            <h4>{{ k('metadata') }}</h4>
+            <dl>
+              <dt>{{ k('runID') }}</dt>
+              <dd>{{ detail.run.id }}</dd>
+              <dt>{{ k('time') }}</dt>
+              <dd>{{ date(detail.run.started_at) }}</dd>
+              <dt>{{ k('finishedAt') }}</dt>
+              <dd>
+                {{
+                  detail.run.finished_at ? date(detail.run.finished_at) : '—'
+                }}
+              </dd>
+              <dt>{{ k('generationModel') }}</dt>
+              <dd>{{ detail.run.model_id || k('unknown') }}</dd>
+              <dt>{{ k('execution') }}</dt>
+              <dd>{{ detail.run.execution_mode || k('unknown') }}</dd>
+              <dt>{{ k('runStatus') }}</dt>
+              <dd>{{ label(detail.run.status) }}</dd>
+              <dt>{{ k('pendingTasks') }}</dt>
+              <dd>{{ detail.pending_tasks ?? 0 }}</dd>
+            </dl>
+            <template v-if="detail.run.gaps?.length"
+              ><h4>{{ k('originalCaptureGaps') }}</h4>
+              <ul>
+                <li v-for="gap in detail.run.gaps" :key="gap">
+                  {{ label(gap) }}
+                </li>
+              </ul></template
+            >
+          </details>
+        </div>
       </template>
     </div>
   </t-drawer>
 </template>
 <script setup lang="ts">
-import { computed, onScopeDispose, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onScopeDispose, reactive, ref, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import CaptureCoverage from './CaptureCoverage.vue'
+import EvidenceList from './EvidenceList.vue'
+import AnswerContent from './AnswerContent.vue'
+import StatusBadge from './StatusBadge.vue'
 import {
   addOpsReview,
   getOpsDetail,
@@ -446,6 +513,7 @@ const loading = ref(false)
 const loadError = ref('')
 const selectedID = ref('')
 const retrying = ref(false)
+const showCauseEditor = ref(false)
 const notice = ref('')
 const savedReviews = reactive({ answer: 0, cause: 0 })
 const reviewing = reactive({ answer: false, cause: false })
@@ -476,12 +544,19 @@ const isCurrent = computed(() => selectedID.value === latestID.value)
 const canReview = computed(
   () => isCurrent.value && !!detail.value?.run.finished_at && !!analysis.value,
 )
+const analysisOptions = computed(() =>
+  (detail.value?.analyses || []).map((item) => ({
+    value: item.id,
+    label: `v${item.version} · ${label(item.status)} · ${date(item.created_at)}${item.id === latestID.value ? ` · ${k('latest')}` : ''}`,
+  })),
+)
 const evidenceGroups = computed(() => {
   const items = detail.value?.evidence || []
-  // Supplements are archived per run, not bound to an analysis. Only explicit
-  // citations establish that the selected report used a particular material.
+  // New reports bind their supplements explicitly. Legacy reports retain only
+  // their citations; unbound archives are shown separately without attribution.
   const report = analysis.value?.report
   const referenced = new Set([
+    ...(report?.source_audit?.evidence_ids || []),
     ...(report?.claims || []).flatMap((claim) => claim.evidence_ids || []),
     ...(report?.causes || []).flatMap((cause) => [
       ...(cause.evidence_ids || []),
@@ -501,25 +576,85 @@ const evidenceGroups = computed(() => {
       key: 'postEvidence',
       items: items.filter((item) => item.post_hoc && referenced.has(item.id)),
     },
+    {
+      key: 'unboundEvidence',
+      items:
+        report && !report.source_audit
+          ? items.filter((item) => item.post_hoc && !referenced.has(item.id))
+          : [],
+    },
   ]
 })
+const originalEvidence = computed(() => evidenceGroups.value[0].items)
+const candidateEvidence = computed(() => evidenceGroups.value[1].items)
+const postEvidence = computed(() => evidenceGroups.value[2].items)
+const sourceEvidenceNotice = computed(() =>
+  k(analysis.value?.report.source_audit ? 'auditedSourceNotice' : 'postNotice'),
+)
+const unboundEvidence = computed(() => evidenceGroups.value[3].items)
+const sourceIssues = computed(() => {
+  const captured = detail.value?.run.coverage?.provenance_gaps || []
+  const audit = (analysis.value?.report.source_audit?.issues || []).filter(
+    (issue) =>
+      issue !== 'source_linked_versions_unknown' ||
+      !captured.some((gap) =>
+        [
+          'source_version_unknown',
+          'wiki_linked_summary_versions_unknown',
+        ].includes(gap),
+      ),
+  )
+  const issues = [...new Set([...captured, ...audit])]
+  if (
+    !issues.length &&
+    analysis.value?.status !== 'failed' &&
+    analysis.value?.report.source_check === 'unresolved'
+  )
+    issues.push('source_scope_unresolved')
+  return issues
+})
+const sourcePending = computed(() => {
+  if (
+    isCurrent.value &&
+    detail.value?.run.source_followup_pending !== undefined
+  )
+    return detail.value.run.source_followup_pending
+  return (
+    sourceIssues.value.length > 0 ||
+    (analysis.value?.status !== 'failed' &&
+      (analysis.value?.report.source_check === 'unresolved' ||
+        (['wiki-qa', 'hybrid-rag-wiki'].includes(detail.value?.run.qa_type || '') &&
+          analysis.value?.report.source_check === 'not_checked')))
+  )
+})
+function sourceAction(issue: string) {
+  const key = `${issue}_action`
+  const translated = k(key)
+  return translated === key ? k('source_scope_unresolved_action') : translated
+}
+function reviewVersion(id: string) {
+  const version = detail.value?.analyses.find((item) => item.id === id)?.version
+  return version ? `v${version}` : id
+}
 function hasEvidence(id: string) {
   return !!detail.value?.evidence.some((item) => item.id === id)
 }
 function evidenceTitle(id: string) {
   return detail.value?.evidence.find((item) => item.id === id)?.title || id
 }
-function showEvidence(id: string) {
+async function showEvidence(id: string) {
   const element = document.getElementById(`ops-evidence-${id}`)
   if (element) {
+    let ancestor: HTMLElement | null = element
+    while (ancestor) {
+      if (ancestor.tagName === 'DETAILS')
+        (ancestor as HTMLDetailsElement).open = true
+      ancestor = ancestor.parentElement
+    }
+    await nextTick()
     element.scrollIntoView({ block: 'center' })
     element.focus()
   } else notice.value = `${k('evidenceMissing')}: ${id}`
-}
-function jumpToReview() {
-  const element = document.getElementById('ops-review-form')
-  element?.scrollIntoView({ block: 'start' })
-  element?.focus()
 }
 async function load() {
   if (!props.runID) return
@@ -591,6 +726,9 @@ async function saveReview(value: ReviewInput) {
     if (current()) reviewing[target] = false
   }
 }
+watch(selectedID, () => {
+  showCauseEditor.value = false
+})
 watch(
   () => [props.runID, props.analysisID, auth.effectiveTenantId],
   () => {
@@ -618,63 +756,255 @@ onScopeDispose(() => {
 .ops-detail {
   font-family: var(--app-font-family);
   font-size: var(--app-text-base);
-}
-
-.ops-detail {
   line-height: 1.65;
   color: var(--td-text-color-primary);
 }
-.toolbar {
+.toolbar,
+.toolbar-actions,
+.section-heading,
+.run-meta,
+.claim-heading,
+.no-cause {
   display: flex;
+  align-items: center;
   gap: var(--app-space-3);
-  justify-content: flex-end;
-  margin-bottom: var(--app-space-3);
 }
-.chips {
-  display: flex;
+.toolbar,
+.section-heading {
+  justify-content: space-between;
   flex-wrap: wrap;
-  gap: var(--app-space-2);
-  margin: var(--app-space-3) 0;
 }
-.chips span {
-  background: var(--td-bg-color-secondarycontainer);
-  padding: var(--app-space-1) var(--app-space-2);
-  border-radius: var(--app-radius-xs);
-  font-size: var(--app-text-md);
+.toolbar {
+  margin-bottom: var(--app-space-5);
+}
+.toolbar-actions {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.version-picker {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-2);
+  max-width: 100%;
+}
+.version-picker > span {
+  white-space: nowrap;
+  color: var(--td-text-color-secondary);
+  font-size: var(--app-text-sm);
+}
+.version-picker :deep(.t-select__wrap) {
+  width: 350px;
+  max-width: 100%;
+}
+.run-heading {
+  margin-bottom: var(--app-space-5);
+}
+.run-heading h2 {
+  margin: 0 0 var(--app-space-3);
+  font-size: var(--app-text-xl);
+  line-height: 1.5;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.run-meta {
+  flex-wrap: wrap;
+  color: var(--td-text-color-secondary);
+  font-size: var(--app-text-sm);
+}
+.run-meta > span + span::before {
+  content: '·';
+  margin-right: var(--app-space-3);
+  color: var(--td-text-color-placeholder);
 }
 section {
   border: 1px solid var(--td-component-stroke);
-  border-radius: var(--app-radius-xl);
+  border-radius: var(--app-radius-lg);
   padding: var(--app-space-5);
   margin: var(--app-space-4) 0;
 }
 h3 {
-  font-size: var(--app-text-xl);
-  margin: 0 0 var(--app-space-4);
+  font-size: var(--app-text-lg);
   font-weight: 600;
+  margin: 0 0 var(--app-space-3);
+}
+.section-heading h3 {
+  margin: 0;
+}
+.section-heading {
+  margin-bottom: var(--app-space-4);
 }
 h4 {
+  font-size: var(--app-text-base);
+  font-weight: 600;
   margin: var(--app-space-5) 0 var(--app-space-2);
+}
+p {
+  margin: var(--app-space-2) 0;
 }
 .body-text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.count,
+.muted,
+small {
+  color: var(--td-text-color-secondary);
+  font-size: var(--app-text-sm);
+}
+.field-label {
+  display: block;
+  color: var(--td-text-color-secondary);
+  font-size: var(--app-text-sm);
+  margin-bottom: var(--app-space-2);
+}
+.diagnosis-first {
+  background: var(--td-bg-color-container);
+  border-top: 3px solid var(--td-brand-color);
+}
+.diagnosis-first.high {
+  border-top-color: var(--td-warning-color);
+}
+.decision-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.5fr);
+  gap: var(--app-space-4);
+  margin: var(--app-space-4) 0;
+}
+.route-reason {
+  display: flex;
+  gap: var(--app-space-3);
+  align-items: baseline;
+  margin-top: var(--app-space-4);
+  padding-top: var(--app-space-3);
+  border-top: 1px solid var(--td-component-border);
+}
+.route-reason strong {
+  flex-shrink: 0;
+}
 .notice {
   padding: var(--app-space-3) var(--app-space-4);
   background: var(--td-brand-color-light);
   border-radius: var(--app-radius-md);
+  font-size: var(--app-text-sm);
 }
-.muted,
-small {
+.error {
+  color: var(--td-error-color);
+}
+.answer-disclosure {
+  padding: var(--app-space-3) var(--app-space-4);
+  border-radius: var(--app-radius-md);
+  background: var(--td-bg-color-secondarycontainer);
+  margin-bottom: var(--app-space-4);
+}
+.answer-disclosure[open] summary {
+  margin-bottom: var(--app-space-4);
+}
+summary {
+  cursor: pointer;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.claim {
+  padding: var(--app-space-4) 0;
+  border-top: 1px solid var(--td-component-border);
+}
+.claim:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.claim:last-child {
+  padding-bottom: 0;
+}
+.claim-heading {
+  flex-wrap: wrap;
+  gap: var(--app-space-2);
+}
+.claim-number {
+  color: var(--td-text-color-placeholder);
+  font-size: var(--app-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+.claim-text {
+  font-weight: 500;
+}
+.evidence-links {
+  display: flex;
+  gap: var(--app-space-2);
+  flex-wrap: wrap;
+  margin-top: var(--app-space-2);
+}
+.evidence-links button {
+  background: var(--td-brand-color-light);
+  color: var(--td-brand-color);
+  border: 0;
+  border-radius: var(--app-radius-sm);
+  padding: var(--app-space-1) var(--app-space-2);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--app-text-sm);
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.source-issues {
+  display: grid;
+  gap: var(--app-space-3);
+  margin: var(--app-space-4) 0;
+}
+.source-issue {
+  padding-left: var(--app-space-3);
+  border-left: 2px solid var(--td-warning-color);
+}
+.source-issue p {
   color: var(--td-text-color-secondary);
-  font-size: var(--app-text-md);
+}
+.material-disclosure,
+.report-limitations {
+  border-top: 1px solid var(--td-component-border);
+  padding-top: var(--app-space-3);
+  margin-top: var(--app-space-4);
+}
+.cause + .cause {
+  border-top: 1px solid var(--td-component-border);
+  margin-top: var(--app-space-4);
+  padding-top: var(--app-space-4);
+}
+.review-grid {
+  display: grid;
+  gap: var(--app-space-4);
+  margin-top: var(--app-space-4);
+}
+.review-grid.with-causes {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.no-cause {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  color: var(--td-text-color-secondary);
+  font-size: var(--app-text-sm);
+  margin-top: var(--app-space-4);
+}
+.review-record {
+  padding: var(--app-space-3) 0;
+  border-top: 1px solid var(--td-component-border);
+}
+.supporting-details {
+  margin-top: var(--app-space-5);
+}
+.secondary-details {
+  border: 1px solid var(--td-component-stroke);
+  border-radius: var(--app-radius-lg);
+  padding: var(--app-space-4) var(--app-space-5);
+  margin: var(--app-space-3) 0;
+}
+.secondary-details[open] > summary {
+  margin-bottom: var(--app-space-4);
 }
 dl {
   display: grid;
   grid-template-columns: 160px minmax(0, 1fr);
-  font-size: var(--app-text-md);
-  gap: var(--app-space-1) var(--app-space-3);
+  gap: var(--app-space-2) var(--app-space-4);
+  font-size: var(--app-text-sm);
 }
 dt {
   color: var(--td-text-color-secondary);
@@ -682,179 +1012,57 @@ dt {
 dd {
   margin: 0;
   overflow-wrap: anywhere;
-}
-.item {
-  border-top: 1px solid var(--td-component-border);
-  padding: var(--app-space-3) 0;
-}
-.item p {
-  margin: var(--app-space-2) 0;
-}
-.evidence-links {
-  display: flex;
-  gap: var(--app-space-2);
-  flex-wrap: wrap;
-}
-.evidence-links button {
-  background: var(--td-brand-color-light);
-  color: var(--td-brand-color);
-  border: 0;
-  padding: var(--app-space-1) var(--app-space-2);
-  border-radius: var(--app-radius-xs);
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--app-text-md);
-}
-pre {
-  font: inherit;
-  font-size: var(--app-text-md);
   white-space: pre-wrap;
+}
+li {
   overflow-wrap: anywhere;
-  max-height: 360px;
-  overflow: auto;
-  background: var(--td-bg-color-secondarycontainer);
-  padding: var(--app-space-3);
-  border-radius: var(--app-radius-sm);
 }
-.review-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: var(--app-space-4);
-}
-.error {
-  color: var(--td-error-color);
+ul {
+  padding-left: var(--app-space-5);
 }
 .state {
   padding: var(--app-space-10);
   text-align: center;
 }
-.evidence-item:focus {
-  outline: 2px solid var(--td-brand-color);
-  outline-offset: 6px;
-}
-select {
-  border: 1px solid var(--td-component-border);
-  border-radius: var(--app-radius-sm);
-  padding: var(--app-space-2);
-  background: var(--td-bg-color-container);
-  color: inherit;
-  max-width: 100%;
-  font: inherit;
-}
 button:focus-visible,
-select:focus-visible {
+summary:focus-visible,
+#ops-review-form:focus {
   outline: 2px solid var(--td-brand-color);
-  outline-offset: 2px;
+  outline-offset: 3px;
+  border-radius: var(--app-radius-sm);
 }
-@media (max-width: 700px) {
+@media (max-width: 800px) {
+  .review-grid.with-causes {
+    grid-template-columns: 1fr;
+  }
+  .decision-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
   section {
-    padding: var(--app-space-3);
+    padding: var(--app-space-4);
+  }
+  .version-picker {
+    width: 100%;
+  }
+  .version-picker :deep(.t-select__wrap) {
+    width: 100%;
+    min-width: 0;
+  }
+  .version-picker > span {
+    display: none;
   }
   dl {
     grid-template-columns: 1fr;
+    gap: var(--app-space-1);
   }
-  dt {
-    font-weight: 500;
+  dd {
+    margin-bottom: var(--app-space-2);
   }
-}
-.diagnosis-first {
-  background: color-mix(
-    in srgb,
-    var(--td-brand-color-light) 30%,
-    var(--td-bg-color-container)
-  );
-  border-color: var(--td-component-stroke);
-}
-.diagnosis-first.high {
-  border-left: 4px solid var(--td-error-color);
-  background: color-mix(
-    in srgb,
-    var(--td-warning-color-light) 40%,
-    var(--td-bg-color-container)
-  );
-}
-.decision-heading,
-.decision-tags {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--app-space-3);
-}
-.decision-heading h3 {
-  margin: 0;
-}
-.decision-tags {
-  font-size: var(--app-text-md);
-  justify-content: flex-start;
-  margin-top: var(--app-space-4);
-}
-.evidence-review {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 1fr);
-  gap: var(--app-space-5);
-  align-items: start;
-}
-.evidence-review section:first-child {
-  margin-top: 0;
-}
-.secondary-details {
-  border: 1px solid var(--td-component-border);
-  border-radius: var(--app-radius-md);
-  padding: var(--app-space-3);
-  margin: var(--app-space-3) 0;
-}
-.secondary-details summary {
-  font-size: var(--app-text-md);
-  cursor: pointer;
-  font-weight: 600;
-}
-.evidence-stack {
-  min-width: 0;
-}
-aside {
-  min-width: 0;
-  scroll-margin-top: var(--app-space-5);
-}
-@media (max-width: 950px) {
-  .evidence-review {
-    grid-template-columns: 1fr;
+  .route-reason {
+    flex-direction: column;
+    gap: var(--app-space-1);
   }
-}
-.evidence-metadata {
-  font-size: var(--app-text-sm);
-  color: var(--td-text-color-secondary);
-  margin: var(--app-space-3) 0;
-}
-.evidence-metadata summary {
-  cursor: pointer;
-}
-.evidence-item pre {
-  border-left: 3px solid var(--td-component-border);
-  border-radius: 0 var(--app-radius-sm) var(--app-radius-sm) 0;
-  line-height: 1.9;
-  padding: var(--app-space-4) var(--app-space-4);
-}
-.ops-detail .notice {
-  font-size: var(--app-text-sm);
-  line-height: 1.8;
-}
-.decision-tags > span,
-.decision-tags > strong {
-  background: var(--td-bg-color-container);
-  padding: var(--app-space-1) var(--app-space-2);
-  border: 1px solid var(--td-component-stroke);
-  border-radius: var(--app-radius-xs);
-}
-.diagnosis-first h4 {
-  font-size: var(--app-text-md);
-}
-.diagnosis-first p,
-.diagnosis-first li {
-  font-size: var(--app-text-base);
-}
-.evidence-stack .item:first-of-type {
-  border-top: 0;
-  padding-top: 0;
 }
 </style>

@@ -27,6 +27,12 @@ export interface OpsCause {
   status: string
 }
 export interface OpsReport {
+  source_audit?: {
+    evidence_ids: string[]
+    issues: string[]
+    chars: number
+    char_limit: number
+  }
   model_verdict?: string
   verdict_adjustment?: string
   verdict: string
@@ -66,6 +72,7 @@ export interface OpsCaptureCoverage {
   provenance_gaps: string[]
 }
 export interface OpsRun {
+  source_followup_pending?: boolean
   id: string
   actor_id: string
   session_id: string

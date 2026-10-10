@@ -248,6 +248,15 @@ func (s *Service) walk(c *gin.Context, visit func(Detail)) error {
 	}
 }
 func reviewState(d Detail) string {
+	state := humanReviewState(d)
+	if state == "reviewed" && sourceFollowupPending(d.Run) {
+		return "partially_reviewed"
+	}
+	return state
+}
+
+// Human review completion is independent of outstanding source verification.
+func humanReviewState(d Detail) string {
 	if d.Run.Analysis == nil {
 		return "pending_analysis"
 	}

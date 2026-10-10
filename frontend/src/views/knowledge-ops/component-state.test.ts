@@ -47,6 +47,10 @@ function setup(
     'retrying',
     'evidenceGroups',
     'selectedID',
+    'showEvidence',
+    'sourceEvidenceNotice',
+    'sourceIssues',
+    'sourcePending',
   ]
   const expose = names
     .map(
@@ -141,6 +145,127 @@ test('a late settings load cannot overwrite another tenant draft', async () => {
   h.stop()
 })
 
+test('source audit displays this analysis supplements even when there are no root causes', async () => {
+  const report = {
+    id: 'v2',
+    version: 2,
+    report: {
+      claims: [{ evidence_ids: ['original'] }],
+      causes: [],
+      source_audit: {
+        evidence_ids: ['v2-source'],
+        issues: [],
+        chars: 100,
+        char_limit: 16000,
+      },
+    },
+  }
+  const h = setup(
+    'DetailDrawer.vue',
+    vue.reactive({ runID: 'A', enabled: true }),
+    {
+      getOpsDetail: async () => ({
+        ...detail('A'),
+        run: { id: 'A', analysis: report },
+        analyses: [report],
+        evidence: [
+          { id: 'original', post_hoc: false, sent_to_model: true },
+          { id: 'v1-source', post_hoc: true },
+          { id: 'v2-source', post_hoc: true },
+        ],
+      }),
+    },
+  )
+  await setImmediate()
+  const group = h.api.evidenceGroups.value.find(
+    (g: { key: string }) => g.key === 'postEvidence',
+  )
+  assert.deepEqual(
+    Array.from(group.items, (e: any) => e.id),
+    ['v2-source'],
+  )
+  assert.equal(h.api.sourceEvidenceNotice?.value, 'auditedSourceNotice')
+  h.stop()
+})
+
+test('following an evidence reference opens all containing disclosures before scrolling', async () => {
+  const outer = { tagName: 'DETAILS', open: false, parentElement: null }
+  const target = {
+    tagName: 'DETAILS',
+    open: false,
+    parentElement: outer,
+    scrollIntoView: () => assert.ok(target.open && outer.open),
+    focus: () => assert.ok(target.open && outer.open),
+  }
+  const h = setup(
+    'DetailDrawer.vue',
+    vue.reactive({ runID: '', enabled: true }),
+    {
+      document: { getElementById: () => target },
+    },
+  )
+  await h.api.showEvidence('candidate')
+  assert.ok(outer.open && target.open)
+  h.stop()
+})
+
+test('diagnosis failures show source follow-up only for established gaps, including historical versions', async () => {
+  for (const historical of [false, true]) {
+    for (const status of ['failed', 'succeeded']) {
+      for (const hasGap of [false, true]) {
+        const issues = hasGap ? ['source_lookup_failed'] : []
+        const selected = {
+          id: 'selected',
+          version: 1,
+          status,
+          report: {
+            source_check: 'unresolved',
+            source_audit: {
+              issues,
+              evidence_ids: [],
+              chars: 0,
+              char_limit: 16000,
+            },
+          },
+        }
+        const latest = historical
+          ? { ...selected, id: 'latest', version: 2 }
+          : selected
+        const expectedPending = hasGap || status === 'succeeded'
+        const h = setup(
+          'DetailDrawer.vue',
+          vue.reactive({ runID: 'A', enabled: true }),
+          {
+            getOpsDetail: async () => ({
+              ...detail('A'),
+              run: {
+                id: 'A',
+                qa_type: 'wiki-qa',
+                analysis: latest,
+                source_followup_pending: expectedPending,
+                coverage: { provenance_gaps: [] },
+              },
+              analyses: historical ? [latest, selected] : [selected],
+            }),
+          },
+        )
+        await setImmediate()
+        h.api.selectedID.value = selected.id
+        assert.deepEqual(
+          Array.from(h.api.sourceIssues.value),
+          hasGap
+            ? ['source_lookup_failed']
+            : status === 'succeeded'
+              ? ['source_scope_unresolved']
+              : [],
+        )
+        assert.equal(h.api.sourcePending.value, expectedPending)
+        h.stop()
+      }
+    }
+  }
+})
+
 test('a settings save completed after tenant change cannot emit saved or close', async () => {
   const pending = deferred<unknown>()
   const props = vue.reactive({ visible: false })
@@ -215,6 +340,25 @@ test('a non-first machine cause can be confirmed without recording a correction'
   h.stop()
 })
 
+test('an explicit manual cause addition starts as a correction without inventing a machine candidate', () => {
+  const h = setup(
+    'ReviewForm.vue',
+    vue.reactive({
+      target: 'cause',
+      analysisID: 'v2',
+      initialVerdict: 'unresolved',
+      initialAction: 'corrected',
+      machineCauses: [],
+      disabled: false,
+      busy: false,
+    }),
+  )
+  h.api.draft.reason = 'A human identifies a missing source linkage'
+  h.api.submit()
+  assert.equal((h.events[0][1] as any).action, 'corrected')
+  h.stop()
+})
+
 test('historical post-hoc materials follow explicit report references rather than the run archive', async () => {
   const evidence = [
     { id: 'original', post_hoc: false, sent_to_model: true },
@@ -266,6 +410,7 @@ test('historical post-hoc materials follow explicit report references rather tha
       (item: any) => item.id,
     )
   assert.deepEqual(ids('postEvidence'), ['v1-support', 'v1-counter'])
+  assert.equal(h.api.sourceEvidenceNotice.value, 'postNotice')
   assert.deepEqual(ids('originalEvidence'), ['original'])
   assert.deepEqual(ids('candidateEvidence'), ['candidate'])
   h.api.selectedID.value = 'v2'

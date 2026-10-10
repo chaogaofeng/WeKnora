@@ -17,7 +17,12 @@ func decodeAnalysisReport(content string) (Report, error) {
 	}
 	decoder := json.NewDecoder(strings.NewReader(content[start:]))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&report); err != nil {
+	// Ignore server-owned audit regardless of its model-supplied shape.
+	wire := struct {
+		*Report
+		SourceAudit json.RawMessage `json:"source_audit"`
+	}{Report: &report}
+	if err := decoder.Decode(&wire); err != nil {
 		return report, fmt.Errorf("invalid analysis JSON: %w", err)
 	}
 	end := start + int(decoder.InputOffset())

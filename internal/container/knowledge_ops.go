@@ -25,7 +25,7 @@ func registerKnowledgeOps(c *dig.Container) {
 				return nil, knowledgeops.ErrInvalid
 			}
 			return models.GetChatModel(ctx, id)
-		}, adapter.Sources), adapter.Check)
+		}, adapter.Sources, 16000), adapter.Check)
 		svc.SetExecutionContext(adapter.ExecutionContext)
 		return svc
 	}))

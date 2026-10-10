@@ -84,7 +84,12 @@
 </template>
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
-import type { OpsCause, ReviewTarget, ReviewInput } from '@/api/knowledge-ops'
+import type {
+  OpsCause,
+  ReviewAction,
+  ReviewTarget,
+  ReviewInput,
+} from '@/api/knowledge-ops'
 import {
   createReviewDrafts,
   reviewPayload,
@@ -98,6 +103,7 @@ const props = defineProps<{
   analysisID: string
   initialVerdict: string
   initialCategory?: string
+  initialAction?: ReviewAction
   machineCauses?: OpsCause[]
   disabled: boolean
   busy: boolean
@@ -154,9 +160,10 @@ watch(
   () => {
     selectedCandidate.value = '0'
     draft.action =
-      props.target === 'cause' && !props.machineCauses?.length
+      props.initialAction ||
+      (props.target === 'cause' && !props.machineCauses?.length
         ? 'needs_more_evidence'
-        : 'confirmed'
+        : 'confirmed')
     draft.reason = ''
     draft.verdict = props.initialVerdict
     draft.cause_category = props.initialCategory || 'unknown'

@@ -2,7 +2,7 @@ package knowledgeops
 
 import (
 	"context"
-	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -134,8 +134,17 @@ func (a *RuntimeAdapter) kb(ctx context.Context, run Run, id string) (*types.Kno
 func (a *RuntimeAdapter) Sources(ctx context.Context, run Run, evidence []Evidence) ([]Evidence, error) {
 	out := []Evidence{}
 	seen := map[string]bool{}
-	budget := 16000
-	incomplete := false
+	budget := sourceCharLimit
+	issues := []string{}
+	addIssue := func(code string) {
+		if !slices.Contains(issues, code) {
+			issues = append(issues, code)
+		}
+	}
+	sourceError := func(code string) error {
+		addIssue(code)
+		return &SourceReadError{Issues: issues, CharLimit: sourceCharLimit}
+	}
 	for _, e := range evidence {
 		if !e.SentToModel || e.PostHoc || e.PageID == "" || seen[e.PageID] {
 			continue
@@ -143,29 +152,33 @@ func (a *RuntimeAdapter) Sources(ctx context.Context, run Run, evidence []Eviden
 		seen[e.PageID] = true
 		kb, err := a.kb(ctx, run, e.KBID)
 		if err != nil {
-			return out, err
+			return out, sourceError("source_access_denied")
 		}
 		var page types.WikiPage
 		if err = a.DB.WithContext(ctx).First(&page, "id = ? AND knowledge_base_id = ? AND tenant_id = ? AND status = ?", e.PageID, kb.ID, kb.TenantID, "published").Error; err != nil {
-			return out, err
+			return out, sourceError("source_lookup_failed")
 		}
 		if e.Version != strconv.Itoa(page.Version) {
-			incomplete = true
+			addIssue("source_page_version_changed")
 			continue
 		}
 		ids := page.SourceKnowledgeIDs()
 		if len(ids) == 0 {
-			incomplete = true
+			addIssue("source_linkage_missing")
 			continue
 		}
+		allRefsChecked := true
 		if len(ids) > 8 {
+			allRefsChecked = false
 			ids = ids[:8]
-			incomplete = true
+			addIssue("source_document_limit")
 		}
+		foundRefs := map[string]bool{}
 		for _, id := range ids {
 			var doc types.Knowledge
 			if err = a.DB.WithContext(ctx).First(&doc, "id = ? AND knowledge_base_id = ? AND tenant_id = ?", id, kb.ID, kb.TenantID).Error; err != nil {
-				incomplete = true
+				allRefsChecked = false
+				addIssue("source_document_lookup_failed")
 				continue
 			}
 			var chunks []types.Chunk
@@ -173,19 +186,21 @@ func (a *RuntimeAdapter) Sources(ctx context.Context, run Run, evidence []Eviden
 			if len(page.ChunkRefs) > 0 {
 				query = query.Where("id IN ?", []string(page.ChunkRefs))
 			} else {
-				incomplete = true
+				addIssue("source_chunk_refs_missing")
 			}
 			if err = query.Order("chunk_index,id").Limit(9).Find(&chunks).Error; err != nil {
-				return out, err
+				return out, sourceError("source_lookup_failed")
 			}
 			if len(chunks) == 0 {
-				incomplete = true
+				addIssue("source_chunks_missing")
 			}
 			if len(chunks) > 8 {
+				allRefsChecked = false
 				chunks = chunks[:8]
-				incomplete = true
+				addIssue("source_chunk_limit")
 			}
 			for _, c := range chunks {
+				foundRefs[c.ID] = true
 				if seen[c.ID] {
 					continue
 				}
@@ -195,19 +210,30 @@ func (a *RuntimeAdapter) Sources(ctx context.Context, run Run, evidence []Eviden
 				if len(body) > budget {
 					body = body[:budget]
 					truncated = true
-					incomplete = true
+					addIssue("source_char_budget_exhausted")
 				}
 				if len(body) == 0 {
-					incomplete = true
+					if !truncated {
+						addIssue("source_chunks_missing")
+					}
 					continue
 				}
 				budget -= len(body)
 				out = append(out, Evidence{Kind: "source_document", KBID: kb.ID, KnowledgeID: id, ChunkID: c.ID, Title: doc.Title, Version: strconv.Itoa(c.ContentRevision), Content: string(body), PostHoc: true, Truncated: truncated})
 			}
 		}
+		// Limits and lookup failures leave unvisited references unknown. Only a
+		// complete scan of linked sources can establish that a reference is missing.
+		if allRefsChecked {
+			for _, ref := range page.ChunkRefs {
+				if !foundRefs[ref] {
+					addIssue("source_chunks_missing")
+				}
+			}
+		}
 	}
-	if incomplete {
-		return out, fmt.Errorf("source linkage, version or bounded coverage is unresolved")
+	if len(issues) > 0 {
+		return out, &SourceReadError{Issues: issues, CharLimit: sourceCharLimit}
 	}
 	return out, nil
 }

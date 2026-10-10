@@ -1,6 +1,7 @@
 package knowledgeops
 
 import (
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -47,8 +48,11 @@ func (v *Coverage) observe(status string) {
 func queueRoutes(d Detail) []string {
 	a := d.Run.Analysis
 	result := []string{}
-	if a != nil && reviewState(d) != "reviewed" && a.Route != "auto_record" {
+	if a != nil && humanReviewState(d) != "reviewed" && a.Route != "auto_record" {
 		result = append(result, a.Route)
+	}
+	if sourceFollowupPending(d.Run) && !slices.Contains(result, "needs_evidence") {
+		result = append(result, "needs_evidence")
 	}
 	// Technical failures stay actionable even after a business conclusion is recorded.
 	if (a != nil && a.Status == "failed") || d.Run.Status == "failed" || d.Run.Status == "cancelled" {
@@ -134,7 +138,7 @@ func (v *WorkbenchStats) observe(d Detail) {
 	}
 	if a.Route == "quality_sample" {
 		v.SampleTotal++
-		if reviewState(d) == "reviewed" {
+		if humanReviewState(d) == "reviewed" {
 			v.SampleReviewed++
 		}
 		for _, r := range d.Reviews {

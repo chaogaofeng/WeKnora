@@ -283,6 +283,7 @@ func (s *Service) loadDetail(ctx context.Context, tenant uint64, id string, full
 	}
 	if len(d.Analyses) > 0 {
 		d.Run.Analysis = &d.Analyses[0]
+		d.Run.SourceFollowupPending = sourceFollowupPending(d.Run)
 	}
 	var pending int64
 	if err = s.repo.db.WithContext(ctx).Model(&Task{}).Where("tenant_id = ? AND run_id = ? AND status IN ?", tenant, id, []string{"pending", "running"}).Count(&pending).Error; err != nil {
@@ -324,10 +325,21 @@ func (s *Service) RunOnce(ctx context.Context) error {
 	if err == nil && s.analyzer == nil {
 		err = fmt.Errorf("analysis service unavailable")
 	}
+	var sourceAudit *SourceAudit
 	if err == nil && s.analyzer.sources != nil {
 		sourceCtx, cancel := context.WithTimeout(execCtx, 15*time.Second)
 		supplement, sourceErr := s.analyzer.sources(sourceCtx, run, evidence)
 		cancel()
+		sourceAudit = sourceAuditForAttempt(sourceErr)
+		if sourceAudit.CharLimit == 0 {
+			sourceAudit.CharLimit = s.analyzer.sourceCharLimit
+		}
+		for _, gap := range run.Gaps {
+			if gap == "wiki_linked_summary_versions_unknown" || gap == "source_version_unknown" {
+				sourceAudit.Issues = append(sourceAudit.Issues, "source_linked_versions_unknown")
+				break
+			}
+		}
 		if sourceErr != nil {
 			run.Gaps = append(run.Gaps, "source_lookup_incomplete")
 		}
@@ -345,6 +357,8 @@ func (s *Service) RunOnce(ctx context.Context) error {
 				break
 			}
 			evidence = append(evidence, e)
+			sourceAudit.EvidenceIDs = append(sourceAudit.EvidenceIDs, e.ID)
+			sourceAudit.Chars += len([]rune(e.Content))
 		}
 	}
 	if err == nil {
@@ -363,6 +377,7 @@ func (s *Service) RunOnce(ctx context.Context) error {
 		}
 		logger.Warnf(ctx, "[KnowledgeOps] analysis failed run=%s: %v", run.ID, err)
 	}
+	a.Report.SourceAudit = sourceAudit
 	a.ModelID = settings.ModelID
 	return s.repo.SaveAnalysis(ctx, *task, a)
 }

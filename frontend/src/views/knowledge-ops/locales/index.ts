@@ -1,5 +1,104 @@
 import { useI18n } from 'vue-i18n'
 const en: Record<string, string> = {
+  auditedSourceNotice:
+    'These materials were captured for this diagnosis attempt and explicitly linked by the server. A failed diagnosis does not prove the model consumed them. They cannot establish support available at answer time.',
+  sourceKBAndDocument: 'KB / Document',
+  sourcePageAndChunk: 'Page / Fragment',
+  sourceToolAndRound: 'Tool call / Round',
+  evidenceKind_wiki: 'Wiki page',
+  evidenceKind_chunk: 'Document fragment',
+  evidenceKind_source_document: 'Source document',
+  evidenceKind_source_dependency: 'Linked source',
+  evidenceKind_web: 'Web page',
+  evidenceKind_conversation: 'Conversation context',
+  diagnosisSummaryTitle: 'Diagnosis summary',
+  diagnosisInProgress:
+    'A diagnosis is queued or running. Refresh to check its result.',
+  claimAssessment: 'Answer claims and supporting evidence',
+  claimCount: 'claims',
+  originalAnswer: 'Original answer · expand to read',
+  noClaims: 'No claim assessment is available for this diagnosis.',
+  sourceReviewTitle: 'Source verification and outstanding evidence',
+  sourceFollowupNotice:
+    'Source verification is still open. Answer support can be confirmed separately.',
+  sourceBudget: 'Source lookup content / limit',
+  characters: 'characters',
+  materials: 'materials',
+  legacySourceAudit:
+    'This report did not save a source lookup audit. Its complete lookup scope and material-to-version links cannot be reconstructed.',
+  analysisSourceEvidence: 'Source materials captured for this diagnosis',
+  noBoundSourceEvidence:
+    'No source comparison materials are explicitly linked to this report.',
+  diagnosisLimitations: 'Limitations recorded in the report',
+  humanDecision: 'Human review',
+  reviewBoundVersion: 'Reviewing diagnosis',
+  answerReviewKeepsSourceOpen:
+    'Confirming the answer records its support assessment; outstanding source verification stays in the evidence queue.',
+  noCauseReviewNeeded:
+    'No root cause candidate was reported; a root cause review is not required.',
+  noCauseAfterFailure:
+    'The diagnosis did not complete and has no root cause conclusion.',
+  addCauseCorrection: 'Add a human root cause assessment',
+  noReviewHistory: 'No human review has been recorded.',
+  originalEvidenceNotice:
+    'Saved source content available to the answer model. Follow a claim reference to locate the corresponding item.',
+  candidateMetadataNotice:
+    'Candidates retain metadata only. Answer-time content from the same source, if available, is listed separately above.',
+  unboundEvidence: 'Source lookup archive · version link unavailable',
+  unboundEvidenceNotice:
+    'These materials belong to this run, but their diagnosis version was not recorded. They may span several attempts and do not establish the selected report’s inspection scope.',
+  analysisTime: 'Diagnosed at',
+  analysisRecord: 'Diagnosis record',
+  originalReportNotice:
+    'Original report text is preserved for audit. Apply the source limitations and final assessment shown above when reviewing it.',
+  runID: 'Run ID',
+  finishedAt: 'Answer completed at',
+  originalCaptureGaps: 'Original capture gap record',
+  excerptOnly: 'Source excerpt',
+  evidenceBodyUnavailable: 'The evidence body is unavailable.',
+  source_document: 'Source document',
+  source_scope_unresolved: 'Source comparison scope is unresolved',
+  source_scope_unresolved_action:
+    'Check the source links, captured versions and lookup limits before retrying diagnosis.',
+  source_version_unknown_action:
+    'Verify the answer-time source version. Current content alone cannot establish that historical version.',
+  wiki_linked_summary_versions_unknown_action:
+    'Verify the versions of the linked summaries included with the Wiki input; the saved page body remains available for answer support review.',
+  source_lookup_incomplete_action:
+    'Inspect lookup scope and missing source materials, then retry when the gaps can be resolved.',
+  source_lookup_failed: 'Source lookup could not complete',
+  source_lookup_failed_action:
+    'Check source availability and lookup service errors before retrying.',
+  source_access_denied: 'Source access unavailable',
+  source_access_denied_action:
+    'Verify access to the session and linked sources before retrying.',
+  source_page_version_changed: 'Wiki page version changed',
+  source_page_version_changed_action:
+    'Compare against the captured Wiki version; a newer page cannot replace answer-time evidence.',
+  source_linkage_missing: 'Source linkage missing',
+  source_linkage_missing_action:
+    'Identify which original document supports this Wiki page and verify the existing linkage.',
+  source_document_limit: 'Source document limit reached',
+  source_document_limit_action:
+    'Check uncovered source documents; this diagnosis covers only the bounded subset.',
+  source_document_lookup_failed: 'Source document unavailable',
+  source_document_lookup_failed_action:
+    'Check document availability and access, then retry diagnosis.',
+  source_chunk_refs_missing: 'Source fragment linkage missing',
+  source_chunk_refs_missing_action:
+    'Verify the Wiki-to-fragment mapping; a document prefix does not establish complete source comparison.',
+  source_chunks_missing: 'No source fragments available',
+  source_chunks_missing_action:
+    'Check whether linked fragments still exist and are enabled.',
+  source_chunk_limit: 'Source fragment limit reached',
+  source_chunk_limit_action:
+    'Verify uncovered fragments before treating the source comparison as complete.',
+  source_char_budget_exhausted: 'Source lookup character budget reached',
+  source_char_budget_exhausted_action:
+    'Some source content was omitted or truncated. Review the lookup limit and coverage before retrying; it is separate from the diagnosis input budget.',
+  source_linked_versions_unknown: 'Linked source versions are unknown',
+  source_linked_versions_unknown_action:
+    'Verify linked source versions; current-source matches cannot establish historical consistency.',
   captureCoverage: 'Content capture / source versions',
   content_status: 'Content capture',
   provenance_status: 'Source traceability',
@@ -14,21 +113,28 @@ const en: Record<string, string> = {
   contentGaps: 'Content capture gap',
   provenanceGaps: 'Source traceability gap',
   provenanceStats: 'Source traceability at capture time',
-  contentCoverageNotice: 'Completeness describes preservation of the knowledge content visible to the answering model. Missing source versions are tracked separately and do not by themselves invalidate answer support.',
-  provenanceNotice: 'Recorded source versions establish traceability, not source consistency or knowledge correctness. Version gaps still require evidence follow-up.',
-  supportScopeNotice: 'Support is assessed against the captured answer-time content. Source versions and validity are checked separately; this is not a business accuracy score.',
+  contentCoverageNotice:
+    'Completeness describes preservation of the knowledge content visible to the answering model. Missing source versions are tracked separately and do not by themselves invalidate answer support.',
+  provenanceNotice:
+    'Recorded source versions establish traceability, not source consistency or knowledge correctness. Version gaps still require evidence follow-up.',
+  supportScopeNotice:
+    'Support is assessed against the captured answer-time content. Source versions and validity are checked separately; this is not a business accuracy score.',
   capturedSupport: 'Based on captured content',
   modelVerdict: 'Original model assessment',
   policyVerdict: 'Final assessment',
-  legacyModelVerdict: 'This older diagnosis did not save the original model assessment; it cannot be inferred from the final result.',
+  legacyModelVerdict:
+    'This older diagnosis did not save the original model assessment; it cannot be inferred from the final result.',
   adjustmentReason: 'System adjustment reason',
   systemAdjusted: 'Adjusted by evidence policy',
   source_version_unknown: 'Source revision not captured',
   wiki_linked_summary_versions_unknown: 'Linked Wiki summary revisions unknown',
   source_lookup_incomplete: 'Source comparison materials incomplete',
-  capture_context_incomplete: 'Answer-time content was not fully captured; overall support is limited.',
-  capture_context_missing: 'Answer-time source content is missing; overall support cannot be verified.',
-  capture_absence_unverifiable: 'Incomplete capture cannot establish absence of support; marked unverifiable.',
+  capture_context_incomplete:
+    'Answer-time content was not fully captured; overall support is limited.',
+  capture_context_missing:
+    'Answer-time source content is missing; overall support cannot be verified.',
+  capture_absence_unverifiable:
+    'Incomplete capture cannot establish absence of support; marked unverifiable.',
 
   reviewReasonHint:
     'Record the evidence checked, decision rationale or missing materials…',
@@ -82,7 +188,7 @@ const en: Record<string, string> = {
   reviewSearch: 'Search question / review reason',
   reviewerID: 'Reviewer ID',
   reviewNow: 'Go to review',
-  diagnosticDetails: 'Full diagnosis, claims and analysis metadata',
+  diagnosticDetails: 'Diagnosis record and run information',
   runDetails: 'Run metadata and capture gaps',
   currentDecision: 'Machine diagnosis · read before reviewing',
   noCause: 'No root cause candidate recorded',
@@ -200,7 +306,7 @@ const en: Record<string, string> = {
   reviewQuestions: 'Questions requiring adjudication',
   none: 'None recorded',
   originalEvidence: 'Source excerpts provided to the model at answer time',
-  candidateEvidence: 'Captured candidates · not sent to the model',
+  candidateEvidence: 'Retrieval candidates · metadata only',
   postEvidence: 'Post hoc materials cited by the selected report',
   postNotice:
     'Only materials explicitly cited by this report are listed, not the complete input to this analysis version. Post hoc materials cannot prove that the original answer had evidence at generation time.',
@@ -299,17 +405,117 @@ const en: Record<string, string> = {
   duration: 'Duration (ms)',
   stratum: 'Sampling stratum',
   settingsError: 'Unable to load settings or model choices',
-  invalid_analysis_json: 'The diagnosis model returned an invalid JSON response. Retry or check the model output.',
-  invalid_analysis_report: 'The diagnosis report failed validation of required fields or conclusions.',
-  invalid_analysis_evidence: 'The diagnosis report contains missing or invalid evidence references.',
-  analysis_input_budget_exceeded: 'The diagnosis input exceeds the configured budget. Review the evidence budget in settings.',
-  analysis_model_unavailable: 'The diagnosis model could not be loaded. Check model settings and access.',
-  analysis_model_failed: 'The diagnosis model call failed. Check the model service and backend logs.',
-  analysis_timeout: 'The diagnosis timed out. Check service response time and the configured timeout.',
-  analysis_access_denied: 'The session or evidence is unavailable, or access has been revoked.',
-  analysis_failed: 'Diagnosis failed. Use the run ID to locate the detailed error in backend logs.',
+  invalid_analysis_json:
+    'The diagnosis model returned an invalid JSON response. Retry or check the model output.',
+  invalid_analysis_report:
+    'The diagnosis report failed validation of required fields or conclusions.',
+  invalid_analysis_evidence:
+    'The diagnosis report contains missing or invalid evidence references.',
+  analysis_input_budget_exceeded:
+    'The diagnosis input exceeds the configured budget. Review the evidence budget in settings.',
+  analysis_model_unavailable:
+    'The diagnosis model could not be loaded. Check model settings and access.',
+  analysis_model_failed:
+    'The diagnosis model call failed. Check the model service and backend logs.',
+  analysis_timeout:
+    'The diagnosis timed out. Check service response time and the configured timeout.',
+  analysis_access_denied:
+    'The session or evidence is unavailable, or access has been revoked.',
+  analysis_failed:
+    'Diagnosis failed. Use the run ID to locate the detailed error in backend logs.',
 }
 const zh: Record<string, string> = {
+  auditedSourceNotice:
+    '这些材料由服务端明确关联到本次诊断补查；诊断失败时不代表模型已处理这些材料，事后材料也不能反向证明回答生成时已有依据。',
+  sourceKBAndDocument: '知识库 / 文档',
+  sourcePageAndChunk: '页面 / 片段',
+  sourceToolAndRound: '工具调用 / 轮次',
+  evidenceKind_wiki: 'Wiki 页面',
+  evidenceKind_chunk: '文档片段',
+  evidenceKind_source_document: '来源文档',
+  evidenceKind_source_dependency: '关联来源',
+  evidenceKind_web: '网页',
+  evidenceKind_conversation: '对话上下文',
+  diagnosisSummaryTitle: '诊断摘要',
+  diagnosisInProgress: '诊断正在排队或执行，刷新可查看最新结果。',
+  claimAssessment: '回答论断与判定依据',
+  claimCount: '项论断',
+  originalAnswer: '原回答 · 展开全文',
+  noClaims: '本版诊断尚无逐条论断判定。',
+  sourceReviewTitle: '来源核验与待补证事项',
+  sourceFollowupNotice: '来源核验尚未完成，回答支持性可独立确认。',
+  sourceBudget: '本次补查正文 / 上限',
+  characters: '字符',
+  materials: '条材料',
+  legacySourceAudit:
+    '本版报告未记录补查审计，无法完整还原本次补查范围及材料与诊断版本的关联。',
+  analysisSourceEvidence: '本版诊断的补查材料',
+  noBoundSourceEvidence: '暂无与本版报告明确关联的来源对照材料。',
+  diagnosisLimitations: '报告记录的限制与未知项',
+  humanDecision: '人工复核',
+  reviewBoundVersion: '本次复核绑定诊断',
+  answerReviewKeepsSourceOpen:
+    '确认回答仅记录支持性结论；来源未决事项仍保留在待补证队列。',
+  noCauseReviewNeeded: '本版未发现需要复核的根因候选，无需填写根因复核。',
+  noCauseAfterFailure: '诊断未完成，尚未形成根因结论。',
+  addCauseCorrection: '补充人工根因判断',
+  noReviewHistory: '暂无人工复核记录。',
+  originalEvidenceNotice:
+    '回答生成时模型可见的已保存来源正文；点击论断中的引用可直接定位对应材料。',
+  candidateMetadataNotice:
+    '候选记录仅保留元数据，不保存正文；同一来源后续送入模型的内容另存于“回答时证据”中。',
+  unboundEvidence: '补查材料存档 · 版本关联未记录',
+  unboundEvidenceNotice:
+    '以下材料属于本次问答的补查存档，但未记录诊断版本关联，可能来自多次诊断；不能据此认定所选报告检查过全部材料。',
+  analysisTime: '诊断时间',
+  analysisRecord: '诊断记录',
+  originalReportNotice:
+    '以下范围和事实保留原报告表述，复核时须结合上方来源限制与最终判定。',
+  runID: '运行 ID',
+  finishedAt: '回答完成时间',
+  originalCaptureGaps: '原始采集缺口记录',
+  excerptOnly: '来源节选',
+  evidenceBodyUnavailable: '该证据正文不可用。',
+  source_document: '来源文档',
+  source_scope_unresolved: '来源对照范围仍未明确',
+  source_scope_unresolved_action:
+    '核对来源关联、回答时版本及补查限制，具备对照条件后重新诊断。',
+  source_version_unknown_action:
+    '核对回答时来源版本；当前正文不能单独证明当时版本。',
+  wiki_linked_summary_versions_unknown_action:
+    '核对 Wiki 输入中关联摘要的版本；已保存的页面正文仍可用于回答支持性复核。',
+  source_lookup_incomplete_action:
+    '检查来源补查范围和缺失材料，补齐可核验条件后重新诊断。',
+  source_lookup_failed: '来源补查未能完成',
+  source_lookup_failed_action: '检查来源可用性及补查服务异常，恢复后重新诊断。',
+  source_access_denied: '来源访问不可用',
+  source_access_denied_action:
+    '核对会话与关联来源的访问权限，恢复可用后重新诊断。',
+  source_page_version_changed: 'Wiki 页面版本已变化',
+  source_page_version_changed_action:
+    '应对照回答时的 Wiki 版本，不能以当前新版本替代历史证据。',
+  source_linkage_missing: '来源关联缺失',
+  source_linkage_missing_action:
+    '确认该 Wiki 页对应的原始文档，并核对现有来源关联。',
+  source_document_limit: '补查文档数量达到上限',
+  source_document_limit_action:
+    '检查尚未覆盖的来源文档；本次诊断仅覆盖有界补查范围。',
+  source_document_lookup_failed: '来源文档读取失败',
+  source_document_lookup_failed_action:
+    '检查来源文档是否可用及访问权限，恢复后重新诊断。',
+  source_chunk_refs_missing: '原文片段关联缺失',
+  source_chunk_refs_missing_action:
+    '核对 Wiki 与原文片段的对应关系；文档头部片段不能代表完整来源对照。',
+  source_chunks_missing: '未取得来源片段',
+  source_chunks_missing_action: '核对关联原文片段是否仍存在且可用。',
+  source_chunk_limit: '补查片段数量达到上限',
+  source_chunk_limit_action: '核对尚未覆盖的原文片段，再判断来源对照是否完整。',
+  source_char_budget_exhausted: '来源补查字符预算已用尽',
+  source_char_budget_exhausted_action:
+    '部分来源正文未纳入或被截断。需检查补查上限与覆盖范围后再重试；此上限独立于诊断输入预算。',
+  source_linked_versions_unknown: '关联来源版本尚未明确',
+  source_linked_versions_unknown_action:
+    '核对关联来源版本；当前来源相符不能证明历史版本一致。',
   captureCoverage: '正文采集 / 来源版本',
   content_status: '正文采集完整性',
   provenance_status: '来源可追溯性',
@@ -324,9 +530,12 @@ const zh: Record<string, string> = {
   contentGaps: '正文采集缺口',
   provenanceGaps: '来源追溯缺口',
   provenanceStats: '来源可追溯性 · 采集时',
-  contentCoverageNotice: '完整性描述回答时模型可见知识正文的保存情况；来源版本缺失单独标记，不因此否定已有正文对回答的支持。',
-  provenanceNotice: '来源版本已记录表示可追溯，不等于来源一致或知识正确；版本缺口仍需补证。',
-  supportScopeNotice: '支持性针对已采集的回答时正文；来源版本与有效性另行核验，不代表业务正确率。',
+  contentCoverageNotice:
+    '完整性描述回答时模型可见知识正文的保存情况；来源版本缺失单独标记，不因此否定已有正文对回答的支持。',
+  provenanceNotice:
+    '来源版本已记录表示可追溯，不等于来源一致或知识正确；版本缺口仍需补证。',
+  supportScopeNotice:
+    '支持性针对已采集的回答时正文；来源版本与有效性另行核验，不代表业务正确率。',
   capturedSupport: '基于已采集正文',
   modelVerdict: '模型原始判定',
   policyVerdict: '最终判定',
@@ -338,7 +547,8 @@ const zh: Record<string, string> = {
   source_lookup_incomplete: '来源对照材料不完整',
   capture_context_incomplete: '回答时正文或上下文未完整采集，整体支持性受限。',
   capture_context_missing: '缺少回答时来源正文，整体支持性不可核验。',
-  capture_absence_unverifiable: '采集不完整，不能据此认定没有支持，已调整为不可核验。',
+  capture_absence_unverifiable:
+    '采集不完整，不能据此认定没有支持，已调整为不可核验。',
 
   reviewReasonHint: '记录核对的证据、判断依据或待补材料…',
   captureSettings: '采集与诊断',
@@ -390,7 +600,7 @@ const zh: Record<string, string> = {
   reviewSearch: '搜索问题 / 复核理由',
   reviewerID: '复核人 ID',
   reviewNow: '进入人工复核',
-  diagnosticDetails: '完整诊断、论断与分析元数据',
+  diagnosticDetails: '诊断记录与运行信息',
   runDetails: '运行信息与采集缺口',
   currentDecision: '机器诊断 · 先诊断后复核',
   noCause: '未记录根因候选',
@@ -501,7 +711,7 @@ const zh: Record<string, string> = {
   reviewQuestions: '待裁决问题',
   none: '未记录',
   originalEvidence: '当时提供给模型的来源片段',
-  candidateEvidence: '采集候选材料 · 未送入模型',
+  candidateEvidence: '检索候选记录 · 仅元数据',
   postEvidence: '所选报告引用的事后材料',
   postNotice:
     '仅列出本报告明确引用的材料，不表示该版诊断的全部输入。事后材料不能反向证明回答生成时已有依据。',
@@ -597,7 +807,8 @@ const zh: Record<string, string> = {
   settingsError: '设置或模型选项加载失败',
   invalid_analysis_json: '诊断模型返回的 JSON 格式无效，请重试或检查模型输出。',
   invalid_analysis_report: '诊断报告的必要字段或结论未通过校验。',
-  invalid_analysis_evidence: '诊断报告缺少必要证据，或引用了不存在、不允许使用的证据。',
+  invalid_analysis_evidence:
+    '诊断报告缺少必要证据，或引用了不存在、不允许使用的证据。',
   analysis_input_budget_exceeded: '诊断输入超过预算，请检查设置中的证据预算。',
   analysis_model_unavailable: '无法加载诊断模型，请检查模型配置及访问权限。',
   analysis_model_failed: '诊断模型调用失败，请检查模型服务及后端日志。',
