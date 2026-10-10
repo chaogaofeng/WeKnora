@@ -281,6 +281,10 @@ func (s *Service) loadDetail(ctx context.Context, tenant uint64, id string, full
 	if err != nil {
 		return Detail{}, err
 	}
+	for i := range d.Analyses {
+		assessment := assessCauses(d.Analyses[i].Report)
+		d.Analyses[i].CauseAssessment = &assessment
+	}
 	if len(d.Analyses) > 0 {
 		d.Run.Analysis = &d.Analyses[0]
 		d.Run.SourceFollowupPending = sourceFollowupPending(d.Run)

@@ -97,7 +97,7 @@ func TestWorkbenchTechnicalPendingAndHumanSupplementRemainVisible(t *testing.T) 
 
 func TestIssueGroupingRequiresKnownVersionsForAllUsedSources(t *testing.T) {
 	run := Run{TenantID: 1, ActorID: "u"}
-	report := Report{Scope: "same product", SourceCheck: "consistent", Causes: []Cause{{Category: "generation", Summary: "missing condition"}}}
+	report := Report{Claims: []Claim{{Verdict: "partial"}}, Scope: "same product", SourceCheck: "consistent", Causes: []Cause{{Category: "generation", Summary: "missing condition"}}}
 	known := Evidence{KBID: "kb", KnowledgeID: "doc", Version: "v1", Hash: "abc", SentToModel: true}
 	require.NotEmpty(t, groupKey(run, report, []Evidence{known}))
 	unknown := Evidence{KBID: "kb", KnowledgeID: "other", Version: "unknown", Hash: "def", SentToModel: true}

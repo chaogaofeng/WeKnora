@@ -14,7 +14,7 @@ func TestUnresolvedIssuesStaySeparateInGroupView(t *testing.T) {
 	for _, pending := range []string{"review_question", "unresolved_cause"} {
 		t.Run(pending, func(t *testing.T) {
 			_, repo, engine := workbenchFixture(t)
-			report := Report{Risk: "low", Verdict: "partial", Scope: "same product", SourceCheck: "consistent", Causes: []Cause{{Category: "generation", Summary: "missing condition", Status: "suspected"}}}
+			report := Report{Risk: "low", Verdict: "partial", Claims: []Claim{{Verdict: "partial"}}, Scope: "same product", SourceCheck: "consistent", Causes: []Cause{{Category: "generation", Summary: "missing condition", Status: "suspected"}}}
 			evidence := []Evidence{{KBID: "kb", KnowledgeID: "doc", Version: "v1", Hash: "abc", SentToModel: true}}
 			run := Run{TenantID: 1, ActorID: "u"}
 			require.NotEmpty(t, groupKey(run, report, evidence), "resolved scope can group suspected causes for review")

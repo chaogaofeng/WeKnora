@@ -88,61 +88,25 @@
               <span class="metric-marker" :class="item.key" />
             </div>
             <strong :class="item.key">{{ item.value.toLocaleString() }}</strong>
-            <small v-if="item.key !== 'total'">
-              {{
-                overview.total
-                  ? ((item.value / overview.total) * 100).toFixed(1)
-                  : '0.0'
-              }}%
-            </small>
-            <small v-else>{{ k('scope') }}</small>
-            <div class="metric-track" aria-hidden="true">
-              <i
-                :class="item.key"
-                :style="{
-                  width: `${overview.total ? (item.value / overview.total) * 100 : 0}%`,
-                }"
-              />
+            <div class="metric-footnote">
+              <small>{{ k(item.note) }}</small>
+              <t-button
+                v-if="item.key === 'pending'"
+                class="pending-link"
+                variant="text"
+                theme="primary"
+                size="small"
+                @click="changeTab('queue')"
+                >{{ k('viewPending') }}</t-button
+              >
             </div>
           </article>
         </div>
-        <div class="distribution-grid">
-          <section
-            v-for="item in distributions"
-            :key="item.key"
-            class="panel"
-            :class="item.key"
-          >
-            <h2>{{ k(item.key) }}</h2>
-            <p v-if="!Object.keys(item.values).length" class="muted">
-              {{ k('none') }}
-            </p>
-            <div
-              v-for="(value, key) in item.values"
-              :key="key"
-              class="distribution"
-            >
-              <span class="distribution-label">
-                {{
-                  item.key === 'verdicts'
-                    ? labelVerdict(String(key))
-                    : label(String(key))
-                }}
-              </span>
-              <div class="bar" aria-hidden="true">
-                <i
-                  :class="String(key)"
-                  :style="{
-                    width: `${Object.values(item.values).reduce((sum, n) => sum + n, 0) ? (value / Object.values(item.values).reduce((sum, n) => sum + n, 0)) * 100 : 0}%`,
-                  }"
-                />
-              </div>
-              <strong>{{ value }}</strong>
-            </div>
-          </section>
-        </div>
-        <p class="scope-note">{{ k('supportDenominator') }}</p>
-        <OverviewInsights :stats="overview" />
+        <OverviewInsights
+          :stats="overview"
+          :cause-category="filters.cause_category"
+          @cause="filterCause"
+        />
         <div class="summary">
           <span>
             {{ k('pendingTasks') }}
@@ -185,6 +149,8 @@
       />
       <section
         v-if="tab !== 'queue'"
+        id="ops-run-list"
+        tabindex="-1"
         class="panel list-panel"
         :aria-busy="refreshing"
       >
@@ -242,7 +208,7 @@
   </main>
 </template>
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { nextTick, computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { RefreshIcon } from 'tdesign-icons-vue-next'
@@ -271,7 +237,7 @@ import QueuePanel from './QueuePanel.vue'
 import OverviewInsights from './OverviewInsights.vue'
 import SettingsDrawer from './SettingsDrawer.vue'
 import DetailDrawer from './DetailDrawer.vue'
-const { k, label, labelVerdict, date } = useOpsText()
+const { k, label, date } = useOpsText()
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
@@ -327,27 +293,30 @@ const draftFilters = reactive(blankFilters())
 const filters = ref<OpsFilters>({})
 let token = 0
 const metrics = computed(() => [
-  { key: 'total', label: 'total', value: overview.value?.total || 0 },
   {
-    key: 'complete',
-    label: 'content_complete',
-    value: overview.value?.content_coverage?.complete || 0,
+    key: 'total',
+    label: 'capturedRuns',
+    note: 'countRunsNotice',
+    value: overview.value?.total || 0,
   },
   {
-    key: 'partial',
-    label: 'content_partial',
-    value: overview.value?.content_coverage?.partial || 0,
+    key: 'succeeded',
+    label: 'completedDiagnosis',
+    note: 'latestDiagnosisNotice',
+    value: overview.value?.diagnosis_status?.succeeded || 0,
   },
   {
-    key: 'missing',
-    label: 'content_missing_unknown',
-    value: overview.value?.content_coverage?.missing || 0,
+    key: 'failed',
+    label: 'failedDiagnoses',
+    note: 'diagnosisFailureNotice',
+    value: overview.value?.diagnosis_status?.failed || 0,
   },
-])
-const distributions = computed(() => [
-  { key: 'diagnosisStates', values: overview.value?.diagnosis_status || {} },
-  { key: 'verdicts', values: overview.value?.by_verdict || {} },
-  { key: 'routing', values: overview.value?.by_route || {} },
+  {
+    key: 'pending',
+    label: 'pendingRuns',
+    note: 'deduplicatedPendingNotice',
+    value: overview.value?.pending_runs || 0,
+  },
 ])
 async function reload() {
   await loadData()
@@ -520,6 +489,20 @@ function filterQueue(value: string) {
   draftFilters.route = filters.value.route === value ? '' : value
   applyFilters()
 }
+async function filterCause(category: string) {
+  if (filters.value.cause_category && filters.value.cause_category !== category)
+    return
+  // Drill into the displayed scope, not unapplied edits in the filter form.
+  filters.value = { ...filters.value, cause_category: category }
+  Object.assign(draftFilters, blankFilters(), filters.value)
+  selectedGroup.value = ''
+  page.value = 1
+  await loadData(true)
+  await nextTick()
+  const list = document.getElementById('ops-run-list')
+  list?.scrollIntoView({ block: 'start' })
+  list?.focus({ preventScroll: true })
+}
 function closeRun() {
   const query = { ...route.query }
   delete query.run
@@ -678,91 +661,44 @@ h2 {
   font-weight: 600;
   color: var(--td-text-color-primary);
 }
-.metric strong.complete {
+.metric strong.succeeded {
   color: var(--td-success-color-6);
 }
-.metric strong.partial {
+.metric strong.pending {
   color: var(--td-warning-color-6);
 }
-.metric strong.missing {
-  color: var(--td-text-color-secondary);
+.metric strong.failed {
+  color: var(--td-error-color-6);
 }
 .metric small {
   font-size: var(--app-text-sm);
   color: var(--td-text-color-secondary);
 }
-.metric-track {
-  height: 3px;
-  border-radius: var(--app-radius-xs);
-  margin-top: var(--app-space-2);
-  background: var(--td-bg-color-secondarycontainer);
-  overflow: hidden;
+.metric-footnote {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--app-space-2);
+  min-height: 24px;
 }
-.metric-track i {
-  display: block;
-  height: 100%;
-  background: var(--td-text-color-primary);
+.pending-link {
+  flex-shrink: 0;
 }
-.metric-marker.complete,
-.metric-track .complete {
+.metric-marker.succeeded {
   background: var(--td-success-color);
 }
-.metric-marker.partial,
-.metric-track .partial {
+.metric-marker.pending {
   background: var(--td-warning-color);
 }
-.metric-marker.missing,
-.metric-track .missing {
-  background: var(--td-text-color-placeholder);
+.metric-marker.failed {
+  background: var(--td-error-color);
 }
 .panel {
   background: var(--td-bg-color-container);
   border: 1px solid var(--td-component-stroke);
   border-radius: var(--app-radius-xl);
   padding: var(--app-space-5);
-}
-.distribution-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--app-space-4);
-}
-.distribution {
-  display: grid;
-  grid-template-columns: minmax(88px, 1fr) 1fr 30px;
-  gap: var(--app-space-2);
-  align-items: center;
-  margin: var(--app-space-4) 0;
-  font-size: var(--app-text-md);
-}
-.distribution strong {
-  text-align: right;
-  font-weight: 600;
-}
-.bar {
-  height: 5px;
-  background: var(--td-bg-color-secondarycontainer);
-  border-radius: var(--app-radius-xs);
-  overflow: hidden;
-}
-.bar i {
-  display: block;
-  height: 100%;
-  background: var(--td-brand-color);
-}
-.bar .partial,
-.bar .human_review,
-.bar .needs_evidence,
-.bar .source_verification {
-  background: var(--td-warning-color);
-}
-.bar .failed,
-.bar .contradicted {
-  background: var(--td-error-color);
-}
-.bar .unverifiable,
-.bar .pending,
-.bar .technical_followup {
-  background: var(--td-text-color-placeholder);
 }
 .summary {
   display: flex;
@@ -868,9 +804,6 @@ button:focus-visible {
   .page-header {
     align-items: flex-start;
     flex-direction: column;
-  }
-  .distribution-grid {
-    grid-template-columns: 1fr;
   }
   .metrics,
   .queue-count-grid {

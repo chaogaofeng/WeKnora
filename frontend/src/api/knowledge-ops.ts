@@ -46,6 +46,10 @@ export interface OpsReport {
   scope: string
 }
 export interface OpsAnalysis {
+  cause_assessment?: {
+    candidates: OpsCause[]
+    unlinked: OpsCause[]
+  }
   id: string
   run_id: string
   version: number
@@ -170,6 +174,7 @@ export interface OpsOverview {
   source_checks: Record<string, number>
   causes: Record<string, number>
   queue_counts: Record<string, number>
+  pending_runs: number
   diagnosis_status: Record<string, number>
   sample_total: number
   sample_reviewed: number

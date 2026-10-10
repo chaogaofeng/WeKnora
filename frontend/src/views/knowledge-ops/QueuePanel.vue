@@ -70,16 +70,16 @@
           <p v-if="row.run.analysis?.error" class="failure">
             {{ label(row.run.analysis.error) }}
           </p>
-          <p
-            v-for="(cause, i) in row.run.analysis?.report.causes || []"
-            :key="i"
-          >
+          <p v-for="(cause, i) in row.candidates" :key="i">
             <strong>
               {{ label(cause.category) }} · {{ label(cause.status) }}
             </strong>
             — {{ cause.summary }}
           </p>
-          <p v-if="!row.run.analysis?.report.causes?.length">
+          <p v-if="row.unlinked.length" class="unlinked-cause-notice">
+            {{ k('unlinkedCauseShort') }}
+          </p>
+          <p v-if="!row.candidates.length && !row.unlinked.length">
             {{ row.run.analysis?.route_reason || k('noAnalysisHint') }}
           </p>
           <ul>
@@ -134,15 +134,23 @@ const emit = defineEmits<{
   toggle: []
 }>()
 const { k, label, labelVerdict, date } = useOpsText()
-const rows = computed(() =>
-  props.grouped
+const rows = computed(() => {
+  const items = props.grouped
     ? props.groups.map((g) => ({
         key: g.key,
         count: g.count,
         run: g.representative,
       }))
-    : props.runs.map((run) => ({ key: run.id, count: 1, run })),
-)
+    : props.runs.map((run) => ({ key: run.id, count: 1, run }))
+  return items.map((row) => ({
+    ...row,
+    candidates:
+      row.run.analysis?.cause_assessment?.candidates ??
+      row.run.analysis?.report.causes ??
+      [],
+    unlinked: row.run.analysis?.cause_assessment?.unlinked ?? [],
+  }))
+})
 </script>
 <style scoped>
 header,
@@ -181,6 +189,9 @@ header label {
   border-radius: var(--app-radius-md);
   color: var(--td-text-color-secondary);
   font-size: var(--app-text-md);
+}
+.unlinked-cause-notice {
+  color: var(--td-warning-color-6);
 }
 .queue-case {
   padding: var(--app-space-5);

@@ -111,25 +111,26 @@ type Report struct {
 	Scope             string   `json:"scope"`
 }
 type Analysis struct {
-	SamplePercent int       `json:"sample_percent"`
-	SampleStratum string    `json:"sample_stratum"`
-	InputTokens   int       `json:"input_tokens"`
-	OutputTokens  int       `json:"output_tokens"`
-	DurationMS    int64     `json:"duration_ms"`
-	ID            string    `json:"id" gorm:"primaryKey"`
-	TenantID      uint64    `json:"-"`
-	RunID         string    `json:"run_id"`
-	Version       int       `json:"version"`
-	Status        string    `json:"status"`
-	Report        Report    `json:"report" gorm:"serializer:json;type:text"`
-	Route         string    `json:"route"`
-	RouteReason   string    `json:"route_reason"`
-	PolicyVersion string    `json:"policy_version"`
-	ModelID       string    `json:"model_id"`
-	ModelName     string    `json:"model_name"`
-	GroupKey      string    `json:"group_key"`
-	Error         string    `json:"error,omitempty"`
-	CreatedAt     time.Time `json:"created_at"`
+	CauseAssessment *CauseAssessment `json:"cause_assessment,omitempty" gorm:"-"`
+	SamplePercent   int              `json:"sample_percent"`
+	SampleStratum   string           `json:"sample_stratum"`
+	InputTokens     int              `json:"input_tokens"`
+	OutputTokens    int              `json:"output_tokens"`
+	DurationMS      int64            `json:"duration_ms"`
+	ID              string           `json:"id" gorm:"primaryKey"`
+	TenantID        uint64           `json:"-"`
+	RunID           string           `json:"run_id"`
+	Version         int              `json:"version"`
+	Status          string           `json:"status"`
+	Report          Report           `json:"report" gorm:"serializer:json;type:text"`
+	Route           string           `json:"route"`
+	RouteReason     string           `json:"route_reason"`
+	PolicyVersion   string           `json:"policy_version"`
+	ModelID         string           `json:"model_id"`
+	ModelName       string           `json:"model_name"`
+	GroupKey        string           `json:"group_key"`
+	Error           string           `json:"error,omitempty"`
+	CreatedAt       time.Time        `json:"created_at"`
 }
 
 func (Analysis) TableName() string { return "knowledge_ops_analyses" }

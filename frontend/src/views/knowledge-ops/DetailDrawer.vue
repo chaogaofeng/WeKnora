@@ -235,10 +235,10 @@
           </details>
         </section>
 
-        <section v-if="analysis?.report.causes?.length">
+        <section v-if="causeCandidates.length">
           <h3>{{ k('causes') }}</h3>
           <article
-            v-for="(cause, index) in analysis.report.causes"
+            v-for="(cause, index) in causeCandidates"
             :key="index"
             class="cause"
           >
@@ -277,6 +277,34 @@
           </article>
         </section>
 
+        <section v-if="unlinkedCauses.length" class="unlinked-causes">
+          <h3>{{ k('unlinkedCauses') }}</h3>
+          <p class="notice">{{ k('unlinkedCauseNotice') }}</p>
+          <details class="disclosure">
+            <summary>
+              {{ k('originalAttributions') }} · {{ unlinkedCauses.length }}
+            </summary>
+            <article
+              v-for="(cause, index) in unlinkedCauses"
+              :key="index"
+              class="cause"
+            >
+              <strong>{{ label(cause.category) }}</strong>
+              <p>{{ cause.summary }}</p>
+              <div class="evidence-links">
+                <button
+                  v-for="id in cause.evidence_ids"
+                  :key="id"
+                  type="button"
+                  @click="showEvidence(id)"
+                >
+                  {{ evidenceTitle(id) }}
+                </button>
+              </div>
+            </article>
+          </details>
+        </section>
+
         <section v-if="analysis" id="ops-review-form" tabindex="-1">
           <div class="section-heading">
             <h3>{{ k('humanDecision') }}</h3>
@@ -295,7 +323,7 @@
           <div
             class="review-grid"
             :class="{
-              'with-causes': analysis.report.causes?.length || showCauseEditor,
+              'with-causes': causeCandidates.length || showCauseEditor,
             }"
           >
             <ReviewForm
@@ -309,30 +337,28 @@
               @submit="saveReview"
             />
             <ReviewForm
-              v-if="analysis.report.causes?.length || showCauseEditor"
+              v-if="causeCandidates.length || showCauseEditor"
               :key="`${analysis.id}:cause:${savedReviews.cause}`"
               target="cause"
               :analysisID="analysis.id"
-              :initial-verdict="
-                analysis.report.causes?.[0]?.status || 'unresolved'
-              "
-              :initial-category="analysis.report.causes?.[0]?.category"
-              :initial-action="
-                analysis.report.causes?.length ? undefined : 'corrected'
-              "
-              :machine-causes="analysis.report.causes || []"
+              :initial-verdict="causeCandidates[0]?.status || 'unresolved'"
+              :initial-category="causeCandidates[0]?.category"
+              :initial-action="causeCandidates.length ? undefined : 'corrected'"
+              :machine-causes="causeCandidates"
               :disabled="!canReview"
               :busy="reviewing.cause"
               :error="reviewErrors.cause"
               @submit="saveReview"
             />
           </div>
-          <div v-if="!analysis.report.causes?.length" class="no-cause">
+          <div v-if="!causeCandidates.length" class="no-cause">
             <span>{{
               k(
                 analysis.status === 'failed'
                   ? 'noCauseAfterFailure'
-                  : 'noCauseReviewNeeded',
+                  : unlinkedCauses.length
+                    ? 'noQualifiedCause'
+                    : 'noCauseReviewNeeded',
               )
             }}</span>
             <t-button
@@ -540,6 +566,15 @@ const latestID = computed(
 const analysis = computed(() =>
   detail.value?.analyses.find((item) => item.id === selectedID.value),
 )
+const causeCandidates = computed(
+  () =>
+    analysis.value?.cause_assessment?.candidates ??
+    analysis.value?.report.causes ??
+    [],
+)
+const unlinkedCauses = computed(
+  () => analysis.value?.cause_assessment?.unlinked ?? [],
+)
 const isCurrent = computed(() => selectedID.value === latestID.value)
 const canReview = computed(
   () => isCurrent.value && !!detail.value?.run.finished_at && !!analysis.value,
@@ -623,7 +658,9 @@ const sourcePending = computed(() => {
     sourceIssues.value.length > 0 ||
     (analysis.value?.status !== 'failed' &&
       (analysis.value?.report.source_check === 'unresolved' ||
-        (['wiki-qa', 'hybrid-rag-wiki'].includes(detail.value?.run.qa_type || '') &&
+        (['wiki-qa', 'hybrid-rag-wiki'].includes(
+          detail.value?.run.qa_type || '',
+        ) &&
           analysis.value?.report.source_check === 'not_checked')))
   )
 })
@@ -886,6 +923,9 @@ small {
   background: var(--td-brand-color-light);
   border-radius: var(--app-radius-md);
   font-size: var(--app-text-sm);
+}
+.unlinked-causes .notice {
+  background: var(--td-warning-color-light);
 }
 .error {
   color: var(--td-error-color);

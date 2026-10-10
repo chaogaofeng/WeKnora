@@ -24,6 +24,7 @@ type WorkbenchStats struct {
 	SourceChecks          map[string]int       `json:"source_checks"`
 	Causes                map[string]int       `json:"causes"`
 	QueueCounts           map[string]int       `json:"queue_counts"`
+	PendingRuns           int                  `json:"pending_runs"`
 	DiagnosisStatus       map[string]int       `json:"diagnosis_status"`
 	SampleTotal           int                  `json:"sample_total"`
 	SampleReviewed        int                  `json:"sample_reviewed"`
@@ -114,7 +115,11 @@ func (v *WorkbenchStats) observe(d Detail) {
 	default:
 		coverage.Missing++
 	}
-	for _, route := range queueRoutes(d) {
+	routes := queueRoutes(d)
+	if len(routes) > 0 {
+		v.PendingRuns++
+	}
+	for _, route := range routes {
 		v.QueueCounts[route]++
 	}
 	a := d.Run.Analysis
@@ -123,14 +128,24 @@ func (v *WorkbenchStats) observe(d Detail) {
 		return
 	}
 	v.DiagnosisStatus[a.Status]++
-	// Failed analysis is not a completed source comparison.
+	// Execution failures have no valid quality finding. Keep them in diagnosis
+	// status and actionable queues, never in answer/source/cause distributions.
+	if a.Status != "succeeded" {
+		return
+	}
 	source := a.Report.SourceCheck
-	if a.Status != "succeeded" || source == "" {
-		source = "unresolved"
+	if source == "" {
+		source = "unknown"
+	} else if source == "not_checked" && d.Run.QAType == "rag-qa" && !slices.ContainsFunc(d.Evidence, func(e Evidence) bool {
+		return e.SentToModel && !e.PostHoc && e.PageID != ""
+	}) {
+		// The runtime compares Wiki pages to their linked originals. Plain RAG
+		// with no consumed Wiki page has no such comparison; this is not a fault.
+		source = "not_applicable"
 	}
 	v.SourceChecks[source]++
 	seen := map[string]bool{}
-	for _, cause := range a.Report.Causes {
+	for _, cause := range assessCauses(a.Report).Candidates {
 		if !seen[cause.Category] {
 			v.Causes[cause.Category]++
 			seen[cause.Category] = true
@@ -194,8 +209,8 @@ func (s *Service) listGroups(c *gin.Context) {
 	groups := map[string]*IssueGroup{}
 	err := s.walk(c, func(d Detail) {
 		key := "run:" + d.Run.ID
-		if d.Run.Analysis != nil && d.Run.Analysis.GroupKey != "" {
-			key = d.Run.Analysis.GroupKey
+		if group := effectiveGroupKey(d.Run.Analysis); group != "" {
+			key = group
 		}
 		g := groups[key]
 		if g == nil {

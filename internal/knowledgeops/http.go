@@ -229,8 +229,8 @@ func (s *Service) walk(c *gin.Context, visit func(Detail)) error {
 			}
 			if category := c.Query("cause_category"); category != "" {
 				found := false
-				if a != nil {
-					for _, cause := range a.Report.Causes {
+				if a != nil && a.Status == "succeeded" {
+					for _, cause := range assessCauses(a.Report).Candidates {
 						if cause.Category == category {
 							found = true
 						}
@@ -240,7 +240,7 @@ func (s *Service) walk(c *gin.Context, visit func(Detail)) error {
 					continue
 				}
 			}
-			if group := c.Query("group_key"); group != "" && (a == nil || a.GroupKey != group) {
+			if group := c.Query("group_key"); group != "" && effectiveGroupKey(a) != group {
 				continue
 			}
 			visit(d)
@@ -261,7 +261,8 @@ func humanReviewState(d Detail) string {
 		return "pending_analysis"
 	}
 	a := d.Run.Analysis
-	answer, cause := false, len(a.Report.Causes) == 0
+	hasCauses := len(assessCauses(a.Report).Candidates) > 0
+	answer, cause := false, !hasCauses
 	seen := map[string]bool{}
 	for _, r := range d.Reviews {
 		if r.AnalysisID != a.ID || seen[r.Target] {
@@ -278,7 +279,7 @@ func humanReviewState(d Detail) string {
 	if answer && cause {
 		return "reviewed"
 	}
-	if answer || cause && len(a.Report.Causes) > 0 {
+	if answer || cause && hasCauses {
 		return "partially_reviewed"
 	}
 	return "unreviewed"
@@ -322,7 +323,9 @@ func (s *Service) overview(c *gin.Context) {
 		v.ByMode[d.Run.QAType]++
 		if a := d.Run.Analysis; a != nil {
 			v.ByRoute[a.Route]++
-			v.ByVerdict[a.Report.Verdict]++
+			if a.Status == "succeeded" {
+				v.ByVerdict[a.Report.Verdict]++
+			}
 		}
 		v.PendingTasks += d.PendingTasks
 		v.ReviewCount += len(d.Reviews)

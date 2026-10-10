@@ -166,7 +166,7 @@ func (r *Repository) AddReview(ctx context.Context, tenant uint64, v *Review) er
 			}
 			if v.Target == "cause" {
 				matched := false
-				for _, cause := range a.Report.Causes {
+				for _, cause := range assessCauses(a.Report).Candidates {
 					if cause.Category == v.CauseCategory && cause.Status == v.Verdict {
 						matched = true
 					}

@@ -128,6 +128,7 @@ const fs = require('fs')
     duration_ms: 2500,
     created_at: '2026-09-28T08:02:00Z',
   }
+  analysis.cause_assessment = { candidates: analysis.report.causes, unlinked: [] }
   const runs = [
     {
       id: 'run-1',
@@ -206,9 +207,15 @@ const fs = require('fs')
           'hybrid-rag-wiki': { total: runs.length, complete: runs.length, partial: 0, missing: 0 },
         },
         source_checks: { consistent: runs.length },
-        causes: { generation: runs.length },
+        causes: analysis.cause_assessment.candidates.length ? { generation: runs.length } : {},
         queue_counts: { human_review: runs.length },
         diagnosis_status: { succeeded: runs.length },
+        pending_runs: runs.length,
+        content_coverage: { total: runs.length, complete: runs.length, partial: 0, missing: 0 },
+        content_coverage_by_mode: {
+          'hybrid-rag-wiki': { total: runs.length, complete: runs.length, partial: 0, missing: 0 },
+        },
+        provenance_counts: { known: runs.length },
         sample_total: 0,
         sample_reviewed: 0,
         sample_corrected: 0,
@@ -295,13 +302,21 @@ const fs = require('fs')
     throw e
   }
   await page.getByText('经营满两年可以申请多少额度？', { exact: true }).waitFor()
+  await page.locator('.cause-link').filter({ hasText: '回答生成' }).click()
+  await page.waitForFunction(() => document.activeElement?.id === 'ops-run-list')
+  if (filterRequests.at(-1).cause_category !== 'generation' || filterRequests.at(-1).page !== '1')
+    throw new Error('cause drilldown did not apply the category and reset pagination')
+  await Promise.all([
+    page.waitForResponse((response) => response.url().includes('/knowledge-ops/runs?') && !response.url().includes('cause_category')),
+    page.getByRole('button', { name: '重置', exact: true }).click(),
+  ])
   await page.locator('.tabs').getByText('待复核', { exact: true }).click()
   await page.waitForURL('**/*tab=queue')
   await page.getByRole('button', { name: '查看组内案例', exact: true }).waitFor()
   await page.locator('.tabs').getByText('覆盖与诊断总览', { exact: true }).click()
   await page.waitForURL('**/*tab=overview')
   paginationMode = true
-  await page.getByRole('button', { name: '刷新', exact: true }).click()
+  await page.locator('.list-panel').getByRole('button', { name: '刷新', exact: true }).click()
   await page.locator('.pagination').getByText('2', { exact: true }).click()
   await page.getByText('分页第二页测试', { exact: true }).waitFor()
   if (filterRequests.at(-1).page !== '2' || filterRequests.at(-1).page_size !== '20')
@@ -309,7 +324,7 @@ const fs = require('fs')
   paginationMode = false
   await page.goto(baseURL + '/platform/knowledge-ops')
   await page.getByText('经营满两年可以申请多少额度？', { exact: true }).waitFor()
-  const out = require('path').resolve(__dirname, '../docs/images/knowledge-ops-acceptance')
+  const out = process.env.KNOWLEDGE_OPS_UI_OUTPUT || require('path').resolve(__dirname, '../docs/images/knowledge-ops-acceptance')
   fs.mkdirSync(out, { recursive: true })
   await page.locator('.ops-filter-bar').screenshot({ path: out + '/filters.png' })
   if (await page.locator('.advanced-filters').count())
@@ -376,6 +391,7 @@ const fs = require('fs')
     throw new Error('group members not listed independently')
   await page.goto(baseURL + '/platform/knowledge-ops?tab=queue&run=run-1')
   await page.waitForSelector('.ops-detail')
+  await page.locator('.answer-disclosure > summary').click()
   await page.getByText('经营满两年即可申请固定额度。', { exact: true }).waitFor()
   await page.waitForTimeout(350)
   if (!(await page.locator('.diagnosis-first').isVisible())) throw new Error('diagnosis not first')
@@ -439,6 +455,29 @@ const fs = require('fs')
   await page.getByRole('button', { name: '保存设置', exact: true }).click()
   await page.getByText('设置已保存', { exact: true }).waitFor()
   if (settings.sample_percent !== 25) throw new Error('settings not saved')
+  historicalMode = false
+  const originalReport = analysis.report
+  const positiveCause = { ...originalReport.causes[0], summary: '模型准确提取要点，生成内容与原文高度一致，无幻觉或遗漏。' }
+  analysis.report = { ...originalReport, claims: originalReport.claims.map((claim) => ({ ...claim, verdict: 'supported' })), causes: [positiveCause] }
+  analysis.cause_assessment = { candidates: [], unlinked: [positiveCause] }
+  await page.goto(baseURL + '/platform/knowledge-ops?run=run-1')
+  await page.locator('.unlinked-causes').getByText('归因一致性待核实', { exact: true }).waitFor()
+  if (await page.locator('.cause-panel').count()) throw new Error('unlinked attribution still appears in cause counts')
+  if (await page.locator('#review-action-cause').count()) throw new Error('unlinked attribution offered for direct confirmation')
+  if (await page.locator('.unlinked-causes').getByText(positiveCause.summary, { exact: true }).isVisible())
+    throw new Error('raw unlinked attribution should start folded')
+  await page.locator('.unlinked-causes summary').click()
+  await page.locator('.unlinked-causes').getByText(positiveCause.summary, { exact: true }).waitFor()
+  await page.locator('.unlinked-causes').scrollIntoViewIfNeeded()
+  await page.screenshot({ path: out + '/unlinked-cause.png' })
+  await page.setViewportSize({ width: 800, height: 1000 })
+  await page.screenshot({ path: out + '/unlinked-cause-narrow.png' })
+  await page.goto(baseURL + '/platform/knowledge-ops?tab=queue')
+  await page.locator('.unlinked-cause-notice').first().waitFor()
+  if (await page.locator('.diagnosis').filter({ hasText: positiveCause.summary }).count())
+    throw new Error('queue still presents an excluded attribution as a root-cause diagnosis')
+  analysis.report = originalReport
+  analysis.cause_assessment = { candidates: originalReport.causes, unlinked: [] }
   runs.splice(0)
   await page.goto(baseURL + '/platform/knowledge-ops')
   await page.getByText('当前范围内暂无记录', { exact: true }).waitFor()
@@ -446,7 +485,7 @@ const fs = require('fs')
   await page.setViewportSize({ width: 800, height: 1000 })
   await page.screenshot({ path: out + '/compact.png', fullPage: true })
   apiFailure = true
-  await page.getByRole('button', { name: '刷新', exact: true }).click()
+  await page.locator('.page-header').getByRole('button', { name: '刷新', exact: true }).click()
   await page.getByText('知识运营数据加载失败', { exact: true }).waitFor()
   apiFailure = false
   await page.evaluate(() =>
@@ -468,6 +507,9 @@ const fs = require('fs')
           'advanced filters and dates',
           'remove applied filter',
           'overview',
+          'cause category drilldown',
+          'unlinked attribution excluded and preserved for audit',
+          'queue excludes unlinked attribution',
           'grouped queue diagnosis',
           'group members',
           'diagnosis first',

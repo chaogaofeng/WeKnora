@@ -51,6 +51,17 @@ function setup(
     'sourceEvidenceNotice',
     'sourceIssues',
     'sourcePending',
+    'successfulCount',
+    'unassessedCount',
+    'supportRows',
+    'causeRows',
+    'rows',
+    'causeCandidates',
+    'unlinkedCauses',
+    'filterCause',
+    'filters',
+    'draftFilters',
+    'page',
   ]
   const expose = names
     .map(
@@ -118,6 +129,158 @@ const detail = (id: string) => ({
   analyses: [],
   evidence: [],
   reviews: [],
+})
+
+test('overview percentages use successful diagnoses and react to scope changes', () => {
+  const props = vue.reactive({
+    stats: {
+      total: 8,
+      diagnosis_status: { succeeded: 4, failed: 4 },
+      by_verdict: { supported: 3, partial: 1 },
+      source_checks: { unresolved: 2, not_applicable: 2 },
+    },
+  })
+  const h = setup('OverviewInsights.vue', props)
+  assert.equal(h.api.successfulCount?.value, 4)
+  assert.equal(h.api.unassessedCount?.value, 4)
+  assert.equal(
+    h.api.supportRows.value.find((row: any) => row.key === 'supported').percent,
+    75,
+  )
+  assert.equal(
+    h.api.supportRows.value.find((row: any) => row.key === 'partial').percent,
+    25,
+  )
+  props.stats.total = 2
+  props.stats.diagnosis_status = { succeeded: 0, failed: 2 }
+  props.stats.by_verdict = {} as typeof props.stats.by_verdict
+  assert.equal(h.api.successfulCount.value, 0)
+  assert.equal(h.api.unassessedCount.value, 2)
+  assert.equal(h.api.supportRows.value.length, 0)
+  h.stop()
+})
+
+test('cause drilldown keeps the applied scope and resets pagination without applying draft edits', async () => {
+  const requests: Record<string, unknown>[] = []
+  const h = setup(
+    'Workbench.vue',
+    {},
+    {
+      useRouter: () => ({ replace: () => {} }),
+      useRoute: () => ({ query: {} }),
+      onMounted: () => {},
+      document: { getElementById: () => null },
+      getOpsSettings: async () => settings(10),
+      getOpsOverview: async () => ({ total: 1 }),
+      getOpsRuns: async (query: Record<string, unknown>) => {
+        requests.push(query)
+        return { items: [], total: 0 }
+      },
+    },
+  )
+  h.api.filters.value = { from: '2026-10-01T00:00:00Z', search: 'applied' }
+  h.api.draftFilters.search = 'not yet applied'
+  h.api.page.value = 3
+  assert.equal(typeof h.api.filterCause, 'function')
+  await h.api.filterCause('generation')
+  assert.equal(requests.length, 1)
+  assert.deepEqual(JSON.parse(JSON.stringify(requests[0])), {
+    from: '2026-10-01T00:00:00Z',
+    search: 'applied',
+    cause_category: 'generation',
+    page: 1,
+    page_size: 20,
+  })
+  assert.equal(h.api.draftFilters.search, 'applied')
+  assert.equal(h.api.draftFilters.cause_category, 'generation')
+  await h.api.filterCause('retrieval')
+  assert.equal(
+    requests.length,
+    1,
+    'a stale cross-category click must not replace the existing cause scope',
+  )
+  h.stop()
+})
+
+test('an applied cause category only exposes drilldown counts within that category', () => {
+  const props = vue.reactive({
+    stats: { causes: { generation: 1, retrieval: 2 } },
+    causeCategory: 'retrieval',
+  })
+  const h = setup('OverviewInsights.vue', props)
+  assert.deepEqual(JSON.parse(JSON.stringify(h.api.causeRows?.value ?? [])), [
+    { category: 'retrieval', count: 2 },
+  ])
+  props.causeCategory = ''
+  assert.equal(h.api.causeRows.value.length, 2)
+  h.stop()
+})
+
+test('queue diagnosis uses assessed candidates in both list and group views', () => {
+  const positive = {
+    category: 'generation',
+    summary: 'accurate extraction',
+    status: 'evidence_backed',
+  }
+  const run = {
+    id: 'A',
+    analysis: {
+      report: { causes: [positive] },
+      cause_assessment: { candidates: [], unlinked: [positive] },
+    },
+  }
+  const props = vue.reactive({
+    runs: [run],
+    groups: [{ key: 'run:A', count: 1, representative: run }],
+    grouped: false,
+    selectedGroup: '',
+  })
+  const h = setup('QueuePanel.vue', props)
+  for (const grouped of [false, true]) {
+    props.grouped = grouped
+    assert.equal(h.api.rows.value[0].candidates?.length, 0)
+    assert.equal(h.api.rows.value[0].unlinked?.length, 1)
+  }
+  h.stop()
+})
+
+test('detail separates unlinked generation attributions for the selected analysis', async () => {
+  const positive = { category: 'generation', summary: '准确提取，无幻觉或遗漏' }
+  const valid = { category: 'generation', summary: '遗漏限制条件' }
+  const analyses = [
+    {
+      id: 'v2',
+      version: 2,
+      status: 'succeeded',
+      report: { causes: [positive] },
+      cause_assessment: { candidates: [], unlinked: [positive] },
+    },
+    {
+      id: 'v1',
+      version: 1,
+      status: 'succeeded',
+      report: { causes: [valid] },
+      cause_assessment: { candidates: [valid], unlinked: [] },
+    },
+  ]
+  const h = setup(
+    'DetailDrawer.vue',
+    vue.reactive({ runID: 'A', enabled: true }),
+    {
+      getOpsDetail: async () => ({
+        ...detail('A'),
+        run: { id: 'A', analysis: analyses[0] },
+        analyses,
+      }),
+    },
+  )
+  await setImmediate()
+  assert.equal(h.api.causeCandidates?.value.length, 0)
+  assert.equal(h.api.unlinkedCauses?.value[0].summary, positive.summary)
+  h.api.selectedID.value = 'v1'
+  assert.equal(h.api.causeCandidates.value[0].summary, valid.summary)
+  assert.equal(h.api.unlinkedCauses.value.length, 0)
+  h.stop()
 })
 
 test('a late settings load cannot overwrite another tenant draft', async () => {

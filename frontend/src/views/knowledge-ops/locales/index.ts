@@ -1,5 +1,33 @@
 import { useI18n } from 'vue-i18n'
 const en: Record<string, string> = {
+  capturedRuns: 'Captured Q&A runs',
+  countRunsNotice: 'Current scope · repeated questions count separately',
+  latestDiagnosisNotice: 'Latest diagnosis succeeded',
+  failedDiagnoses: 'Diagnosis failures',
+  diagnosisFailureNotice: 'Execution failed; no valid assessment',
+  pendingRuns: 'Runs needing follow-up',
+  deduplicatedPendingNotice: 'Each run counted once across queues',
+  viewPending: 'View queue',
+  successfulDiagnosisBase: 'Quality metrics · successful diagnoses:',
+  unassessedDiagnoses: 'No valid assessment (failed or pending):',
+  noSuccessfulDiagnoses: 'No successful diagnoses in this scope',
+  qualityCountsNotice:
+    'Only runs whose latest diagnosis succeeded are counted. Answer support is not knowledge accuracy.',
+  sourceNotApplicable: 'Not applicable · no Wiki comparison',
+  sourceComparisonNotice:
+    'Successful diagnoses only. Compares consumed Wiki pages with linked originals; plain RAG without this comparison is not applicable.',
+  captureQuality: 'Content capture and traceability',
+  causeCountsNotice:
+    'Click a category to view matching runs. Unlinked generation attributions are excluded; candidates are not confirmed causes.',
+  viewRelatedRuns: 'View runs',
+  unlinkedCauses: 'Attribution consistency needs verification',
+  unlinkedCauseShort:
+    'Generation attribution has no corresponding problem claim; excluded from cause counts. Open the diagnosis to verify.',
+  unlinkedCauseNotice:
+    'The report names a generation cause but identifies no partial, unsupported or contradicted claim. The attribution is excluded from cause counts and confirmation; the original report is preserved. Retry diagnosis or review the answer. This check does not establish that the answer is correct.',
+  originalAttributions: 'Original model attributions',
+  noQualifiedCause:
+    'No candidate passes the consistency check. Verify the attribution above; you can add a cause correction when needed.',
   auditedSourceNotice:
     'These materials were captured for this diagnosis attempt and explicitly linked by the server. A failed diagnosis does not prove the model consumed them. They cannot establish support available at answer time.',
   sourceKBAndDocument: 'KB / Document',
@@ -162,12 +190,12 @@ const en: Record<string, string> = {
   allReviewers: 'All reviewers',
 
   coverageMatrix: 'Content capture by QA type',
-  sourceStats: 'Source comparison · latest diagnoses',
-  causeStats: 'Root cause candidates · a run may have several',
+  sourceStats: 'Source comparison',
+  causeStats: 'Root cause candidates · affected runs',
   queueStats: 'Outstanding work · queues can overlap',
   sampleStats: 'Quality sampling · latest diagnoses',
   sampleTotal: 'Selected runs',
-  sampleReviewed: 'Fully reviewed runs',
+  sampleReviewed: 'Required reviews completed',
   sampleCorrected: 'Runs with a human correction',
   sampleNotice:
     'Descriptive counts only; corrections are not a calibrated false-negative rate. Automatic records are machine conclusions.',
@@ -252,7 +280,7 @@ const en: Record<string, string> = {
   partial: 'Partial',
   missing: 'Missing / unknown',
   unknown: 'Unknown',
-  pendingTasks: 'Pending diagnosis tasks',
+  pendingTasks: 'Queued / running diagnosis tasks',
   reviewCount: 'Human review actions',
   modes: 'Answers by QA type',
   verdicts: 'Answer support verdicts',
@@ -426,6 +454,32 @@ const en: Record<string, string> = {
     'Diagnosis failed. Use the run ID to locate the detailed error in backend logs.',
 }
 const zh: Record<string, string> = {
+  capturedRuns: '采集问答数',
+  countRunsNotice: '当前筛选范围 · 重复提问分别计数',
+  latestDiagnosisNotice: '每条问答的最新诊断已成功',
+  failedDiagnoses: '诊断失败',
+  diagnosisFailureNotice: '执行未成功，尚无有效判定',
+  pendingRuns: '当前待处理问答',
+  deduplicatedPendingNotice: '多类待办按问答去重',
+  viewPending: '查看待办',
+  successfulDiagnosisBase: '判定统计范围：成功诊断',
+  unassessedDiagnoses: '尚无有效判定（失败或待诊断）',
+  noSuccessfulDiagnoses: '当前范围暂无成功诊断',
+  qualityCountsNotice: '仅统计最新诊断成功的问答；回答支持性不等于知识正确率。',
+  sourceNotApplicable: '不适用 · 无 Wiki 对照',
+  sourceComparisonNotice:
+    '仅统计成功诊断；对照已读 Wiki 页面关联的原文，纯 RAG 无此对照时不适用。',
+  captureQuality: '正文采集与来源追溯',
+  causeCountsNotice:
+    '点击类别查看对应问答；缺少异常论断的生成归因不计入，候选仍需人工确认。',
+  viewRelatedRuns: '查看问答',
+  unlinkedCauses: '归因一致性待核实',
+  unlinkedCauseShort: '生成归因缺少异常论断，未计入根因统计，请查看诊断核实。',
+  unlinkedCauseNotice:
+    '报告列出了回答生成归因，却没有部分支持、不支持或矛盾的异常论断，因此不计入根因统计，也不能直接确认该归因。原始报告已保留，可重试诊断或核查回答；这不代表回答已被证明正确。',
+  originalAttributions: '模型原始归因',
+  noQualifiedCause:
+    '暂无通过一致性检查的根因候选；请核实上方归因，必要时可主动补充根因纠正。',
   auditedSourceNotice:
     '这些材料由服务端明确关联到本次诊断补查；诊断失败时不代表模型已处理这些材料，事后材料也不能反向证明回答生成时已有依据。',
   sourceKBAndDocument: '知识库 / 文档',
@@ -575,12 +629,12 @@ const zh: Record<string, string> = {
   allReviewers: '全部复核人',
 
   coverageMatrix: '三类问答的正文采集',
-  sourceStats: '来源核验 · 最新诊断',
-  causeStats: '根因候选 · 一条回答可有多项',
+  sourceStats: '来源对照',
+  causeStats: '根因候选 · 涉及问答数',
   queueStats: '当前待办 · 不同队列可重叠',
   sampleStats: '分层抽检 · 最新诊断',
   sampleTotal: '纳入抽检',
-  sampleReviewed: '两项复核已完成',
+  sampleReviewed: '所需复核已完成',
   sampleCorrected: '发生人工纠正的回答',
   sampleNotice:
     '这里只展示计数；人工纠正不等于已校准的漏报率。自动记录始终保留机器结论身份。',
@@ -660,7 +714,7 @@ const zh: Record<string, string> = {
   partial: '部分完整',
   missing: '证据缺失 / 未知',
   unknown: '未知',
-  pendingTasks: '待诊断任务',
+  pendingTasks: '排队 / 执行中的诊断任务',
   reviewCount: '人工复核操作',
   modes: '三类问答数量',
   verdicts: '回答支持性',
