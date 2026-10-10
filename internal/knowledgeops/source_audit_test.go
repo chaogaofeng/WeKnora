@@ -16,11 +16,11 @@ func TestSourcePendingPreventsPrematureReviewClosure(t *testing.T) {
 	for _, route := range []string{"needs_evidence", "human_review"} {
 		d := Detail{Run: Run{Gaps: []string{"wiki_linked_summary_versions_unknown"}, Analysis: &Analysis{ID: "a", Status: "succeeded", Route: route, Report: Report{Verdict: "supported", SourceCheck: "unresolved"}}}, Reviews: []Review{{AnalysisID: "a", Target: "answer", Action: "confirmed"}}}
 		require.Equal(t, "partially_reviewed", reviewState(d))
-		require.Contains(t, queueRoutes(d), "needs_evidence")
+		require.Contains(t, queueRoutes(d), "source_verification")
 	}
 	d := Detail{Run: Run{Analysis: &Analysis{ID: "a", Status: "succeeded", Report: Report{SourceCheck: "consistent", Unknowns: []string{"business decision pending"}, ReviewQuestions: []string{"approve amount?"}}}}, Reviews: []Review{{AnalysisID: "a", Target: "answer", Action: "confirmed"}}}
 	require.Equal(t, "reviewed", reviewState(d))
-	require.NotContains(t, queueRoutes(d), "needs_evidence")
+	require.NotContains(t, queueRoutes(d), "source_verification")
 }
 
 func TestSourcePendingDoesNotReopenCompletedHumanReview(t *testing.T) {
@@ -28,7 +28,7 @@ func TestSourcePendingDoesNotReopenCompletedHumanReview(t *testing.T) {
 		t.Run(route, func(t *testing.T) {
 			d := Detail{Run: Run{Analysis: &Analysis{ID: "a", Status: "succeeded", Route: route, Report: Report{Verdict: "supported", SourceCheck: "unresolved"}}}, Reviews: []Review{{AnalysisID: "a", Target: "answer", Action: "confirmed"}}}
 			require.Equal(t, "partially_reviewed", reviewState(d))
-			require.Equal(t, []string{"needs_evidence"}, queueRoutes(d))
+			require.Equal(t, []string{"source_verification"}, queueRoutes(d))
 			stats := newWorkbenchStats()
 			stats.observe(d)
 			if route == "quality_sample" {
@@ -40,7 +40,7 @@ func TestSourcePendingDoesNotReopenCompletedHumanReview(t *testing.T) {
 			d.Reviews = append(d.Reviews, Review{AnalysisID: "old", Target: "cause", Action: "confirmed"})
 			require.Contains(t, queueRoutes(d), route)
 			d.Reviews = append([]Review{{AnalysisID: "a", Target: "cause", Action: "confirmed"}}, d.Reviews...)
-			require.Equal(t, []string{"needs_evidence"}, queueRoutes(d))
+			require.Equal(t, []string{"source_verification"}, queueRoutes(d))
 			// A later request for evidence reopens the human task.
 			d.Reviews = append([]Review{{AnalysisID: "a", Target: "answer", Action: "needs_more_evidence"}}, d.Reviews...)
 			require.Contains(t, queueRoutes(d), route)
@@ -66,9 +66,9 @@ func TestFailedDiagnosisOnlyKeepsEstablishedSourceGaps(t *testing.T) {
 				routes := queueRoutes(d)
 				require.Contains(t, routes, "technical_followup", "human confirmation cannot hide diagnosis failures")
 				if gap == "none" {
-					require.NotContains(t, routes, "needs_evidence")
+					require.NotContains(t, routes, "source_verification")
 				} else {
-					require.Contains(t, routes, "needs_evidence")
+					require.Contains(t, routes, "source_verification")
 				}
 			})
 		}
@@ -158,7 +158,7 @@ func TestDetailDerivedUnknownSourceVersionKeepsFollowupPending(t *testing.T) {
 			require.Contains(t, d.Run.Coverage.ProvenanceGaps, "source_version_unknown")
 			require.True(t, d.Run.SourceFollowupPending)
 			require.Equal(t, "partially_reviewed", reviewState(d))
-			require.Contains(t, queueRoutes(d), "needs_evidence")
+			require.Contains(t, queueRoutes(d), "source_verification")
 		})
 	}
 }

@@ -183,3 +183,48 @@ func TestSourceRuntimeDoesNotInferMissingRefsOutsideReadBounds(t *testing.T) {
 		})
 	}
 }
+
+func TestSummaryPageUsesDocumentScopeWithoutInventingMissingChunkLinks(t *testing.T) {
+	for _, pageType := range []string{"summary", "concept"} {
+		t.Run(pageType, func(t *testing.T) {
+			repo := testStore(t)
+			for _, sql := range []string{
+				`CREATE TABLE knowledge_bases (id TEXT PRIMARY KEY, tenant_id BIGINT, deleted_at TIMESTAMP)`,
+				`CREATE TABLE wiki_pages (id TEXT PRIMARY KEY, knowledge_base_id TEXT, tenant_id BIGINT, status TEXT, version INT, page_type TEXT, source_refs TEXT, chunk_refs TEXT, deleted_at TIMESTAMP)`,
+				`CREATE TABLE knowledges (id TEXT PRIMARY KEY, knowledge_base_id TEXT, tenant_id BIGINT, title TEXT, deleted_at TIMESTAMP)`,
+				`CREATE TABLE chunks (id TEXT PRIMARY KEY, knowledge_id TEXT, knowledge_base_id TEXT, tenant_id BIGINT, content TEXT, content_revision INT, chunk_index INT, is_enabled BOOLEAN, deleted_at TIMESTAMP)`,
+				`INSERT INTO knowledge_bases (id,tenant_id) VALUES ('kb',1)`,
+				`INSERT INTO wiki_pages (id,knowledge_base_id,tenant_id,status,version) VALUES ('page','kb',1,'published',1)`,
+				`INSERT INTO knowledges (id,knowledge_base_id,tenant_id,title) VALUES ('doc','kb',1,'Title')`,
+				`INSERT INTO chunks (id,knowledge_id,knowledge_base_id,tenant_id,content,content_revision,chunk_index,is_enabled) VALUES ('c','doc','kb',1,'source body',1,0,true)`,
+			} {
+				require.NoError(t, repo.db.Exec(sql).Error)
+			}
+			require.NoError(t, repo.db.Exec(`UPDATE wiki_pages SET page_type=?,source_refs=?,chunk_refs=?`, pageType, []byte(`["doc|Title"]`), []byte(`[]`)).Error)
+			adapter := RuntimeAdapter{DB: repo.db}
+			ctx := types.WithCaller(context.Background(), types.Caller{TenantID: 1, UserID: "owner", Role: types.TenantRoleAdmin})
+			out, err := adapter.Sources(ctx, Run{TenantID: 1}, []Evidence{{KBID: "kb", PageID: "page", Version: "1", SentToModel: true}})
+			require.Len(t, out, 1)
+			if pageType == "summary" {
+				require.NoError(t, err)
+				for i := 1; i <= 8; i++ {
+					require.NoError(t, repo.db.Exec(`INSERT INTO chunks (id,knowledge_id,knowledge_base_id,tenant_id,content,content_revision,chunk_index,is_enabled) VALUES (?,'doc','kb',1,'more source body',1,?,true)`, fmt.Sprintf("c%d", i), i).Error)
+				}
+				out, err = adapter.Sources(ctx, Run{TenantID: 1}, []Evidence{{KBID: "kb", PageID: "page", Version: "1", SentToModel: true}})
+				require.Len(t, out, 8)
+				var limitation *SourceReadError
+				require.ErrorAs(t, err, &limitation)
+				require.Equal(t, []string{"source_chunk_limit"}, limitation.Issues, "document-level comparison remains bounded, without inventing missing links")
+				require.NoError(t, repo.db.Exec(`DELETE FROM chunks`).Error)
+				out, err = adapter.Sources(ctx, Run{TenantID: 1}, []Evidence{{KBID: "kb", PageID: "page", Version: "1", SentToModel: true}})
+				require.Empty(t, out)
+				require.ErrorAs(t, err, &limitation)
+				require.Equal(t, []string{"source_chunks_missing"}, limitation.Issues)
+			} else {
+				var limitation *SourceReadError
+				require.ErrorAs(t, err, &limitation)
+				require.Contains(t, limitation.Issues, "source_chunk_refs_missing")
+			}
+		})
+	}
+}

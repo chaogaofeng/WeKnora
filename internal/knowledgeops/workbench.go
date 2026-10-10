@@ -51,8 +51,8 @@ func queueRoutes(d Detail) []string {
 	if a != nil && humanReviewState(d) != "reviewed" && a.Route != "auto_record" {
 		result = append(result, a.Route)
 	}
-	if sourceFollowupPending(d.Run) && !slices.Contains(result, "needs_evidence") {
-		result = append(result, "needs_evidence")
+	if sourceFollowupPending(d.Run) && !slices.Contains(result, "source_verification") {
+		result = append(result, "source_verification")
 	}
 	// Technical failures stay actionable even after a business conclusion is recorded.
 	if (a != nil && a.Status == "failed") || d.Run.Status == "failed" || d.Run.Status == "cancelled" {

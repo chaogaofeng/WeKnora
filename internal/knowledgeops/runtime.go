@@ -185,7 +185,9 @@ func (a *RuntimeAdapter) Sources(ctx context.Context, run Run, evidence []Eviden
 			query := a.DB.WithContext(ctx).Where("knowledge_id = ? AND knowledge_base_id = ? AND tenant_id = ? AND is_enabled = ?", id, kb.ID, kb.TenantID, true)
 			if len(page.ChunkRefs) > 0 {
 				query = query.Where("id IN ?", []string(page.ChunkRefs))
-			} else {
+			} else if page.PageType != types.WikiPageTypeSummary {
+				// Summary pages are document-level synopses and intentionally have
+				// no chunk refs. Their bounded document scan still reports real limits.
 				addIssue("source_chunk_refs_missing")
 			}
 			if err = query.Order("chunk_index,id").Limit(9).Find(&chunks).Error; err != nil {

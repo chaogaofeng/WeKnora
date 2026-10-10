@@ -136,9 +136,6 @@ func RecordToolResult(ctx context.Context, callID, name string, result *types.To
 	if len(sources) == 0 && strings.TrimSpace(result.Output) != "" {
 		Gap(ctx, "source_provenance_unavailable:"+name)
 	}
-	if name == "wiki_read_page" && (strings.Contains(result.Output, "<links_to>[[") || strings.Contains(result.Output, "<linked_from>[[")) {
-		Gap(ctx, "wiki_linked_summary_versions_unknown")
-	}
 }
 func sourceRows(value any) []map[string]any {
 	switch rows := value.(type) {

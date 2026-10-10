@@ -30,6 +30,27 @@ func sanitize(s string) (string, bool) {
 var systemEvidence = regexp.MustCompile(`(?s)<(?:retrieval|user_memory)(?:\s[^>]*)?>.*?</(?:retrieval|user_memory)>`)
 var sourceBlocks = regexp.MustCompile(`(?s)<(?:chunk|wiki_page|page)(?:\s[^>]*)?>.*?</(?:chunk|wiki_page|page)>`)
 var documentBlocks = regexp.MustCompile(`(?s)<document(?:\s[^>]*)?>.*?</document>`)
+var wikiLinkBlocks = regexp.MustCompile(`(?s)<(?:links_to|linked_from)>(.*?)</(?:links_to|linked_from)>`)
+var wikiLinks = regexp.MustCompile(`\[\[[^\]\r\n]+\]\]`)
+
+// Only inline summaries actually sent to the model need neighbor-version
+// provenance. Bare links and the tool's already-seen marker carry no body.
+func hasWikiLinkSummary(content string) bool {
+	for _, block := range wikiLinkBlocks.FindAllStringSubmatch(content, -1) {
+		links := wikiLinks.FindAllStringIndex(block[1], -1)
+		for i, link := range links {
+			end := len(block[1])
+			if i+1 < len(links) {
+				end = links[i+1][0]
+			}
+			summary := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(block[1][link[1]:end]), ","))
+			if strings.HasPrefix(summary, "(") && summary != "()" && summary != "(summary omitted, already seen)" {
+				return true
+			}
+		}
+	}
+	return false
+}
 
 type modelSourceBlock struct{ identity, content string }
 
@@ -169,6 +190,9 @@ func RecordModelInput(ctx context.Context, messages []chat.Message, encode func(
 					sent.Truncated = true
 				}
 				RecordSources(ctx, []Source{sent})
+				if s.Slug != "" && hasWikiLinkSummary(block.identity) {
+					Gap(ctx, "wiki_linked_summary_versions_unknown")
+				}
 				break
 			}
 		}

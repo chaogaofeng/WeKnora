@@ -57,6 +57,7 @@ export const routes = [
   'quality_sample',
   'technical_followup',
   'needs_evidence',
+  'source_verification',
 ]
 export function applyReviewAction(
   target: ReviewTarget,

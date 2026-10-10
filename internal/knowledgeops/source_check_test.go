@@ -45,7 +45,7 @@ func TestSourceComparisonUsesAvailableEvidenceWithoutDiscardingClaims(t *testing
 			require.Equal(t, tc.wantCheck, result.Report.SourceCheck)
 			require.Equal(t, report.Claims, result.Report.Claims)
 			require.Equal(t, "supported", result.Report.Verdict)
-			require.Equal(t, "needs_evidence", result.Route)
+			require.Equal(t, "source_verification", result.Route)
 			require.Equal(t, "rag-qa/web/low/"+tc.wantCheck, result.SampleStratum)
 			if tc.wantCheck != tc.modelCheck {
 				require.Contains(t, result.Report.Unknowns[0], tc.modelCheck, "retain the model's original source judgment and correction reason")
@@ -69,6 +69,20 @@ func TestSourceComparisonCorrectionDoesNotHideInvalidEvidenceOrEnums(t *testing.
 			require.ErrorContains(t, err, tc.wantError)
 		})
 	}
+}
+
+func TestIncompleteSourceComparisonKeepsSuspectedConflictInHumanReview(t *testing.T) {
+	report := Report{Verdict: "supported", Scope: "captured evidence", Risk: "low", SourceCheck: "inconsistent", Claims: []Claim{{Text: "A", Position: "answer", Verdict: "supported", EvidenceIDs: []string{"e"}, Reason: "captured body"}}}
+	payload, err := json.Marshal(report)
+	require.NoError(t, err)
+	a := NewAnalyzer(func(context.Context, string) (chat.Chat, error) { return &fakeChat{payload: string(payload)}, nil }, nil)
+	run := Run{Status: "completed", QAType: "wiki-qa", Channel: "web", CaptureStatus: "complete", Gaps: []string{"source_lookup_incomplete"}}
+	result, err := a.Analyze(context.Background(), run, []Evidence{{ID: "e", Content: "A", Kind: "wiki", SentToModel: true}, {ID: "source", Content: "B", Kind: "source_document", PostHoc: true}}, DefaultSettings(1))
+	require.NoError(t, err)
+	require.Equal(t, "supported", result.Report.Verdict)
+	require.Equal(t, "unresolved", result.Report.SourceCheck, "bounded comparison cannot assert an established source conflict")
+	require.Contains(t, result.Report.Unknowns[0], "inconsistent")
+	require.Equal(t, "human_review", result.Route, "the model's suspected conflict still requires a human decision")
 }
 
 func TestDiagnosisFailurePersistsSafeActionableReason(t *testing.T) {

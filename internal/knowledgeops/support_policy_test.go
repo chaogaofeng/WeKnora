@@ -46,7 +46,11 @@ func TestSupportDistinguishesVersionGapsFromContextLoss(t *testing.T) {
 			if tc.want != tc.modelVerdict {
 				require.NotEmpty(t, audit["verdict_adjustment"])
 			}
-			require.Equal(t, "needs_evidence", out.Route, "version-only gaps still prevent automatic recording")
+			wantRoute := "needs_evidence"
+			if tc.want == "supported" {
+				wantRoute = "source_verification"
+			}
+			require.Equal(t, wantRoute, out.Route, "version-only gaps still prevent automatic recording")
 			if tc.want == "supported" {
 				require.NotContains(t, out.Report.Unknowns, "生成时上下文采集不完整，整体支持性结论受限")
 				require.NotEmpty(t, out.Report.Unknowns)

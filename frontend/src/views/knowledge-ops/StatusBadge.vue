@@ -25,6 +25,7 @@ const tone = computed(() => {
       'medium',
       'suspected',
       'needs_evidence',
+      'source_verification',
       'needs_more_evidence',
       'unresolved',
       'unsupported',

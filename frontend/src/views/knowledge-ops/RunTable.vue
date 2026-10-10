@@ -30,7 +30,12 @@
         </div>
       </template>
       <template #route="{ row: run }">
-        <div>{{ label(run.analysis?.route) }}</div>
+        <div>
+          {{ label(run.analysis?.route) }}
+          <t-tooltip v-if="run.analysis?.route_reason" :content="run.analysis.route_reason">
+            <small class="route-reason">{{ run.analysis.route_reason }}</small>
+          </t-tooltip>
+        </div>
       </template>
       <template #diagnosis="{ row: run }">
         <div>
@@ -104,10 +109,14 @@ small {
 .question-cell small {
   font-weight: 400;
 }
+.route-reason,
 .question-cell > span {
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+.route-reason {
+  -webkit-line-clamp: 2;
 }
 </style>

@@ -78,7 +78,7 @@ func (a *Analyzer) Analyze(ctx context.Context, run Run, evidence []Evidence, s 
 		return result, &analysisError{code: "invalid_analysis_json", cause: err}
 	}
 	result.Report.SourceAudit = nil // Server audit is attached by the worker, never model output.
-	constrainSourceCheck(run, &result.Report, evidence)
+	sourceConflictPending := constrainSourceCheck(run, &result.Report, evidence)
 	if err = validateReport(result.Report, evidence); err != nil {
 		return result, reportValidationError(err)
 	}
@@ -87,6 +87,9 @@ func (a *Analyzer) Analyze(ctx context.Context, run Run, evidence []Evidence, s 
 	result.SamplePercent = s.SamplePercent
 	result.SampleStratum = run.QAType + "/" + run.Channel + "/" + result.Report.Risk + "/" + result.Report.SourceCheck
 	result.Route, result.RouteReason = Triage(run, result.Report, s)
+	if sourceConflictPending && run.Status == "completed" && result.Route != "human_review" {
+		result.Route, result.RouteReason = "human_review", "模型提示来源可能冲突，但补查范围尚不完整，需人工核实"
+	}
 	result.GroupKey = groupKey(run, result.Report, evidence)
 	return result, nil
 }
@@ -156,17 +159,27 @@ func Triage(run Run, r Report, s Settings) (string, string) {
 	if run.Status != "completed" {
 		return "technical_followup", "问答取消或异常结束"
 	}
-	if run.CaptureStatus != "complete" || r.Verdict == "unverifiable" {
-		if provenanceOnlyCapture(run) && r.Verdict == "supported" {
-			return "needs_evidence", "来源版本信息不完整；已采集正文支持回答，来源可追溯性仍待补证"
-		}
-		return "needs_evidence", "采集或论断证据不足"
-	}
+	// A provenance limitation must not hide an observed conflict or business risk.
 	if r.SourceCheck == "inconsistent" || r.Risk != "low" {
 		return "human_review", "来源冲突或需业务判断"
 	}
+	if r.Verdict == "supported" && len(r.Causes) > 0 {
+		return "human_review", "回答有正文支持，但仍存在待裁决的根因候选"
+	}
+	if run.CaptureStatus != "complete" || r.Verdict == "unverifiable" {
+		if provenanceOnlyCapture(run) && r.Verdict == "supported" {
+			return "source_verification", "来源版本信息未齐全；回答有已采集正文支持"
+		}
+		return "needs_evidence", "采集或论断证据不足"
+	}
 	if (run.QAType == "wiki-qa" || run.QAType == "hybrid-rag-wiki") && r.SourceCheck == "not_checked" {
+		if r.Verdict == "supported" {
+			return "source_verification", "Wiki 与原始来源尚未完成比较；回答有已采集正文支持"
+		}
 		return "needs_evidence", "Wiki 来源尚未完成比较"
+	}
+	if r.SourceCheck == "unresolved" && r.Verdict == "supported" {
+		return "source_verification", "来源比较仍有未决事项；回答有已采集正文支持"
 	}
 	if len(r.Unknowns) > 0 || len(r.ReviewQuestions) > 0 || r.SourceCheck == "unresolved" {
 		return "needs_evidence", "诊断仍有未解决事项"

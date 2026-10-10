@@ -162,6 +162,7 @@
               'human_review',
               'quality_sample',
               'needs_evidence',
+              'source_verification',
               'technical_followup',
             ]"
             :key="value"
@@ -750,7 +751,8 @@ h2 {
 }
 .bar .partial,
 .bar .human_review,
-.bar .needs_evidence {
+.bar .needs_evidence,
+.bar .source_verification {
   background: var(--td-warning-color);
 }
 .bar .failed,
@@ -836,7 +838,7 @@ button:focus-visible {
 }
 .queue-count-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: var(--app-space-4);
 }
 .queue-count-grid button {

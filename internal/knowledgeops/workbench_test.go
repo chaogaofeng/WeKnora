@@ -103,3 +103,32 @@ func TestIssueGroupingRequiresKnownVersionsForAllUsedSources(t *testing.T) {
 	unknown := Evidence{KBID: "kb", KnowledgeID: "other", Version: "unknown", Hash: "def", SentToModel: true}
 	require.Empty(t, groupKey(run, report, []Evidence{known, unknown}), "partial version knowledge must not merge separate cases")
 }
+
+func TestSourceVerificationQueueIsIndependentFromAnswerSupplement(t *testing.T) {
+	_, repo, engine := workbenchFixture(t)
+	for _, id := range []string{"source", "legacy", "answer"} {
+		route := "needs_evidence"
+		if id == "source" {
+			route = "source_verification"
+		}
+		seedWorkbench(t, repo, id, "low", route, "", 0)
+		if id != "answer" {
+			report, err := json.Marshal(Report{Verdict: "supported", Risk: "low", SourceCheck: "unresolved"})
+			require.NoError(t, err)
+			require.NoError(t, repo.db.Model(&Analysis{}).Where("id = ?", id+"-a").Update("report", string(report)).Error)
+			// Human confirmation closes answer review only, including legacy diagnoses.
+			require.NoError(t, repo.db.Create(&Review{ID: id + "-review", TenantID: 1, RunID: id, AnalysisID: id + "-a", Target: "answer", Action: "confirmed", Verdict: "supported", CreatedAt: time.Now()}).Error)
+		}
+	}
+	sources := workbenchGET(t, engine, "/runs?view=queue&route=source_verification")
+	require.EqualValues(t, 2, sources["total"])
+	answers := workbenchGET(t, engine, "/runs?view=queue&route=needs_evidence")
+	require.EqualValues(t, 1, answers["total"])
+	require.Equal(t, "answer", answers["items"].([]any)[0].(map[string]any)["id"])
+	counts := workbenchGET(t, engine, "/overview")["queue_counts"].(map[string]any)
+	require.EqualValues(t, 2, counts["source_verification"])
+	require.EqualValues(t, 1, counts["needs_evidence"])
+	var legacy Analysis
+	require.NoError(t, repo.db.First(&legacy, "id = ?", "legacy-a").Error)
+	require.Equal(t, "needs_evidence", legacy.Route, "read-time queue classification never rewrites the historical report")
+}

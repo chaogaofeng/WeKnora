@@ -83,3 +83,33 @@ func TestUnknownModeCannotAutoRecord(t *testing.T) {
 	route, _ := Triage(r, Report{Verdict: "supported", Risk: "low", SourceCheck: "not_checked"}, s)
 	require.Equal(t, "needs_evidence", route)
 }
+
+func TestTriageSeparatesSupportedAnswersFromSourceVerification(t *testing.T) {
+	for _, tc := range []struct {
+		name, mode, capture, verdict, source, risk, want string
+		gaps                                             []string
+	}{
+		{"wiki summary version", "wiki-qa", "partial", "supported", "unresolved", "low", "source_verification", []string{"wiki_linked_summary_versions_unknown"}},
+		{"RAG version", "rag-qa", "partial", "supported", "not_checked", "low", "source_verification", []string{"source_version_unknown"}},
+		{"bounded comparison", "hybrid-rag-wiki", "complete", "supported", "unresolved", "low", "source_verification", []string{"source_lookup_incomplete"}},
+		{"Wiki not compared", "wiki-qa", "complete", "supported", "not_checked", "low", "source_verification", nil},
+		{"lost body", "wiki-qa", "partial", "partial", "unresolved", "low", "needs_evidence", []string{"capture_budget_exhausted"}},
+		{"unsupported claims", "wiki-qa", "complete", "unverifiable", "unresolved", "low", "needs_evidence", nil},
+		{"source conflict", "wiki-qa", "partial", "supported", "inconsistent", "low", "human_review", []string{"source_version_unknown"}},
+		{"high risk", "wiki-qa", "partial", "supported", "unresolved", "high", "human_review", []string{"source_version_unknown"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			run := Run{Status: "completed", QAType: tc.mode, Channel: "web", CaptureStatus: tc.capture, Gaps: tc.gaps}
+			report := Report{Verdict: tc.verdict, SourceCheck: tc.source, Risk: tc.risk}
+			route, _ := Triage(run, report, DefaultSettings(1))
+			require.Equal(t, tc.want, route)
+		})
+	}
+}
+
+func TestSourceVerificationCannotHideRootCauseReview(t *testing.T) {
+	run := Run{Status: "completed", QAType: "wiki-qa", Channel: "web", CaptureStatus: "partial", Gaps: []string{"source_version_unknown"}}
+	report := Report{Verdict: "supported", Risk: "low", SourceCheck: "unresolved", Causes: []Cause{{Category: "applicability", Status: "suspected", Summary: "applicability needs a business decision"}}}
+	route, _ := Triage(run, report, DefaultSettings(1))
+	require.Equal(t, "human_review", route)
+}

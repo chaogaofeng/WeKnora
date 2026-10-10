@@ -18,7 +18,7 @@ const en: Record<string, string> = {
   claimCount: 'claims',
   originalAnswer: 'Original answer · expand to read',
   noClaims: 'No claim assessment is available for this diagnosis.',
-  sourceReviewTitle: 'Source verification and outstanding evidence',
+  sourceReviewTitle: 'Source verification and follow-up',
   sourceFollowupNotice:
     'Source verification is still open. Answer support can be confirmed separately.',
   sourceBudget: 'Source lookup content / limit',
@@ -33,7 +33,7 @@ const en: Record<string, string> = {
   humanDecision: 'Human review',
   reviewBoundVersion: 'Reviewing diagnosis',
   answerReviewKeepsSourceOpen:
-    'Confirming the answer records its support assessment; outstanding source verification stays in the evidence queue.',
+    'Confirming the answer records its support assessment; outstanding source verification stays in the source verification queue.',
   noCauseReviewNeeded:
     'No root cause candidate was reported; a root cause review is not required.',
   noCauseAfterFailure:
@@ -378,6 +378,7 @@ const en: Record<string, string> = {
   quality_sample: 'Quality sample',
   technical_followup: 'Technical follow-up',
   needs_evidence: 'Needs evidence',
+  source_verification: 'Source verification pending',
   unreviewed: 'Unreviewed',
   partially_reviewed: 'Partially reviewed',
   reviewed: 'Reviewed',
@@ -442,7 +443,7 @@ const zh: Record<string, string> = {
   claimCount: '项论断',
   originalAnswer: '原回答 · 展开全文',
   noClaims: '本版诊断尚无逐条论断判定。',
-  sourceReviewTitle: '来源核验与待补证事项',
+  sourceReviewTitle: '来源核验与待处理事项',
   sourceFollowupNotice: '来源核验尚未完成，回答支持性可独立确认。',
   sourceBudget: '本次补查正文 / 上限',
   characters: '字符',
@@ -455,7 +456,7 @@ const zh: Record<string, string> = {
   humanDecision: '人工复核',
   reviewBoundVersion: '本次复核绑定诊断',
   answerReviewKeepsSourceOpen:
-    '确认回答仅记录支持性结论；来源未决事项仍保留在待补证队列。',
+    '确认回答仅记录支持性结论；来源未决事项仍保留在来源待核验队列。',
   noCauseReviewNeeded: '本版未发现需要复核的根因候选，无需填写根因复核。',
   noCauseAfterFailure: '诊断未完成，尚未形成根因结论。',
   addCauseCorrection: '补充人工根因判断',
@@ -778,6 +779,7 @@ const zh: Record<string, string> = {
   quality_sample: '质量抽检',
   technical_followup: '技术排查',
   needs_evidence: '待补证',
+  source_verification: '来源待核验',
   unreviewed: '未复核',
   partially_reviewed: '部分复核',
   reviewed: '已复核',

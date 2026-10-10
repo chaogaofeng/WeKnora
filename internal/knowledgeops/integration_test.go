@@ -76,7 +76,7 @@ func TestThreeModesEndToEndWithVersionedIndependentReviews(t *testing.T) {
 			if mode == "rag-qa" {
 				require.Equal(t, "human_review", a.Route)
 			} else {
-				require.Equal(t, "needs_evidence", a.Route)
+				require.Equal(t, "source_verification", a.Route)
 			}
 			review := Review{RunID: run.ID, AnalysisID: a.ID, Target: "answer", Verdict: "supported", Action: "confirmed", Reason: "人工核对", ReviewerID: "u"}
 			require.NoError(t, repo.AddReview(ctx, 1, &review))
