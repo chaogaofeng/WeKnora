@@ -48,7 +48,9 @@
 
     <details class="capture-panel">
       <summary>
-        <span class="capture-title">{{ k('captureQuality') }}</span>
+        <span class="capture-title">{{
+          k(showSourceVersions === false ? 'content_status' : 'captureQuality')
+        }}</span>
         <span class="capture-highlights">
           <span
             >{{ k('content_complete') }}
@@ -65,11 +67,17 @@
             >{{ k('content_missing_unknown') }}
             <strong>{{ stats.content_coverage.missing }}</strong></span
           >
-          <span v-if="stats.provenance_counts?.pending"
+          <span
+            v-if="
+              showSourceVersions !== false && stats.provenance_counts?.pending
+            "
             >{{ k('provenance_pending') }}
             <strong>{{ stats.provenance_counts.pending }}</strong></span
           >
-          <span v-if="stats.provenance_counts?.unknown"
+          <span
+            v-if="
+              showSourceVersions !== false && stats.provenance_counts?.unknown
+            "
             >{{ k('provenance_unknown') }}
             <strong>{{ stats.provenance_counts.unknown }}</strong></span
           >
@@ -91,7 +99,7 @@
           </t-table>
           <p class="muted">{{ k('contentCoverageNotice') }}</p>
         </div>
-        <div class="provenance-summary">
+        <div v-if="showSourceVersions !== false" class="provenance-summary">
           <h3>{{ k('provenanceStats') }}</h3>
           <p
             v-for="status in ['known', 'pending', 'unknown']"
@@ -148,7 +156,11 @@ import { computed } from 'vue'
 import EmptyState from '@/components/EmptyState.vue'
 import type { OpsOverview } from '@/api/knowledge-ops'
 import { useOpsText } from './locales'
-const props = defineProps<{ stats: OpsOverview; causeCategory?: string }>()
+const props = defineProps<{
+  stats: OpsOverview
+  causeCategory?: string
+  showSourceVersions?: boolean
+}>()
 const emit = defineEmits<{ cause: [category: string] }>()
 const { k, label, labelVerdict } = useOpsText()
 const successfulCount = computed(

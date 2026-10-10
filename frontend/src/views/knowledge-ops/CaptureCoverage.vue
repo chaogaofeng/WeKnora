@@ -6,7 +6,7 @@
         :text="k(`content_${coverage?.content_status || 'unknown'}`)"
       />
     </t-tooltip>
-    <t-tooltip :content="provenanceHint">
+    <t-tooltip v-if="showSourceVersions !== false" :content="provenanceHint">
       <span
         class="provenance"
         :class="{ pending: coverage?.provenance_status === 'pending' }"
@@ -21,7 +21,10 @@ import { computed } from 'vue'
 import type { OpsCaptureCoverage } from '@/api/knowledge-ops'
 import StatusBadge from './StatusBadge.vue'
 import { useOpsText } from './locales'
-const props = defineProps<{ coverage?: OpsCaptureCoverage }>()
+const props = defineProps<{
+  coverage?: OpsCaptureCoverage
+  showSourceVersions?: boolean
+}>()
 const { k, label } = useOpsText()
 const contentHint = computed(() =>
   props.coverage?.content_gaps?.length

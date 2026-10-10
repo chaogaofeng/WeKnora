@@ -318,12 +318,13 @@ const (
 // pendingWikiPage is a resolved page whose neighbour summaries, sources and
 // body have been gathered but whose rendered size is not yet decided.
 type pendingWikiPage struct {
-	page     *types.WikiPage
-	kbID     string
-	outLinks []string
-	inLinks  []string
-	sources  []string
-	body     string
+	page          *types.WikiPage
+	kbID          string
+	outLinks      []string
+	inLinks       []string
+	linkedSources []types.ToolSourceSnapshot
+	sources       []string
+	body          string
 }
 
 func (p pendingWikiPage) render(body string) string {
@@ -504,8 +505,9 @@ func (t *wikiReadPageTool) Execute(ctx context.Context, args json.RawMessage) (*
 	// multiple KBs when the agent has several wiki KBs in scope.
 	foundKBs := make(map[string][]string)
 
-	formatLinks := func(slugs []string, kbID string) []string {
+	formatLinks := func(slugs []string, kbID, parentID string) ([]string, []types.ToolSourceSnapshot) {
 		var descs []string
+		var sources []types.ToolSourceSnapshot
 		inlined := 0
 		for _, s := range slugs {
 			if s == "" {
@@ -534,28 +536,39 @@ func (t *wikiReadPageTool) Execute(ctx context.Context, args json.RawMessage) (*
 				descs = append(descs, fmt.Sprintf("[[%s]]", s))
 				continue
 			}
-			descs = append(descs, fmt.Sprintf("[[%s]] (%s)", s, truncateRunes(linkPage.Summary, wikiLinkSummaryMaxRunes)))
+			if linkPage.KnowledgeBaseID != "" && linkPage.KnowledgeBaseID != kbID {
+				descs = append(descs, fmt.Sprintf("[[%s]]", s))
+				continue
+			}
+			rendered := fmt.Sprintf("[[%s]] (%s)", s, truncateRunes(linkPage.Summary, wikiLinkSummaryMaxRunes))
+			descs = append(descs, rendered)
+			source := wikiSourceSnapshot(linkPage, kbID, true)
+			source.Kind, source.ParentPageID, source.Rendered = "wiki_summary", parentID, rendered
+			sources = append(sources, source)
 			inlined++
 			t.mu.Lock()
 			t.seenLinks[key] = true
 			t.mu.Unlock()
 		}
 		if len(descs) == 0 {
-			return []string{"(none)"}
+			return []string{"(none)"}, sources
 		}
-		return descs
+		return descs, sources
 	}
 
 	// resolvePage gathers everything needed to render a page except its final
 	// size. Rendering is deferred until every requested slug has been resolved
 	// so the output budget can be shared across the whole batch.
 	resolvePage := func(page *types.WikiPage, kbID string) pendingWikiPage {
+		outLinks, outSources := formatLinks(page.OutLinks, kbID, page.ID)
+		inLinks, inSources := formatLinks(page.InLinks, kbID, page.ID)
 		resolved := pendingWikiPage{
-			page:     page,
-			kbID:     kbID,
-			outLinks: formatLinks(page.OutLinks, kbID),
-			inLinks:  formatLinks(page.InLinks, kbID),
-			body:     page.Content,
+			page:          page,
+			kbID:          kbID,
+			outLinks:      outLinks,
+			inLinks:       inLinks,
+			linkedSources: append(outSources, inSources...),
+			body:          page.Content,
 		}
 
 		for _, ref := range page.SourceRefs {
@@ -698,6 +711,7 @@ func (t *wikiReadPageTool) Execute(ctx context.Context, args json.RawMessage) (*
 	sourceSnapshots := make([]types.ToolSourceSnapshot, 0, len(pending))
 	for _, page := range pending {
 		sourceSnapshots = append(sourceSnapshots, wikiSourceSnapshot(page.page, page.kbID, slices.Contains(truncatedSlugs, page.page.Slug) || slices.Contains(omittedSlugs, page.page.Slug)))
+		sourceSnapshots = append(sourceSnapshots, page.linkedSources...)
 	}
 
 	if len(omittedSlugs) > 0 {

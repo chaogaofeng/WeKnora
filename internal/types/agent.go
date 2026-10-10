@@ -368,6 +368,9 @@ type Cleanable interface {
 type ToolSourceSnapshot struct {
 	ID, Kind, KBID, KnowledgeID, ChunkID, PageID, Slug, Version, Title string
 	Truncated                                                          bool
+	// Inline Wiki summaries bind their bounded rendered text to the containing
+	// page. These live-only fields are never serialized with ToolResult.
+	ParentPageID, Rendered string
 }
 
 type ToolResult struct {

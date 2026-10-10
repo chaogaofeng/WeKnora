@@ -76,6 +76,29 @@
           @change="(value: unknown) => change(field.key, value)"
         />
       </div>
+      <div class="source-version-display">
+        <span :id="`${id}-source-versions`">{{ k('showSourceVersions') }}</span>
+        <t-tooltip :content="k('sourceVersionDisplayHint')">
+          <t-switch
+            size="small"
+            role="switch"
+            tabindex="0"
+            :value="showSourceVersions !== false"
+            :aria-checked="showSourceVersions !== false"
+            :aria-labelledby="`${id}-source-versions`"
+            @keydown.space.prevent="
+              emit('sourceVersions', showSourceVersions === false)
+            "
+            @keydown.enter.prevent="
+              emit('sourceVersions', showSourceVersions === false)
+            "
+            @change="
+              (value: boolean | string | number) =>
+                emit('sourceVersions', !!value)
+            "
+          />
+        </t-tooltip>
+      </div>
       <div class="filter-meta">
         <span class="time-note">{{ timeZone }} · {{ k('timeBoundary') }}</span>
         <button
@@ -143,6 +166,7 @@ const props = defineProps<{
   applied: OpsFilters
   records: boolean
   loading: boolean
+  showSourceVersions?: boolean
 }>()
 const emit = defineEmits<{
   change: [key: string, value: string]
@@ -150,6 +174,7 @@ const emit = defineEmits<{
   apply: []
   reset: []
   remove: [key: string]
+  sourceVersions: [value: boolean]
 }>()
 const { k, label, labelVerdict, date } = useOpsText()
 const expanded = ref(false)
@@ -360,8 +385,17 @@ const activeTags = computed(() => {
 .quick-filters {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--app-space-6);
   padding: var(--app-space-3) 0 var(--app-space-4);
+}
+.source-version-display {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-2);
+  color: var(--td-text-color-secondary);
+  font-size: var(--app-text-md);
+  white-space: nowrap;
 }
 .inline-field {
   display: flex;
@@ -464,6 +498,10 @@ const activeTags = computed(() => {
   color: var(--td-text-color-placeholder);
 }
 button:focus-visible {
+  outline: 2px solid var(--td-brand-color);
+  outline-offset: 3px;
+}
+.source-version-display :deep(.t-switch:focus-visible) {
   outline: 2px solid var(--td-brand-color);
   outline-offset: 3px;
 }

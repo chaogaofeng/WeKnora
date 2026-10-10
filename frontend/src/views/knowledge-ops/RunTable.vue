@@ -14,7 +14,10 @@
         </div>
       </template>
       <template #capture="{ row: run }">
-        <CaptureCoverage :coverage="run.coverage" />
+        <CaptureCoverage
+          :coverage="run.coverage"
+          :show-source-versions="showSourceVersions"
+        />
       </template>
       <template #verdict="{ row: run }">
         <div>
@@ -32,7 +35,10 @@
       <template #route="{ row: run }">
         <div>
           {{ label(run.analysis?.route) }}
-          <t-tooltip v-if="run.analysis?.route_reason" :content="run.analysis.route_reason">
+          <t-tooltip
+            v-if="run.analysis?.route_reason"
+            :content="run.analysis.route_reason"
+          >
             <small class="route-reason">{{ run.analysis.route_reason }}</small>
           </t-tooltip>
         </div>
@@ -43,7 +49,17 @@
         </div>
       </template>
       <template #review="{ row: run }">
-        <div>{{ label(run.review_state) }}</div>
+        <div class="review-state-cell">
+          <StatusBadge :value="run.review_state" />
+          <small
+            v-if="showSourceVersions !== false && run.source_followup_pending"
+            class="source-followup"
+          >
+            <t-tooltip :content="k('sourceFollowupIndependent')">
+              <span>{{ label('source_verification') }}</span>
+            </t-tooltip>
+          </small>
+        </div>
       </template>
       <template #time="{ row: run }">
         <div>{{ date(run.started_at) }}</div>
@@ -69,13 +85,19 @@ import type { OpsRun } from '@/api/knowledge-ops'
 import StatusBadge from './StatusBadge.vue'
 import CaptureCoverage from './CaptureCoverage.vue'
 import { useOpsText } from './locales'
-defineProps<{ runs: OpsRun[] }>()
+const props = defineProps<{ runs: OpsRun[]; showSourceVersions?: boolean }>()
 const emit = defineEmits<{ open: [id: string, analysis?: string] }>()
 const { k, label, date } = useOpsText()
 const columns = computed(() => [
   { colKey: 'question', title: k('question'), width: 260 },
   { colKey: 'type', title: `${k('qa_type')} / ${k('channel')}`, width: 170 },
-  { colKey: 'capture', title: k('captureCoverage'), width: 160 },
+  {
+    colKey: 'capture',
+    title: k(
+      props.showSourceVersions === false ? 'content_status' : 'captureCoverage',
+    ),
+    width: 160,
+  },
   { colKey: 'verdict', title: k('verdict'), width: 150 },
   { colKey: 'route', title: k('route'), width: 140 },
   { colKey: 'diagnosis', title: k('diagnosis'), width: 120 },
@@ -108,6 +130,9 @@ small {
 }
 .question-cell small {
   font-weight: 400;
+}
+.source-followup {
+  color: var(--td-warning-color-6);
 }
 .route-reason,
 .question-cell > span {

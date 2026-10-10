@@ -156,7 +156,7 @@ func RecordModelInput(ctx context.Context, messages []chat.Message, encode func(
 		blocks := boundModelBlocks(m.Content)
 		matched := make([]bool, len(blocks))
 		for _, s := range candidates {
-			if s.Kind == "source_dependency" {
+			if s.Kind == "source_dependency" || s.Kind == "wiki_summary" {
 				continue
 			}
 			if s.ToolCallID != "" && s.ToolCallID != m.ToolCallID {
@@ -178,6 +178,9 @@ func RecordModelInput(ctx context.Context, messages []chat.Message, encode func(
 				if !strings.Contains(block.identity, marker) {
 					continue
 				}
+				if s.Slug != "" && !strings.Contains(wikiPageLink.FindString(block.identity), marker) {
+					continue // A link in a neighbour summary is not this page's body.
+				}
 				if s.Slug != "" && s.KBID != "" && !strings.Contains(block.identity, "<knowledge_base_id>"+html.EscapeString(encode(s.KBID))+"</knowledge_base_id>") {
 					continue
 				}
@@ -190,8 +193,8 @@ func RecordModelInput(ctx context.Context, messages []chat.Message, encode func(
 					sent.Truncated = true
 				}
 				RecordSources(ctx, []Source{sent})
-				if s.Slug != "" && hasWikiLinkSummary(block.identity) {
-					Gap(ctx, "wiki_linked_summary_versions_unknown")
+				if s.Slug != "" {
+					recordWikiSummaries(ctx, s, block.identity, candidates, encode)
 				}
 				break
 			}

@@ -27,6 +27,7 @@ type Start struct {
 }
 type Source struct {
 	ID, Kind, KBID, KnowledgeID, ChunkID, PageID, Slug, Version, Content, Title, ToolCallID string
+	ParentPageID, Rendered                                                                  string
 	AcquiredAt                                                                              time.Time
 	Truncated, SentToModel, PostHoc                                                         bool
 }
@@ -148,7 +149,18 @@ func RecordSources(ctx context.Context, sources []Source) {
 	if full {
 		Gap(ctx, "capture_candidate_count_budget")
 	}
-	guarded(ctx, func(rec Recorder) { rec.RecordSources(context.WithoutCancel(ctx), ss) })
+	// Inline summary snapshots are only matching metadata until an actual model
+	// input consumes them. Do not create evidence/permission dependencies for
+	// summaries that the output budget or context trimming omitted.
+	stored := make([]Source, 0, len(ss))
+	for _, s := range ss {
+		if s.Kind != "wiki_summary" || s.SentToModel {
+			stored = append(stored, s)
+		}
+	}
+	if len(stored) > 0 {
+		guarded(ctx, func(rec Recorder) { rec.RecordSources(context.WithoutCancel(ctx), stored) })
+	}
 }
 
 // Finish is idempotent across setup errors, asynchronous stream completion and

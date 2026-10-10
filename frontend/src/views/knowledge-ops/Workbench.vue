@@ -47,6 +47,8 @@
       :applied="tab === 'records' ? recordFilters : filters"
       :records="tab === 'records'"
       :loading="loading"
+      :show-source-versions="showSourceVersions"
+      @source-versions="setShowSourceVersions"
       @change="changeFilter"
       @period="changePeriod"
       @apply="applyFilters"
@@ -104,6 +106,7 @@
         </div>
         <OverviewInsights
           :stats="overview"
+          :show-source-versions="showSourceVersions"
           :cause-category="filters.cause_category"
           @cause="filterCause"
         />
@@ -139,6 +142,7 @@
       </section>
       <QueuePanel
         v-if="tab === 'queue'"
+        :show-source-versions="showSourceVersions"
         :runs="runs"
         :groups="groups"
         :grouped="grouped && !selectedGroup"
@@ -178,7 +182,12 @@
           :description="k('emptyHint')"
           icon="search"
         />
-        <RunTable v-else-if="tab !== 'records'" :runs="runs" @open="openRun" />
+        <RunTable
+          v-else-if="tab !== 'records'"
+          :runs="runs"
+          :show-source-versions="showSourceVersions"
+          @open="openRun"
+        />
         <ReviewTable v-else :reviews="reviews" @open="openRun" />
       </section>
       <footer v-if="total" class="pagination">
@@ -199,6 +208,7 @@
       @saved="settingsSaved"
     />
     <DetailDrawer
+      :show-source-versions="showSourceVersions"
       :runID="activeRun"
       :analysisID="activeAnalysis"
       :enabled="!!settings?.enabled"
@@ -213,6 +223,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { RefreshIcon } from 'tdesign-icons-vue-next'
 import { useAuthStore } from '@/stores/auth'
+import { safeGetItem, safeSetItem } from '@/composables/preferenceStorage'
 import {
   getOpsSettings,
   getOpsOverview,
@@ -241,6 +252,23 @@ const { k, label, date } = useOpsText()
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
+// A local display preference, independent of API filters and diagnosis settings.
+const sourceVersionPreferenceKey = computed(
+  () =>
+    `WeKnora_${auth.currentUserId || 'anon'}_knowledge_ops_show_source_versions`,
+)
+const showSourceVersions = ref(true)
+watch(
+  sourceVersionPreferenceKey,
+  (key) => {
+    showSourceVersions.value = safeGetItem(key) !== 'false'
+  },
+  { immediate: true },
+)
+function setShowSourceVersions(value: boolean) {
+  showSourceVersions.value = value
+  safeSetItem(sourceVersionPreferenceKey.value, String(value))
+}
 const tabs = ['overview', 'queue', 'records'] as const
 type Tab = (typeof tabs)[number]
 const tab = ref<Tab>(

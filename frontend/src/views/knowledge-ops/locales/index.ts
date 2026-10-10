@@ -34,6 +34,7 @@ const en: Record<string, string> = {
   sourcePageAndChunk: 'Page / Fragment',
   sourceToolAndRound: 'Tool call / Round',
   evidenceKind_wiki: 'Wiki page',
+  evidenceKind_wiki_summary: 'Linked Wiki summary',
   evidenceKind_chunk: 'Document fragment',
   evidenceKind_source_document: 'Source document',
   evidenceKind_source_dependency: 'Linked source',
@@ -293,6 +294,13 @@ const en: Record<string, string> = {
   execution: 'Execution mode',
   diagnosis: 'Diagnosis',
   reviewState: 'Human review state',
+  currentHumanReview: 'Current human review',
+  showSourceVersions: 'Show source version checks',
+  sourceVersionDisplayHint:
+    'Display preference for this account and browser. Hide version reminders and summary badges; background verification, routing and pending counts continue unchanged. Source content conflicts remain visible.',
+  sourceVersionDetails: 'Source version details',
+  sourceFollowupIndependent:
+    'Human review and source verification are tracked separately. Completing a review does not close outstanding source work.',
   operation: 'Action',
   detail: 'View diagnosis',
   loading: 'Loading…',
@@ -486,6 +494,7 @@ const zh: Record<string, string> = {
   sourcePageAndChunk: '页面 / 片段',
   sourceToolAndRound: '工具调用 / 轮次',
   evidenceKind_wiki: 'Wiki 页面',
+  evidenceKind_wiki_summary: 'Wiki 关联页摘要',
   evidenceKind_chunk: '文档片段',
   evidenceKind_source_document: '来源文档',
   evidenceKind_source_dependency: '关联来源',
@@ -727,6 +736,13 @@ const zh: Record<string, string> = {
   execution: '执行方式',
   diagnosis: '诊断状态',
   reviewState: '人工复核状态',
+  currentHumanReview: '当前人工复核',
+  showSourceVersions: '显示来源版本核验',
+  sourceVersionDisplayHint:
+    '仅影响当前账号在此浏览器的展示。关闭后隐藏版本提示和附加标记，后台核验、分流与待办计数继续保留；来源内容冲突仍会显示。',
+  sourceVersionDetails: '来源版本详情',
+  sourceFollowupIndependent:
+    '人工复核与来源核验分别记录；人工复核完成后，尚未解决的来源事项仍保留在待办中。',
   operation: '操作',
   detail: '查看诊断',
   loading: '加载中…',

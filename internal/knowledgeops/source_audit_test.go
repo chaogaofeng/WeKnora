@@ -12,10 +12,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSourcePendingPreventsPrematureReviewClosure(t *testing.T) {
+func TestCompletedHumanReviewKeepsSourceFollowupOpen(t *testing.T) {
 	for _, route := range []string{"needs_evidence", "human_review"} {
 		d := Detail{Run: Run{Gaps: []string{"wiki_linked_summary_versions_unknown"}, Analysis: &Analysis{ID: "a", Status: "succeeded", Route: route, Report: Report{Verdict: "supported", SourceCheck: "unresolved"}}}, Reviews: []Review{{AnalysisID: "a", Target: "answer", Action: "confirmed"}}}
-		require.Equal(t, "partially_reviewed", reviewState(d))
+		require.Equal(t, "reviewed", reviewState(d))
 		require.Contains(t, queueRoutes(d), "source_verification")
 	}
 	d := Detail{Run: Run{Analysis: &Analysis{ID: "a", Status: "succeeded", Report: Report{SourceCheck: "consistent", Unknowns: []string{"business decision pending"}, ReviewQuestions: []string{"approve amount?"}}}}, Reviews: []Review{{AnalysisID: "a", Target: "answer", Action: "confirmed"}}}
@@ -27,7 +27,7 @@ func TestSourcePendingDoesNotReopenCompletedHumanReview(t *testing.T) {
 	for _, route := range []string{"human_review", "quality_sample"} {
 		t.Run(route, func(t *testing.T) {
 			d := Detail{Run: Run{Analysis: &Analysis{ID: "a", Status: "succeeded", Route: route, Report: Report{Verdict: "supported", SourceCheck: "unresolved"}}}, Reviews: []Review{{AnalysisID: "a", Target: "answer", Action: "confirmed"}}}
-			require.Equal(t, "partially_reviewed", reviewState(d))
+			require.Equal(t, "reviewed", reviewState(d))
 			require.Equal(t, []string{"source_verification"}, queueRoutes(d))
 			stats := newWorkbenchStats()
 			stats.observe(d)
@@ -38,11 +38,14 @@ func TestSourcePendingDoesNotReopenCompletedHumanReview(t *testing.T) {
 			// A real cause still needs its own review; historical reviews do not count.
 			d.Run.Analysis.Report.Causes = []Cause{{Category: "retrieval", Status: "suspected"}}
 			d.Reviews = append(d.Reviews, Review{AnalysisID: "old", Target: "cause", Action: "confirmed"})
+			require.Equal(t, "partially_reviewed", reviewState(d), "a required cause review is still missing")
 			require.Contains(t, queueRoutes(d), route)
 			d.Reviews = append([]Review{{AnalysisID: "a", Target: "cause", Action: "confirmed"}}, d.Reviews...)
+			require.Equal(t, "reviewed", reviewState(d))
 			require.Equal(t, []string{"source_verification"}, queueRoutes(d))
 			// A later request for evidence reopens the human task.
 			d.Reviews = append([]Review{{AnalysisID: "a", Target: "answer", Action: "needs_more_evidence"}}, d.Reviews...)
+			require.Equal(t, "partially_reviewed", reviewState(d), "a new human evidence request reopens answer review")
 			require.Contains(t, queueRoutes(d), route)
 		})
 	}
@@ -157,7 +160,7 @@ func TestDetailDerivedUnknownSourceVersionKeepsFollowupPending(t *testing.T) {
 			require.Empty(t, d.Run.Gaps)
 			require.Contains(t, d.Run.Coverage.ProvenanceGaps, "source_version_unknown")
 			require.True(t, d.Run.SourceFollowupPending)
-			require.Equal(t, "partially_reviewed", reviewState(d))
+			require.Equal(t, "reviewed", reviewState(d))
 			require.Contains(t, queueRoutes(d), "source_verification")
 		})
 	}

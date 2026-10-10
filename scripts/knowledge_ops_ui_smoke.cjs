@@ -165,6 +165,7 @@ const fs = require('fs')
   let simulateConflict = false
   let apiFailure = false
   let detailDenied = false
+  let awaitingDiagnosis = false
   const submitted = []
   const filterRequests = []
   await context.route('**/api/**', async (route) => {
@@ -206,7 +207,11 @@ const fs = require('fs')
         coverage_by_mode: {
           'hybrid-rag-wiki': { total: runs.length, complete: runs.length, partial: 0, missing: 0 },
         },
-        source_checks: { consistent: runs.length },
+        source_checks: runs.reduce((counts, run) => {
+          const status = run.analysis.report.source_check
+          counts[status] = (counts[status] || 0) + 1
+          return counts
+        }, {}),
         causes: analysis.cause_assessment.candidates.length ? { generation: runs.length } : {},
         queue_counts: { human_review: runs.length },
         diagnosis_status: { succeeded: runs.length },
@@ -241,7 +246,7 @@ const fs = require('fs')
       reviews.unshift(data)
     } else if (path.endsWith('/runs/run-1/retry')) data = { queued: true }
     else if (path.endsWith('/runs/run-1')) {
-      const current = historicalMode
+      const current = awaitingDiagnosis ? null : historicalMode
         ? {
             ...analysis,
             id: 'analysis-2',
@@ -250,11 +255,11 @@ const fs = require('fs')
           }
         : analysis
       data = {
-        pending_tasks: 0,
+        pending_tasks: awaitingDiagnosis ? 1 : 0,
         run: { ...runs[0], analysis: current },
         evidence,
-        analyses: historicalMode ? [current, analysis] : [analysis],
-        reviews,
+        analyses: awaitingDiagnosis ? [] : historicalMode ? [current, analysis] : [analysis],
+        reviews: awaitingDiagnosis ? [] : reviews,
       }
     } else if (path.endsWith('/knowledge-ops/groups'))
       data = {
@@ -457,6 +462,95 @@ const fs = require('fs')
   if (settings.sample_percent !== 25) throw new Error('settings not saved')
   historicalMode = false
   const originalReport = analysis.report
+  analysis.report = { ...originalReport, causes: [], source_check: 'unresolved' }
+  analysis.cause_assessment = { candidates: [], unlinked: [] }
+  runs[0].review_state = 'reviewed'
+  runs[0].source_followup_pending = true
+  await page.goto(baseURL + '/platform/knowledge-ops')
+  const reviewCell = page.locator('.review-state-cell').first()
+  await reviewCell.getByText('已复核', { exact: true }).waitFor()
+  await reviewCell.getByText('来源待核验', { exact: true }).waitFor()
+  if ((await reviewCell.innerText()).includes('部分复核')) throw new Error('source followup downgraded human review')
+  await page.locator('.list-panel').getByRole('button', { name: '查看诊断', exact: true }).first().click()
+  await page.locator('.run-meta').getByText('当前人工复核 · 已复核', { exact: true }).waitFor()
+  await page.locator('.run-meta').getByText('来源待核验', { exact: true }).waitFor()
+  await page.waitForFunction(() => {
+    const rect = document.querySelector('.ops-detail')?.getBoundingClientRect()
+    return rect && rect.left >= 0 && rect.right <= innerWidth + 1
+  })
+  await page.screenshot({ path: out + '/reviewed-source-pending.png' })
+  await page.goto(baseURL + '/platform/knowledge-ops?tab=queue')
+  await page.locator('.queue-case .source-followup').getByText('来源待核验', { exact: true }).first().waitFor()
+  if (!(await page.locator('.queue-case').first().innerText()).includes('已复核')) throw new Error('queue lost human completion')
+  runs[0].coverage = {
+    content_status: 'complete', provenance_status: 'pending', content_gaps: [],
+    provenance_gaps: ['wiki_linked_summary_versions_unknown'],
+  }
+  analysis.report.source_check = 'inconsistent'
+  analysis.report.source_audit = {
+    issues: ['source_linked_versions_unknown', 'source_lookup_failed'],
+    evidence_ids: ['ev-2'], chars: 100, char_limit: 16000,
+  }
+  evidence.push({
+    ...evidence[0], id: 'summary-unknown', kind: 'wiki_summary', page_id: 'neighbor-page',
+    slug: '关联页/缺少版本', title: '未记录版本的关联摘要', version: 'unknown',
+    content: '模型实际收到的关联摘要', truncated: true,
+  })
+  await page.goto(baseURL + '/platform/knowledge-ops')
+  await page.locator('.list-panel .provenance').getByText('来源版本待核验', { exact: true }).waitFor()
+  const versionSwitch = page.getByRole('switch', { name: '显示来源版本核验', exact: true })
+  const beforeDisplayChange = await page.locator('.metrics').innerText()
+  await versionSwitch.click()
+  await page.locator('.list-panel .provenance').waitFor({ state: 'hidden' })
+  if (await page.locator('.list-panel .source-followup').count()) throw new Error('source badge remains when display is off')
+  if (await page.locator('.provenance-summary').count()) throw new Error('version stats remain when display is off')
+  await page.locator('.source-panel').getByText('不一致', { exact: true }).waitFor()
+  if (await page.locator('.metrics').innerText() !== beforeDisplayChange) throw new Error('display preference changed operational counts')
+  if (await versionSwitch.getAttribute('aria-checked') !== 'false') throw new Error('version switch did not turn off')
+  await page.reload()
+  await page.locator('.list-panel').getByRole('button', { name: '查看诊断', exact: true }).first().waitFor()
+  if (await versionSwitch.getAttribute('aria-checked') !== 'false') throw new Error('display preference was not restored on reload')
+  await page.screenshot({ path: out + '/source-versions-hidden.png', fullPage: true })
+  await page.locator('.list-panel').getByRole('button', { name: '查看诊断', exact: true }).first().click()
+  await page.locator('.run-meta').getByText('当前人工复核 · 已复核', { exact: true }).waitFor()
+  if (await page.locator('.run-meta').getByText('来源待核验', { exact: true }).count()) throw new Error('detail header ignores preference')
+  await page.locator('#ops-source-check .section-heading').getByText('不一致', { exact: true }).waitFor()
+  await page.locator('#ops-source-check').getByText('来源补查未能完成', { exact: true }).waitFor()
+  const versionDetails = page.locator('.version-details')
+  if (await versionDetails.getByText('Wiki 关联摘要版本未知', { exact: true }).isVisible()) throw new Error('version gap should be folded')
+  await versionDetails.locator('summary').click()
+  await versionDetails.getByText('Wiki 关联摘要版本未知', { exact: true }).waitFor()
+  await versionDetails.getByRole('button', { name: '未记录版本的关联摘要', exact: true }).click()
+  await page.locator('#ops-evidence-summary-unknown').getByText('模型实际收到的关联摘要', { exact: true }).waitFor()
+  await page.locator('#ops-evidence-summary-unknown').getByText('Wiki 关联页摘要', { exact: true }).waitFor()
+  await page.goto(baseURL + '/platform/knowledge-ops?tab=queue')
+  await page.locator('.queue-case').first().waitFor()
+  if (await page.locator('.queue-case .source-followup, .queue-case .provenance').count()) throw new Error('queue ignores display preference')
+  await page.locator('.queue-case').first().getByText('已复核', { exact: false }).waitFor()
+  await page.setViewportSize({ width: 800, height: 1000 })
+  await page.screenshot({ path: out + '/source-versions-hidden-narrow.png', fullPage: true })
+  await page.setViewportSize({ width: 1512, height: 1100 })
+  await versionSwitch.focus()
+  await versionSwitch.press('Space')
+  await page.locator('.queue-case .source-followup').first().waitFor()
+  await page.locator('.queue-case .provenance').first().waitFor()
+  awaitingDiagnosis = true
+  await page.goto(baseURL + '/platform/knowledge-ops?run=run-1')
+  await page.locator('.ops-detail .capture-coverage').waitFor()
+  if (await page.locator('.diagnosis-first').count()) throw new Error('fixture unexpectedly has a diagnosis')
+  await page.locator('.ops-detail .provenance').getByText('来源版本待核验', { exact: true }).waitFor({ timeout: 5000 })
+  await page.goto(baseURL + '/platform/knowledge-ops')
+  await versionSwitch.click()
+  await page.locator('.list-panel').getByRole('button', { name: '查看诊断', exact: true }).first().click()
+  await page.locator('.ops-detail .capture-coverage').waitFor()
+  if (await page.locator('.ops-detail .provenance').count()) throw new Error('undiagnosed detail ignores hidden version preference')
+  await page.goto(baseURL + '/platform/knowledge-ops')
+  await versionSwitch.click()
+  awaitingDiagnosis = false
+  delete runs[0].coverage
+  evidence.pop()
+  runs[0].review_state = 'unreviewed'
+  runs[0].source_followup_pending = false
   const positiveCause = { ...originalReport.causes[0], summary: '模型准确提取要点，生成内容与原文高度一致，无幻觉或遗漏。' }
   analysis.report = { ...originalReport, claims: originalReport.claims.map((claim) => ({ ...claim, verdict: 'supported' })), causes: [positiveCause] }
   analysis.cause_assessment = { candidates: [], unlinked: [positiveCause] }
@@ -510,6 +604,11 @@ const fs = require('fs')
           'cause category drilldown',
           'unlinked attribution excluded and preserved for audit',
           'queue excludes unlinked attribution',
+          'completed human review with independent source followup',
+          'source version display preference persists without changing counts',
+          'hidden version gaps remain accessible while content conflicts stay visible',
+          'version gap links to the exact consumed summary evidence',
+          'undiagnosed detail follows both version display preferences',
           'grouped queue diagnosis',
           'group members',
           'diagnosis first',

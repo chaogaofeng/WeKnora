@@ -85,7 +85,7 @@ func RecordToolResult(ctx context.Context, callID, name string, result *types.To
 	}
 	sources := SearchSources(result.SearchResults, callID)
 	for _, s := range result.SourceSnapshots {
-		sources = append(sources, Source{ID: s.ID, Kind: s.Kind, KBID: s.KBID, KnowledgeID: s.KnowledgeID, ChunkID: s.ChunkID, PageID: s.PageID, Slug: s.Slug, Version: s.Version, Title: s.Title, ToolCallID: callID, Truncated: s.Truncated})
+		sources = append(sources, Source{ID: s.ID, Kind: s.Kind, KBID: s.KBID, KnowledgeID: s.KnowledgeID, ChunkID: s.ChunkID, PageID: s.PageID, Slug: s.Slug, Version: s.Version, Title: s.Title, ToolCallID: callID, Truncated: s.Truncated, ParentPageID: s.ParentPageID, Rendered: s.Rendered})
 	}
 	if len(sources) == 0 {
 		rows := sourceRows(result.Data["results"])

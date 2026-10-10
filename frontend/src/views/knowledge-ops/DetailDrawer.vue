@@ -51,7 +51,19 @@
             <span>{{ label(detail.run.qa_type) }}</span
             ><span>{{ detail.run.channel || k('unknown') }}</span>
             <span>{{ date(detail.run.started_at) }}</span
-            ><StatusBadge :value="detail.run.review_state" />
+            ><StatusBadge
+              :value="detail.run.review_state"
+              :text="`${k('currentHumanReview')} · ${label(detail.run.review_state)}`"
+            />
+            <t-tooltip
+              v-if="
+                showSourceVersions !== false &&
+                detail.run.source_followup_pending
+              "
+              :content="k('sourceFollowupIndependent')"
+            >
+              <StatusBadge value="source_verification" />
+            </t-tooltip>
           </div>
         </div>
         <p v-if="detail.pending_tasks" class="notice" role="status">
@@ -84,8 +96,17 @@
               ><StatusBadge :value="analysis.report.risk" />
             </div>
             <div>
-              <span class="field-label">{{ k('captureCoverage') }}</span
-              ><CaptureCoverage :coverage="detail.run.coverage" />
+              <span class="field-label">{{
+                k(
+                  showSourceVersions === false
+                    ? 'content_status'
+                    : 'captureCoverage',
+                )
+              }}</span
+              ><CaptureCoverage
+                :coverage="detail.run.coverage"
+                :show-source-versions="showSourceVersions"
+              />
             </div>
           </div>
           <p class="muted">{{ k('supportScopeNotice') }}</p>
@@ -109,7 +130,10 @@
           </p>
         </section>
         <section v-else>
-          <CaptureCoverage :coverage="detail.run.coverage" />
+          <CaptureCoverage
+            :coverage="detail.run.coverage"
+            :show-source-versions="showSourceVersions"
+          />
           <p class="notice">
             {{ k('noAnalysis') }} · {{ k('noAnalysisHint') }}
           </p>
@@ -167,19 +191,65 @@
             <h3>{{ k('sourceReviewTitle') }}</h3>
             <StatusBadge :value="analysis.report.source_check" />
           </div>
-          <p v-if="sourcePending" class="notice">
+          <p v-if="showSourceFollowupNotice" class="notice">
             {{ k('sourceFollowupNotice') }}
           </p>
-          <div v-if="sourceIssues.length" class="source-issues">
+          <div v-if="visibleSourceIssues.length" class="source-issues">
             <article
-              v-for="issue in sourceIssues"
+              v-for="issue in visibleSourceIssues"
               :key="issue"
               class="source-issue"
             >
               <strong>{{ label(issue) }}</strong>
               <p>{{ sourceAction(issue) }}</p>
+              <div
+                v-if="versionGapSources(issue).length"
+                class="evidence-links"
+              >
+                <button
+                  v-for="item in versionGapSources(issue)"
+                  :key="item.id"
+                  type="button"
+                  @click="showEvidence(item.id)"
+                >
+                  {{ item.title || item.slug || item.page_id || item.chunk_id }}
+                </button>
+              </div>
             </article>
           </div>
+          <details
+            v-if="hiddenVersionIssues.length"
+            class="version-details material-disclosure"
+          >
+            <summary>
+              {{ k('sourceVersionDetails') }} · {{ hiddenVersionIssues.length }}
+            </summary>
+            <div class="source-issues">
+              <article
+                v-for="issue in hiddenVersionIssues"
+                :key="issue"
+                class="source-issue"
+              >
+                <strong>{{ label(issue) }}</strong>
+                <p>{{ sourceAction(issue) }}</p>
+                <div
+                  v-if="versionGapSources(issue).length"
+                  class="evidence-links"
+                >
+                  <button
+                    v-for="item in versionGapSources(issue)"
+                    :key="item.id"
+                    type="button"
+                    @click="showEvidence(item.id)"
+                  >
+                    {{
+                      item.title || item.slug || item.page_id || item.chunk_id
+                    }}
+                  </button>
+                </div>
+              </article>
+            </div>
+          </details>
           <p v-if="analysis.report.source_audit" class="muted">
             {{ k('sourceBudget') }}:
             {{ analysis.report.source_audit.chars.toLocaleString() }}
@@ -205,7 +275,10 @@
               · {{ postEvidence.length }}
             </summary>
             <p class="muted">{{ sourceEvidenceNotice }}</p>
-            <EvidenceList :items="postEvidence" />
+            <EvidenceList
+              :items="postEvidence"
+              :show-source-versions="showSourceVersions"
+            />
           </details>
           <p v-else class="muted">{{ k('noBoundSourceEvidence') }}</p>
           <div
@@ -317,7 +390,7 @@
           </p>
           <p v-if="!canReview" class="notice">{{ k('reviewUnavailable') }}</p>
           <p class="muted">{{ k('reviewNotice') }}</p>
-          <p v-if="sourcePending" class="notice">
+          <p v-if="showSourceFollowupNotice" class="notice">
             {{ k('answerReviewKeepsSourceOpen') }}
           </p>
           <div
@@ -410,21 +483,31 @@
               {{ k('originalEvidence') }} · {{ originalEvidence.length }}
             </summary>
             <p class="muted">{{ k('originalEvidenceNotice') }}</p>
-            <EvidenceList :items="originalEvidence" />
+            <EvidenceList
+              :items="originalEvidence"
+              :show-source-versions="showSourceVersions"
+            />
           </details>
           <details v-if="candidateEvidence.length" class="secondary-details">
             <summary>
               {{ k('candidateEvidence') }} · {{ candidateEvidence.length }}
             </summary>
             <p class="muted">{{ k('candidateMetadataNotice') }}</p>
-            <EvidenceList :items="candidateEvidence" metadata-only />
+            <EvidenceList
+              :items="candidateEvidence"
+              :show-source-versions="showSourceVersions"
+              metadata-only
+            />
           </details>
           <details v-if="unboundEvidence.length" class="secondary-details">
             <summary>
               {{ k('unboundEvidence') }} · {{ unboundEvidence.length }}
             </summary>
             <p class="notice">{{ k('unboundEvidenceNotice') }}</p>
-            <EvidenceList :items="unboundEvidence" />
+            <EvidenceList
+              :items="unboundEvidence"
+              :show-source-versions="showSourceVersions"
+            />
           </details>
           <details class="secondary-details">
             <summary>{{ k('diagnosticDetails') }}</summary>
@@ -531,6 +614,7 @@ const props = defineProps<{
   runID: string
   analysisID?: string
   enabled: boolean
+  showSourceVersions?: boolean
 }>()
 const emit = defineEmits<{ close: []; changed: [] }>()
 const { k, label, labelVerdict, date } = useOpsText()
@@ -664,6 +748,47 @@ const sourcePending = computed(() => {
           analysis.value?.report.source_check === 'not_checked')))
   )
 })
+// Keep lookup failures and unresolved content comparisons visible. Only missing
+// version metadata moves into the disclosure when version reminders are hidden.
+const versionIssueCodes = new Set([
+  'source_version_unknown',
+  'wiki_linked_summary_versions_unknown',
+  'source_linked_versions_unknown',
+])
+const hiddenVersionIssues = computed(() =>
+  props.showSourceVersions === false
+    ? sourceIssues.value.filter((issue) => versionIssueCodes.has(issue))
+    : [],
+)
+const visibleSourceIssues = computed(() =>
+  sourceIssues.value.filter(
+    (issue) => !hiddenVersionIssues.value.includes(issue),
+  ),
+)
+const showSourceFollowupNotice = computed(
+  () =>
+    sourcePending.value &&
+    (props.showSourceVersions !== false ||
+      visibleSourceIssues.value.length > 0),
+)
+function versionGapSources(issue: string) {
+  if (!versionIssueCodes.has(issue)) return []
+  const seen = new Set<string>()
+  return (detail.value?.evidence || []).filter((item) => {
+    if (
+      !item.sent_to_model ||
+      item.post_hoc ||
+      (item.version && item.version !== 'unknown')
+    )
+      return false
+    if (issue !== 'source_version_unknown' && item.kind !== 'wiki_summary')
+      return false
+    const key = `${item.kb_id}/${item.page_id || item.chunk_id || item.id}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
 function sourceAction(issue: string) {
   const key = `${issue}_action`
   const translated = k(key)

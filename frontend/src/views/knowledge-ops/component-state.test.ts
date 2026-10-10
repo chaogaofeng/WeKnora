@@ -51,6 +51,11 @@ function setup(
     'sourceEvidenceNotice',
     'sourceIssues',
     'sourcePending',
+    'visibleSourceIssues',
+    'hiddenVersionIssues',
+    'versionGapSources',
+    'showSourceVersions',
+    'setShowSourceVersions',
     'successfulCount',
     'unassessedCount',
     'supportRows',
@@ -69,7 +74,7 @@ function setup(
     )
     .join(',')
   const events: unknown[][] = []
-  const auth = vue.reactive({ effectiveTenantId: 1 })
+  const auth = vue.reactive({ effectiveTenantId: 1, currentUserId: 'user-1' })
   const context = {
     ...vue,
     ...reviewState,
@@ -87,6 +92,8 @@ function setup(
       date: (x: string) => x,
     }),
     opsErrorCode: () => 'knowledge_ops_failed',
+    safeGetItem: () => null,
+    safeSetItem: () => {},
     ...dependencies,
   }
   const scope = vue.effectScope()
@@ -129,6 +136,163 @@ const detail = (id: string) => ({
   analyses: [],
   evidence: [],
   reviews: [],
+})
+
+test('source version display is an account preference and never applies filters or sends requests', async () => {
+  const storage = new Map<string, string>()
+  let requests = 0
+  const h = setup(
+    'Workbench.vue',
+    {},
+    {
+      useRouter: () => ({ replace: () => {} }),
+      useRoute: () => ({ query: {} }),
+      onMounted: () => {},
+      safeGetItem: (key: string) => storage.get(key) ?? null,
+      safeSetItem: (key: string, value: string) => storage.set(key, value),
+      getOpsSettings: () => {
+        requests++
+        throw new Error('unexpected request')
+      },
+    },
+  )
+  assert.equal(h.api.showSourceVersions?.value, true)
+  h.api.filters.value = { search: 'applied' }
+  h.api.draftFilters.search = 'unapplied'
+  h.api.page.value = 3
+  h.api.setShowSourceVersions(false)
+  await vue.nextTick()
+  assert.equal(h.api.showSourceVersions.value, false)
+  h.auth.currentUserId = 'user-2'
+  await vue.nextTick()
+  assert.equal(
+    h.api.showSourceVersions.value,
+    true,
+    'another account keeps its own preference',
+  )
+  h.auth.currentUserId = 'user-1'
+  await vue.nextTick()
+  assert.equal(
+    h.api.showSourceVersions.value,
+    false,
+    'returning to the account restores its choice',
+  )
+  assert.equal(h.api.filters.value.search, 'applied')
+  assert.equal(h.api.draftFilters.search, 'unapplied')
+  assert.equal(h.api.page.value, 3)
+  assert.equal(requests, 0)
+  h.stop()
+})
+
+test('hiding source versions folds only version gaps while keeping lookup failures and source contradictions', async () => {
+  const analysis = {
+    id: 'analysis',
+    version: 1,
+    status: 'succeeded',
+    report: {
+      source_check: 'inconsistent',
+      source_audit: {
+        issues: ['source_linked_versions_unknown', 'source_lookup_failed'],
+      },
+    },
+  }
+  const props = vue.reactive({
+    runID: 'A',
+    enabled: true,
+    showSourceVersions: false,
+  })
+  const h = setup('DetailDrawer.vue', props, {
+    getOpsDetail: async () => ({
+      ...detail('A'),
+      run: {
+        id: 'A',
+        analysis,
+        source_followup_pending: true,
+        coverage: { provenance_gaps: ['wiki_linked_summary_versions_unknown'] },
+      },
+      analyses: [analysis],
+    }),
+  })
+  await setImmediate()
+  assert.deepEqual(Array.from(h.api.visibleSourceIssues?.value ?? []), [
+    'source_lookup_failed',
+  ])
+  assert.deepEqual(Array.from(h.api.hiddenVersionIssues.value), [
+    'wiki_linked_summary_versions_unknown',
+  ])
+  assert.equal(h.api.sourcePending.value, true)
+  assert.equal(analysis.report.source_check, 'inconsistent')
+  props.showSourceVersions = true
+  assert.equal(h.api.hiddenVersionIssues.value.length, 0)
+  assert.equal(h.api.visibleSourceIssues.value.length, 2)
+  h.stop()
+})
+
+test('version gaps identify consumed unversioned summaries without including candidates or later lookups', async () => {
+  const h = setup(
+    'DetailDrawer.vue',
+    vue.reactive({ runID: 'A', enabled: true }),
+    {
+      getOpsDetail: async () => ({
+        ...detail('A'),
+        evidence: [
+          {
+            id: 'used',
+            kind: 'wiki_summary',
+            title: '实际缺版本的关联页',
+            kb_id: 'kb',
+            page_id: 'p',
+            sent_to_model: true,
+            version: 'unknown',
+          },
+          {
+            id: 'repeat',
+            kind: 'wiki_summary',
+            kb_id: 'kb',
+            page_id: 'p',
+            sent_to_model: true,
+            version: 'unknown',
+          },
+          {
+            id: 'known',
+            kind: 'wiki_summary',
+            kb_id: 'kb',
+            page_id: 'q',
+            sent_to_model: true,
+            version: '7',
+          },
+          {
+            id: 'candidate',
+            kind: 'wiki_summary',
+            kb_id: 'kb',
+            page_id: 'r',
+            sent_to_model: false,
+            version: 'unknown',
+          },
+          {
+            id: 'later',
+            kind: 'wiki_summary',
+            kb_id: 'kb',
+            page_id: 's',
+            sent_to_model: true,
+            post_hoc: true,
+            version: 'unknown',
+          },
+        ],
+      }),
+    },
+  )
+  await setImmediate()
+  assert.equal(typeof h.api.versionGapSources, 'function')
+  assert.deepEqual(
+    Array.from(
+      h.api.versionGapSources('wiki_linked_summary_versions_unknown'),
+      (source: any) => source.id,
+    ),
+    ['used'],
+  )
+  assert.equal(h.api.versionGapSources('source_lookup_failed').length, 0)
+  h.stop()
 })
 
 test('overview percentages use successful diagnoses and react to scope changes', () => {

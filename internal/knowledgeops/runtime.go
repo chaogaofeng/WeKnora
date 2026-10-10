@@ -134,6 +134,7 @@ func (a *RuntimeAdapter) kb(ctx context.Context, run Run, id string) (*types.Kno
 func (a *RuntimeAdapter) Sources(ctx context.Context, run Run, evidence []Evidence) ([]Evidence, error) {
 	out := []Evidence{}
 	seen := map[string]bool{}
+	pageVersions := map[string]string{}
 	budget := sourceCharLimit
 	issues := []string{}
 	addIssue := func(code string) {
@@ -146,10 +147,16 @@ func (a *RuntimeAdapter) Sources(ctx context.Context, run Run, evidence []Eviden
 		return &SourceReadError{Issues: issues, CharLimit: sourceCharLimit}
 	}
 	for _, e := range evidence {
-		if !e.SentToModel || e.PostHoc || e.PageID == "" || seen[e.PageID] {
+		if !e.SentToModel || e.PostHoc || e.PageID == "" {
 			continue
 		}
-		seen[e.PageID] = true
+		if version, found := pageVersions[e.PageID]; found {
+			if version != e.Version {
+				addIssue("source_page_version_changed")
+			}
+			continue
+		}
+		pageVersions[e.PageID] = e.Version
 		kb, err := a.kb(ctx, run, e.KBID)
 		if err != nil {
 			return out, sourceError("source_access_denied")

@@ -53,7 +53,20 @@
             {{ label(row.run.qa_type) }} · {{ row.run.channel }} ·
             {{ label(row.run.review_state) }}
           </p>
-          <CaptureCoverage :coverage="row.run.coverage" />
+          <p
+            v-if="
+              showSourceVersions !== false && row.run.source_followup_pending
+            "
+            class="source-followup"
+          >
+            <t-tooltip :content="k('sourceFollowupIndependent')">
+              <StatusBadge value="source_verification" />
+            </t-tooltip>
+          </p>
+          <CaptureCoverage
+            :coverage="row.run.coverage"
+            :show-source-versions="showSourceVersions"
+          />
           <p>
             <strong>{{ k('verdict') }}:</strong>
             {{ labelVerdict(row.run.analysis?.report.verdict) }} ·
@@ -127,6 +140,7 @@ const props = defineProps<{
   groups: OpsGroup[]
   grouped: boolean
   selectedGroup: string
+  showSourceVersions?: boolean
 }>()
 const emit = defineEmits<{
   open: [id: string]

@@ -12,8 +12,10 @@
           item.title || evidenceKind(item.kind)
         }}</span>
         <span class="evidence-kind"
-          >{{ evidenceKind(item.kind) }} · {{ k('version') }}
-          {{ item.version || k('unknown') }}</span
+          >{{ evidenceKind(item.kind)
+          }}<template v-if="showSourceVersions !== false">
+            · {{ k('version') }} {{ item.version || k('unknown') }}</template
+          ></span
         >
       </summary>
       <div class="evidence-body">
@@ -28,6 +30,10 @@
           <p v-else class="evidence-meta">{{ k('evidenceBodyUnavailable') }}</p>
         </template>
         <dl>
+          <template v-if="showSourceVersions === false">
+            <dt>{{ k('version') }}</dt>
+            <dd>{{ item.version || k('unknown') }}</dd>
+          </template>
           <dt>{{ k('sourceMetadata') }}</dt>
           <dd>
             {{
@@ -52,7 +58,11 @@
 <script setup lang="ts">
 import type { OpsEvidence } from '@/api/knowledge-ops'
 import { useOpsText } from './locales'
-defineProps<{ items: OpsEvidence[]; metadataOnly?: boolean }>()
+defineProps<{
+  items: OpsEvidence[]
+  metadataOnly?: boolean
+  showSourceVersions?: boolean
+}>()
 const { k, label, date } = useOpsText()
 function evidenceKind(kind: string) {
   const key = `evidenceKind_${kind}`

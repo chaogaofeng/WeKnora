@@ -103,6 +103,29 @@ func TestSourceRuntimeReportsBoundedComparisonReasons(t *testing.T) {
 	require.NotContains(t, limitation.Issues, "source_chunks_missing", "existing chunks omitted by budget are not missing")
 }
 
+func TestSourceRuntimeDoesNotHideMixedWikiRevisions(t *testing.T) {
+	repo := testStore(t)
+	for _, sql := range []string{
+		`CREATE TABLE knowledge_bases (id TEXT PRIMARY KEY, tenant_id BIGINT, deleted_at TIMESTAMP)`,
+		`CREATE TABLE wiki_pages (id TEXT PRIMARY KEY, knowledge_base_id TEXT, tenant_id BIGINT, status TEXT, version INT, source_refs TEXT, chunk_refs TEXT, deleted_at TIMESTAMP)`,
+		`INSERT INTO knowledge_bases (id,tenant_id) VALUES ('kb',1)`,
+		`INSERT INTO wiki_pages VALUES ('page','kb',1,'published',2,NULL,NULL,NULL)`,
+	} {
+		require.NoError(t, repo.db.Exec(sql).Error)
+	}
+	adapter := RuntimeAdapter{DB: repo.db}
+	ctx := types.WithCaller(context.Background(), types.Caller{TenantID: 1, UserID: "owner", Role: types.TenantRoleAdmin})
+	for _, versions := range [][]string{{"2", "1"}, {"1", "2"}} {
+		_, err := adapter.Sources(ctx, Run{TenantID: 1}, []Evidence{
+			{Kind: "wiki_summary", KBID: "kb", PageID: "page", Version: versions[0], SentToModel: true},
+			{Kind: "wiki", KBID: "kb", PageID: "page", Version: versions[1], SentToModel: true},
+		})
+		var limitation *SourceReadError
+		require.ErrorAs(t, err, &limitation)
+		require.Contains(t, limitation.Issues, "source_page_version_changed", "order %v", versions)
+	}
+}
+
 func TestSourceRuntimeSeparatesVersionLinkageAndLookupLimits(t *testing.T) {
 	repo := testStore(t)
 	require.NoError(t, repo.db.Exec(`CREATE TABLE knowledge_bases (id TEXT PRIMARY KEY,tenant_id BIGINT,deleted_at TIMESTAMP)`).Error)
