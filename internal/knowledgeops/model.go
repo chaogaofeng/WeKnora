@@ -93,10 +93,12 @@ type Cause struct {
 	Status          string   `json:"status"`
 }
 type SourceAudit struct {
-	EvidenceIDs []string `json:"evidence_ids"`
-	Issues      []string `json:"issues"`
-	Chars       int      `json:"chars"`
-	CharLimit   int      `json:"char_limit"`
+	LookupPolicy      *SourceLookupPolicy `json:"lookup_policy,omitempty"`
+	SelectionStrategy string              `json:"selection_strategy,omitempty"`
+	EvidenceIDs       []string            `json:"evidence_ids"`
+	Issues            []string            `json:"issues"`
+	Chars             int                 `json:"chars"`
+	CharLimit         int                 `json:"char_limit"`
 }
 
 type Report struct {

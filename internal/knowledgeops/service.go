@@ -333,13 +333,17 @@ func (s *Service) RunOnce(ctx context.Context) error {
 	}
 	var sourceAudit *SourceAudit
 	if err == nil && s.analyzer.sources != nil {
-		sourceCtx, cancel := context.WithTimeout(execCtx, 15*time.Second)
+		sourceCtx, cancel := context.WithTimeout(execCtx, sourceLookupTimeout)
 		supplement, sourceErr := s.analyzer.sources(sourceCtx, run, evidence)
 		cancel()
 		sourceAudit = sourceAuditForAttempt(sourceErr)
 		if sourceAudit.CharLimit == 0 {
-			sourceAudit.CharLimit = s.analyzer.sourceCharLimit
+			sourceAudit.CharLimit = s.analyzer.sourcePolicy.MaxChars
 		}
+		policy := s.analyzer.sourcePolicy
+		policy.MaxChars = sourceAudit.CharLimit
+		sourceAudit.LookupPolicy = &policy
+		sourceAudit.SelectionStrategy = sourceSelectionStrategy
 		for _, gap := range run.Gaps {
 			if gap == "wiki_linked_summary_versions_unknown" || gap == "source_version_unknown" {
 				sourceAudit.Issues = append(sourceAudit.Issues, "source_linked_versions_unknown")

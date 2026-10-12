@@ -15,7 +15,8 @@ import (
 // Keep all dependency wiring here; main container and router need one hook each.
 func registerKnowledgeOps(c *dig.Container) {
 	must(c.Provide(func(db *gorm.DB, models interfaces.ModelService, sessions interfaces.SessionRepository, members interfaces.TenantMemberRepository, shares interfaces.KBShareService, agents interfaces.AgentShareService) *knowledgeops.Service {
-		adapter := &knowledgeops.RuntimeAdapter{DB: db, Sessions: sessions, Members: members, Shares: shares, Agents: agents}
+		policy := knowledgeops.SourceLookupPolicyFromEnv()
+		adapter := &knowledgeops.RuntimeAdapter{DB: db, Sessions: sessions, Members: members, Shares: shares, Agents: agents, SourcePolicy: policy}
 		svc := knowledgeops.NewService(knowledgeops.NewRepository(db), knowledgeops.NewAnalyzer(func(ctx context.Context, id string) (chat.Chat, error) {
 			model, err := models.GetModelByID(ctx, id)
 			if err != nil {
@@ -25,7 +26,7 @@ func registerKnowledgeOps(c *dig.Container) {
 				return nil, knowledgeops.ErrInvalid
 			}
 			return models.GetChatModel(ctx, id)
-		}, adapter.Sources, 16000), adapter.Check)
+		}, adapter.Sources, policy), adapter.Check)
 		svc.SetExecutionContext(adapter.ExecutionContext)
 		return svc
 	}))

@@ -28,6 +28,13 @@ export interface OpsCause {
 }
 export interface OpsReport {
   source_audit?: {
+    selection_strategy?: string
+    lookup_policy?: {
+      max_chars: number
+      max_chunks_per_document: number
+      max_documents_per_page: number
+      max_linked_pages: number
+    }
     evidence_ids: string[]
     issues: string[]
     chars: number

@@ -16,15 +16,15 @@ import (
 type ModelFactory func(context.Context, string) (chat.Chat, error)
 type SourceReader func(context.Context, Run, []Evidence) ([]Evidence, error)
 type Analyzer struct {
-	models          ModelFactory
-	sources         SourceReader
-	sourceCharLimit int
+	models       ModelFactory
+	sources      SourceReader
+	sourcePolicy SourceLookupPolicy
 }
 
-func NewAnalyzer(models ModelFactory, sources SourceReader, sourceCharLimits ...int) *Analyzer {
-	a := &Analyzer{models: models, sources: sources}
-	if len(sourceCharLimits) > 0 {
-		a.sourceCharLimit = max(0, sourceCharLimits[0])
+func NewAnalyzer(models ModelFactory, sources SourceReader, policies ...SourceLookupPolicy) *Analyzer {
+	a := &Analyzer{models: models, sources: sources, sourcePolicy: DefaultSourceLookupPolicy()}
+	if len(policies) > 0 {
+		a.sourcePolicy = policies[0].normalized()
 	}
 	return a
 }
@@ -56,7 +56,7 @@ func (a *Analyzer) Analyze(ctx context.Context, run Run, evidence []Evidence, s 
 		return result, err
 	}
 	// Never silently truncate the evaluator's input and then declare support.
-	if len([]rune(string(body))) > s.MaxEvidenceChars*2+16000 {
+	if len([]rune(string(body))) > s.MaxEvidenceChars*2+a.sourcePolicy.MaxChars {
 		return result, &analysisError{code: "analysis_input_budget_exceeded", cause: fmt.Errorf("analysis input exceeds configured budget")}
 	}
 	model, err := a.models(bounded, s.ModelID)

@@ -6,8 +6,6 @@ import (
 	"strings"
 )
 
-const sourceCharLimit = 16000
-
 // SourceReadError reports safe limits while preserving SourceReader compatibility.
 // Issues must use the module's stable codes; upstream error text is never stored.
 type SourceReadError struct {

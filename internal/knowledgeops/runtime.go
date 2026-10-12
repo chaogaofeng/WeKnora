@@ -2,6 +2,7 @@ package knowledgeops
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strconv"
 	"strings"
@@ -15,11 +16,12 @@ import (
 // RuntimeAdapter is the sole read-only bridge to existing application resources.
 // It never depends on SessionService, avoiding a capture/analysis dependency cycle.
 type RuntimeAdapter struct {
-	DB       *gorm.DB
-	Sessions interfaces.SessionRepository
-	Members  interfaces.TenantMemberRepository
-	Shares   access.KBShareLookup
-	Agents   access.AgentShareLookup
+	SourcePolicy SourceLookupPolicy
+	DB           *gorm.DB
+	Sessions     interfaces.SessionRepository
+	Members      interfaces.TenantMemberRepository
+	Shares       access.KBShareLookup
+	Agents       access.AgentShareLookup
 }
 type workerContextKey struct{}
 
@@ -132,9 +134,11 @@ func (a *RuntimeAdapter) kb(ctx context.Context, run Run, id string) (*types.Kno
 // Every supplement is explicitly post-hoc; version drift and partial coverage
 // remain unresolved and can never repair missing generation-time evidence.
 func (a *RuntimeAdapter) Sources(ctx context.Context, run Run, evidence []Evidence) ([]Evidence, error) {
+	policy := a.SourcePolicy.normalized()
 	out := []Evidence{}
 	seen := map[string]bool{}
-	budget := sourceCharLimit
+	budget := policy.MaxChars
+	terms := sourceSearchTerms(run)
 	pages, issues := a.sourcePages(ctx, run, evidence)
 	addIssue := func(code string) {
 		if !slices.Contains(issues, code) {
@@ -143,83 +147,60 @@ func (a *RuntimeAdapter) Sources(ctx context.Context, run Run, evidence []Eviden
 	}
 	sourceError := func(code string) error {
 		addIssue(code)
-		return &SourceReadError{Issues: issues, CharLimit: sourceCharLimit}
+		return &SourceReadError{Issues: issues, CharLimit: policy.MaxChars}
 	}
-	for _, page := range pages {
-		ids := page.SourceKnowledgeIDs()
-		if len(ids) == 0 {
-			addIssue("source_linkage_missing")
-			continue
-		}
-		allRefsChecked := true
-		if len(ids) > 8 {
-			allRefsChecked = false
-			ids = ids[:8]
-			addIssue("source_document_limit")
-		}
-		foundRefs := map[string]bool{}
-		for _, id := range ids {
-			var doc types.Knowledge
-			if err := a.DB.WithContext(ctx).First(&doc, "id = ? AND knowledge_base_id = ? AND tenant_id = ?", id, page.KnowledgeBaseID, page.TenantID).Error; err != nil {
-				allRefsChecked = false
-				addIssue("source_document_lookup_failed")
-				continue
-			}
-			var chunks []types.Chunk
-			query := a.DB.WithContext(ctx).Where("knowledge_id = ? AND knowledge_base_id = ? AND tenant_id = ? AND is_enabled = ?", id, page.KnowledgeBaseID, page.TenantID, true)
-			if len(page.ChunkRefs) > 0 {
-				query = query.Where("id IN ?", []string(page.ChunkRefs))
-			} else if page.PageType != types.WikiPageTypeSummary {
-				// Summary pages are document-level synopses and intentionally have
-				// no chunk refs. Their bounded document scan still reports real limits.
-				addIssue("source_chunk_refs_missing")
-			}
-			if err := query.Order("chunk_index,id").Limit(9).Find(&chunks).Error; err != nil {
-				return out, sourceError("source_lookup_failed")
-			}
-			if len(chunks) == 0 {
-				addIssue("source_chunks_missing")
-			}
-			if len(chunks) > 8 {
-				allRefsChecked = false
-				chunks = chunks[:8]
-				addIssue("source_chunk_limit")
-			}
-			for _, c := range chunks {
-				foundRefs[c.ID] = true
+	documents, documentIssues := a.sourceDocuments(ctx, pages, terms, policy)
+	for _, issue := range documentIssues {
+		addIssue(issue)
+	}
+	// Read all explicit citations before spending the shared budget on any
+	// document's expanded context. Within each phase, take turns across documents.
+	for _, referencesFirst := range []bool{true, false} {
+		for round := 0; round < policy.MaxChunksPerDocument; round++ {
+			for _, document := range documents {
+				if round >= len(document.chunks) {
+					continue
+				}
+				c := document.chunks[round]
+				if slices.Contains(document.refs, c.ID) != referencesFirst {
+					continue
+				}
 				if seen[c.ID] {
 					continue
 				}
 				seen[c.ID] = true
-				body := []rune(c.Content)
-				truncated := false
-				if len(body) > budget {
-					body = body[:budget]
-					truncated = true
-					addIssue("source_char_budget_exhausted")
+				if budget == 0 {
+					return out, sourceError("source_char_budget_exhausted")
 				}
-				if len(body) == 0 {
-					if !truncated {
-						addIssue("source_chunks_missing")
-					}
+				// Fetch the current body and its revision together. SUBSTR uses
+				// characters on both PostgreSQL and SQLite, matching the rune budget.
+				var current types.Chunk
+				err := a.originalChunks(ctx, document.doc).Select("SUBSTR(content, 1, ?) AS content, content_revision", budget+1).
+					Where("id = ?", c.ID).First(&current).Error
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					addIssue("source_chunks_missing")
 					continue
 				}
-				budget -= len(body)
-				out = append(out, Evidence{Kind: "source_document", KBID: page.KnowledgeBaseID, KnowledgeID: id, ChunkID: c.ID, Title: doc.Title, Version: strconv.Itoa(c.ContentRevision), Content: string(body), PostHoc: true, Truncated: truncated})
-			}
-		}
-		// Limits and lookup failures leave unvisited references unknown. Only a
-		// complete scan of linked sources can establish that a reference is missing.
-		if allRefsChecked {
-			for _, ref := range page.ChunkRefs {
-				if !foundRefs[ref] {
-					addIssue("source_chunks_missing")
+				if err != nil {
+					return out, sourceError("source_lookup_failed")
 				}
+				body := []rune(current.Content)
+				if len(body) == 0 {
+					addIssue("source_chunks_missing")
+					continue
+				}
+				truncated := len(body) > budget
+				if truncated {
+					body = body[:budget]
+					addIssue("source_char_budget_exhausted")
+				}
+				budget -= len(body)
+				out = append(out, Evidence{Kind: "source_document", KBID: document.doc.KnowledgeBaseID, KnowledgeID: document.doc.ID, ChunkID: c.ID, Title: document.doc.Title, Version: strconv.Itoa(current.ContentRevision), Content: string(body), PostHoc: true, Truncated: truncated})
 			}
 		}
 	}
 	if len(issues) > 0 {
-		return out, &SourceReadError{Issues: issues, CharLimit: sourceCharLimit}
+		return out, &SourceReadError{Issues: issues, CharLimit: policy.MaxChars}
 	}
 	return out, nil
 }

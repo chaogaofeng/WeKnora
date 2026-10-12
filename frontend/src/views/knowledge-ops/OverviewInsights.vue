@@ -35,11 +35,7 @@
           compact
         />
         <p v-for="row in sourceRows" :key="row.key" class="stat">
-          <span>{{
-            row.key === 'not_applicable'
-              ? k('sourceNotApplicable')
-              : label(row.key)
-          }}</span>
+          <span>{{ labelSourceCheck(row.key) }}</span>
           <strong>{{ row.count }}</strong>
         </p>
         <p class="muted">{{ k('sourceComparisonNotice') }}</p>
@@ -162,7 +158,7 @@ const props = defineProps<{
   showSourceVersions?: boolean
 }>()
 const emit = defineEmits<{ cause: [category: string] }>()
-const { k, label, labelVerdict } = useOpsText()
+const { k, label, labelVerdict, labelSourceCheck } = useOpsText()
 const successfulCount = computed(
   () => props.stats.diagnosis_status?.succeeded || 0,
 )

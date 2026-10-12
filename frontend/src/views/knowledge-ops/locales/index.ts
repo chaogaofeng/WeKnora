@@ -14,8 +14,9 @@ const en: Record<string, string> = {
   qualityCountsNotice:
     'Only runs whose latest diagnosis succeeded are counted. Answer support is not knowledge accuracy.',
   sourceNotApplicable: 'Not applicable · no Wiki comparison',
+  sourceCheckPending: 'Verification incomplete',
   sourceComparisonNotice:
-    'Successful diagnoses only. Compares consumed Wiki pages with linked originals; plain RAG without this comparison is not applicable.',
+    'Only runs whose latest diagnosis succeeded are counted. Checks the Wiki content used in the answer against linked originals. Incomplete verification does not mean an error was found; plain RAG without Wiki comparison is not applicable.',
   captureQuality: 'Content capture and traceability',
   causeCountsNotice:
     'Click a category to view matching runs. Unlinked generation attributions are excluded; candidates are not confirmed causes.',
@@ -51,6 +52,14 @@ const en: Record<string, string> = {
   sourceFollowupNotice:
     'Source verification is still open. Answer support can be confirmed separately.',
   sourceBudget: 'Source lookup content / limit',
+  sourceInspected: 'Source content inspected',
+  sourceChunkLimit: 'Maximum passages per source document',
+  sourceDocumentLimit: 'Maximum source documents per Wiki page',
+  sourcePageLimit: 'Maximum linked pages inspected',
+  sourceSelectionStrategy: 'Source selection strategy',
+  references_then_relevance_with_neighbors_v1: 'References first, then relevant passages with neighboring context',
+  technicalDetails: 'Technical diagnostics',
+  technicalDetailsNotice: 'Retrieval candidates and execution details for troubleshooting. Answer-time evidence is listed separately above.',
   characters: 'characters',
   materials: 'materials',
   legacySourceAudit:
@@ -201,7 +210,7 @@ const en: Record<string, string> = {
   allReviewers: 'All reviewers',
 
   coverageMatrix: 'Content capture by QA type',
-  sourceStats: 'Source comparison',
+  sourceStats: 'Wiki–original consistency',
   causeStats: 'Root cause candidates · affected runs',
   queueStats: 'Outstanding work · queues can overlap',
   sampleStats: 'Quality sampling · latest diagnoses',
@@ -363,7 +372,7 @@ const en: Record<string, string> = {
   model: 'Diagnosis model',
   policy: 'Prompt / policy version',
   group: 'Issue group fingerprint',
-  sourceCheck: 'Source consistency check',
+  sourceCheck: 'Wiki–original consistency',
   risk: 'Risk',
   scope: 'Analysis scope',
   routeReason: 'Routing reason',
@@ -512,8 +521,9 @@ const zh: Record<string, string> = {
   noSuccessfulDiagnoses: '当前范围暂无成功诊断',
   qualityCountsNotice: '仅统计最新诊断成功的问答；回答支持性不等于知识正确率。',
   sourceNotApplicable: '不适用 · 无 Wiki 对照',
+  sourceCheckPending: '尚未完成核验',
   sourceComparisonNotice:
-    '仅统计成功诊断；对照已读 Wiki 页面关联的原文，纯 RAG 无此对照时不适用。',
+    '仅统计最新诊断成功的问答；核验回答所用 Wiki 与关联原文是否一致。尚未完成核验不代表发现错误；纯 RAG 无 Wiki 对照时不适用。',
   captureQuality: '正文采集与来源追溯',
   causeCountsNotice:
     '点击类别查看对应问答；缺少异常论断的生成归因不计入，候选仍需人工确认。',
@@ -546,6 +556,14 @@ const zh: Record<string, string> = {
   sourceReviewTitle: '来源核验与待处理事项',
   sourceFollowupNotice: '来源核验尚未完成，回答支持性可独立确认。',
   sourceBudget: '本次补查正文 / 上限',
+  sourceInspected: '本次已补查正文',
+  sourceChunkLimit: '每份原文的片段上限',
+  sourceDocumentLimit: '每个 Wiki 页的关联文档上限',
+  sourcePageLimit: '关联页面补查上限',
+  sourceSelectionStrategy: '补查选材方式',
+  references_then_relevance_with_neighbors_v1: '引用优先，相关段落及相邻上下文补查',
+  technicalDetails: '技术排查',
+  technicalDetailsNotice: '检索候选和运行信息用于排查检索、诊断执行问题；回答时的依据可在上方独立查看。',
   characters: '字符',
   materials: '条材料',
   legacySourceAudit:
@@ -685,7 +703,7 @@ const zh: Record<string, string> = {
   allReviewers: '全部复核人',
 
   coverageMatrix: '三类问答的正文采集',
-  sourceStats: '来源对照',
+  sourceStats: 'Wiki 与原文一致性',
   causeStats: '根因候选 · 涉及问答数',
   queueStats: '当前待办 · 不同队列可重叠',
   sampleStats: '分层抽检 · 最新诊断',
@@ -835,7 +853,7 @@ const zh: Record<string, string> = {
   model: '诊断模型',
   policy: '提示词 / 策略版本',
   group: '问题组指纹',
-  sourceCheck: '知识来源一致性核验',
+  sourceCheck: 'Wiki 与原文一致性',
   risk: '风险',
   scope: '分析范围',
   routeReason: '分流依据',
@@ -975,7 +993,13 @@ export function useOpsText() {
   const label = (value?: string | null) => (value ? k(value) : k('unknown'))
   const labelVerdict = (value?: string | null) =>
     value === 'partial' ? k('verdict_partial') : label(value)
+  const labelSourceCheck = (value?: string | null) =>
+    value === 'unresolved'
+      ? k('sourceCheckPending')
+      : value === 'not_applicable'
+        ? k('sourceNotApplicable')
+        : label(value)
   const date = (value?: string | null) =>
     value ? new Date(value).toLocaleString(locale.value) : k('unknown')
-  return { k, label, labelVerdict, date }
+  return { k, label, labelVerdict, labelSourceCheck, date }
 }

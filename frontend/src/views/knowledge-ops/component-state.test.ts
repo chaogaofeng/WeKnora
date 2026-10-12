@@ -51,6 +51,7 @@ function setup(
     'sourceEvidenceNotice',
     'sourceIssues',
     'sourcePending',
+    'showSourceSection',
     'visibleSourceIssues',
     'hiddenVersionIssues',
     'versionGapSources',
@@ -653,6 +654,31 @@ test('following an evidence reference opens all containing disclosures before sc
   await h.api.showEvidence('candidate')
   assert.ok(outer.open && target.open)
   h.stop()
+})
+
+test('source section hides only inapplicable empty checks and preserves real follow-up and history', async () => {
+  for (const kind of ['empty', 'issue', 'material', 'pending', 'historical']) {
+    const selected = {
+      id: 'a', version: 1, status: 'succeeded',
+      report: { source_check: kind === 'historical' ? 'unresolved' : 'not_checked', source_audit: {
+        chars: kind === 'material' ? 4 : 0, char_limit: 16000,
+        issues: kind === 'issue' ? ['source_lookup_failed'] : [],
+        evidence_ids: kind === 'material' ? ['post'] : [],
+      } },
+    }
+    const latest = kind === 'historical' ? { ...selected, id: 'latest', version: 2 } : selected
+    const h = setup('DetailDrawer.vue', vue.reactive({ runID: 'A', enabled: true, showSourceVersions: false }), {
+      getOpsDetail: async () => ({ ...detail('A'),
+        run: { id: 'A', qa_type: 'rag-qa', analysis: latest, source_check_display: 'not_applicable', source_followup_pending: kind === 'pending', coverage: { provenance_gaps: [] } },
+        analyses: kind === 'historical' ? [latest, selected] : [selected],
+        evidence: kind === 'material' ? [{ id: 'post', post_hoc: true, content: 'body' }] : [],
+      }),
+    })
+    await setImmediate()
+    h.api.selectedID.value = 'a'
+    assert.equal(h.api.showSourceSection?.value, kind !== 'empty', kind)
+    h.stop()
+  }
 })
 
 test('diagnosis failures show source follow-up only for established gaps, including historical versions', async () => {

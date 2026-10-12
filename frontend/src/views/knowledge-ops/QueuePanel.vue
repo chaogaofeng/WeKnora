@@ -142,7 +142,7 @@
             <p v-else>{{ k('noValidVerdict') }}</p>
             <p v-if="row.validDiagnosis">
               <strong>{{ k('sourceCheck') }}:</strong>
-              {{ row.sourceCheck === 'not_applicable' ? k('sourceNotApplicable') : label(row.sourceCheck) }}
+              {{ labelSourceCheck(row.sourceCheck) }}
             </p>
             <p>
               <strong>{{ k('originalRoute') }}:</strong>
@@ -219,7 +219,7 @@ const emit = defineEmits<{
   group: [key: string]
   toggle: []
 }>()
-const { k, label, labelVerdict, date } = useOpsText()
+const { k, label, labelVerdict, labelSourceCheck, date } = useOpsText()
 const emptyState = computed(() => {
   if (props.total && props.total > 0) return 'queuePageEmpty'
   if (props.filtered) return 'queueFilteredEmpty'

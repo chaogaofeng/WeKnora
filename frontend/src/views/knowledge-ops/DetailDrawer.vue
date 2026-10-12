@@ -89,7 +89,10 @@
             </div>
             <div>
               <span class="field-label">{{ k('sourceCheck') }}</span
-              ><StatusBadge :value="displaySourceCheck" />
+              ><StatusBadge
+                :value="displaySourceCheck"
+                :text="labelSourceCheck(displaySourceCheck)"
+              />
             </div>
             <div>
               <span class="field-label">{{ k('risk') }}</span
@@ -186,10 +189,13 @@
           <p v-else class="muted">{{ k('noClaims') }}</p>
         </section>
 
-        <section v-if="analysis" id="ops-source-check">
+        <section v-if="showSourceSection" id="ops-source-check">
           <div class="section-heading">
             <h3>{{ k('sourceReviewTitle') }}</h3>
-            <StatusBadge :value="displaySourceCheck" />
+            <StatusBadge
+              :value="displaySourceCheck"
+              :text="labelSourceCheck(displaySourceCheck)"
+            />
           </div>
           <p v-if="showSourceFollowupNotice" class="notice">
             {{ k('sourceFollowupNotice') }}
@@ -250,15 +256,9 @@
               </article>
             </div>
           </details>
-          <p v-if="analysis.report.source_audit" class="muted">
-            {{ k('sourceBudget') }}:
+          <p v-if="analysis?.report.source_audit" class="muted">
+            {{ k('sourceInspected') }}:
             {{ analysis.report.source_audit.chars.toLocaleString() }}
-            <template v-if="analysis.report.source_audit.char_limit">
-              /
-              {{
-                analysis.report.source_audit.char_limit.toLocaleString()
-              }}</template
-            >
             {{ k('characters') }} · {{ postEvidence.length }}
             {{ k('materials') }}
           </p>
@@ -267,7 +267,7 @@
             <summary>
               {{
                 k(
-                  analysis.report.source_audit
+                  analysis?.report.source_audit
                     ? 'analysisSourceEvidence'
                     : 'postEvidence',
                 )
@@ -281,8 +281,15 @@
             />
           </details>
           <p v-else class="muted">{{ k('noBoundSourceEvidence') }}</p>
+        </section>
+        <section
+          v-if="
+            analysis?.report.review_questions?.length ||
+            analysis?.report.unknowns?.length
+          "
+        >
           <div
-            v-if="analysis.report.review_questions?.length"
+            v-if="analysis?.report.review_questions?.length"
             class="review-questions"
           >
             <h4>{{ k('reviewQuestions') }}</h4>
@@ -293,7 +300,7 @@
             </ul>
           </div>
           <details
-            v-if="analysis.report.unknowns?.length"
+            v-if="analysis?.report.unknowns?.length"
             class="report-limitations"
           >
             <summary>
@@ -524,104 +531,136 @@
               :show-source-versions="showSourceVersions"
             />
           </details>
-          <details v-if="candidateEvidence.length" class="secondary-details">
-            <summary>
-              {{ k('candidateEvidence') }} · {{ candidateEvidence.length }}
-            </summary>
-            <p class="muted">{{ k('candidateMetadataNotice') }}</p>
-            <EvidenceList
-              :items="candidateEvidence"
-              :show-source-versions="showSourceVersions"
-              metadata-only
-            />
-          </details>
-          <details v-if="unboundEvidence.length" class="secondary-details">
-            <summary>
-              {{ k('unboundEvidence') }} · {{ unboundEvidence.length }}
-            </summary>
-            <p class="notice">{{ k('unboundEvidenceNotice') }}</p>
-            <EvidenceList
-              :items="unboundEvidence"
-              :show-source-versions="showSourceVersions"
-            />
-          </details>
-          <details class="secondary-details">
-            <summary>{{ k('diagnosticDetails') }}</summary>
-            <template v-if="analysis">
-              <h4>{{ k('analysisRecord') }}</h4>
+          <details class="secondary-details technical-details">
+            <summary>{{ k('technicalDetails') }}</summary>
+            <p class="muted">{{ k('technicalDetailsNotice') }}</p>
+            <details v-if="candidateEvidence.length" class="secondary-details">
+              <summary>
+                {{ k('candidateEvidence') }} · {{ candidateEvidence.length }}
+              </summary>
+              <p class="muted">{{ k('candidateMetadataNotice') }}</p>
+              <EvidenceList
+                :items="candidateEvidence"
+                :show-source-versions="showSourceVersions"
+                metadata-only
+              />
+            </details>
+            <details v-if="unboundEvidence.length" class="secondary-details">
+              <summary>
+                {{ k('unboundEvidence') }} · {{ unboundEvidence.length }}
+              </summary>
+              <p class="notice">{{ k('unboundEvidenceNotice') }}</p>
+              <EvidenceList
+                :items="unboundEvidence"
+                :show-source-versions="showSourceVersions"
+              />
+            </details>
+            <details class="secondary-details">
+              <summary>{{ k('diagnosticDetails') }}</summary>
+              <template v-if="analysis">
+                <h4>{{ k('analysisRecord') }}</h4>
+                <dl>
+                  <dt>{{ k('model') }}</dt>
+                  <dd>
+                    {{ analysis.model_name || analysis.model_id || k('unknown') }}
+                  </dd>
+                  <dt>{{ k('policy') }}</dt>
+                  <dd>{{ analysis.policy_version || k('unknown') }}</dd>
+                  <dt>{{ k('analysisTime') }}</dt>
+                  <dd>{{ date(analysis.created_at) }}</dd>
+                  <dt>{{ k('modelVerdict') }}</dt>
+                  <dd>
+                    {{
+                      analysis.report.model_verdict
+                        ? labelVerdict(analysis.report.model_verdict)
+                        : k('legacyModelVerdict')
+                    }}
+                  </dd>
+                  <dt>{{ k('policyVerdict') }}</dt>
+                  <dd>{{ labelVerdict(analysis.report.verdict) }}</dd>
+                  <dt>{{ k('tokens') }}</dt>
+                  <dd>
+                    {{ analysis.input_tokens }} / {{ analysis.output_tokens }}
+                  </dd>
+                  <dt>{{ k('duration') }}</dt>
+                  <dd>{{ (analysis.duration_ms / 1000).toFixed(1) }} s</dd>
+                  <dt>{{ k('scope') }}</dt>
+                  <dd>{{ analysis.report.scope || k('unknown') }}</dd>
+                  <template v-if="analysis.report.source_audit">
+                    <dt>{{ k('sourceBudget') }}</dt>
+                    <dd>
+                      {{ analysis.report.source_audit.chars.toLocaleString() }} /
+                      {{ analysis.report.source_audit.char_limit.toLocaleString() }}
+                      {{ k('characters') }}
+                    </dd>
+                    <template v-if="analysis.report.source_audit.lookup_policy">
+                      <dt>{{ k('sourceChunkLimit') }}</dt>
+                      <dd>
+                        {{ analysis.report.source_audit.lookup_policy.max_chunks_per_document }}
+                      </dd>
+                      <dt>{{ k('sourceDocumentLimit') }}</dt>
+                      <dd>
+                        {{ analysis.report.source_audit.lookup_policy.max_documents_per_page }}
+                      </dd>
+                      <dt>{{ k('sourcePageLimit') }}</dt>
+                      <dd>
+                        {{ analysis.report.source_audit.lookup_policy.max_linked_pages }}
+                      </dd>
+                    </template>
+                    <template v-if="analysis.report.source_audit.selection_strategy">
+                      <dt>{{ k('sourceSelectionStrategy') }}</dt>
+                      <dd>
+                        {{ label(analysis.report.source_audit.selection_strategy) }}
+                      </dd>
+                    </template>
+                  </template>
+                  <dt v-if="analysis.group_key">{{ k('group') }}</dt>
+                  <dd v-if="analysis.group_key">{{ analysis.group_key }}</dd>
+                  <dt v-if="analysis.sample_stratum">{{ k('stratum') }}</dt>
+                  <dd v-if="analysis.sample_stratum">
+                    {{ analysis.sample_stratum }} · {{ analysis.sample_percent }}%
+                  </dd>
+                </dl>
+                <p class="muted">{{ k('originalReportNotice') }}</p>
+                <template v-if="analysis.report.facts?.length"
+                  ><h4>{{ k('facts') }}</h4>
+                  <ul>
+                    <li v-for="(fact, i) in analysis.report.facts" :key="i">
+                      {{ fact }}
+                    </li>
+                  </ul></template
+                >
+              </template>
+              <h4>{{ k('metadata') }}</h4>
               <dl>
-                <dt>{{ k('model') }}</dt>
-                <dd>
-                  {{ analysis.model_name || analysis.model_id || k('unknown') }}
-                </dd>
-                <dt>{{ k('policy') }}</dt>
-                <dd>{{ analysis.policy_version || k('unknown') }}</dd>
-                <dt>{{ k('analysisTime') }}</dt>
-                <dd>{{ date(analysis.created_at) }}</dd>
-                <dt>{{ k('modelVerdict') }}</dt>
+                <dt>{{ k('runID') }}</dt>
+                <dd>{{ detail.run.id }}</dd>
+                <dt>{{ k('time') }}</dt>
+                <dd>{{ date(detail.run.started_at) }}</dd>
+                <dt>{{ k('finishedAt') }}</dt>
                 <dd>
                   {{
-                    analysis.report.model_verdict
-                      ? labelVerdict(analysis.report.model_verdict)
-                      : k('legacyModelVerdict')
+                    detail.run.finished_at ? date(detail.run.finished_at) : '—'
                   }}
                 </dd>
-                <dt>{{ k('policyVerdict') }}</dt>
-                <dd>{{ labelVerdict(analysis.report.verdict) }}</dd>
-                <dt>{{ k('tokens') }}</dt>
-                <dd>
-                  {{ analysis.input_tokens }} / {{ analysis.output_tokens }}
-                </dd>
-                <dt>{{ k('duration') }}</dt>
-                <dd>{{ (analysis.duration_ms / 1000).toFixed(1) }} s</dd>
-                <dt>{{ k('scope') }}</dt>
-                <dd>{{ analysis.report.scope || k('unknown') }}</dd>
-                <dt v-if="analysis.group_key">{{ k('group') }}</dt>
-                <dd v-if="analysis.group_key">{{ analysis.group_key }}</dd>
-                <dt v-if="analysis.sample_stratum">{{ k('stratum') }}</dt>
-                <dd v-if="analysis.sample_stratum">
-                  {{ analysis.sample_stratum }} · {{ analysis.sample_percent }}%
-                </dd>
+                <dt>{{ k('generationModel') }}</dt>
+                <dd>{{ detail.run.model_id || k('unknown') }}</dd>
+                <dt>{{ k('execution') }}</dt>
+                <dd>{{ detail.run.execution_mode || k('unknown') }}</dd>
+                <dt>{{ k('runStatus') }}</dt>
+                <dd>{{ label(detail.run.status) }}</dd>
+                <dt>{{ k('pendingTasks') }}</dt>
+                <dd>{{ detail.pending_tasks ?? 0 }}</dd>
               </dl>
-              <p class="muted">{{ k('originalReportNotice') }}</p>
-              <template v-if="analysis.report.facts?.length"
-                ><h4>{{ k('facts') }}</h4>
+              <template v-if="detail.run.gaps?.length"
+                ><h4>{{ k('originalCaptureGaps') }}</h4>
                 <ul>
-                  <li v-for="(fact, i) in analysis.report.facts" :key="i">
-                    {{ fact }}
+                  <li v-for="gap in detail.run.gaps" :key="gap">
+                    {{ label(gap) }}
                   </li>
                 </ul></template
               >
-            </template>
-            <h4>{{ k('metadata') }}</h4>
-            <dl>
-              <dt>{{ k('runID') }}</dt>
-              <dd>{{ detail.run.id }}</dd>
-              <dt>{{ k('time') }}</dt>
-              <dd>{{ date(detail.run.started_at) }}</dd>
-              <dt>{{ k('finishedAt') }}</dt>
-              <dd>
-                {{
-                  detail.run.finished_at ? date(detail.run.finished_at) : '—'
-                }}
-              </dd>
-              <dt>{{ k('generationModel') }}</dt>
-              <dd>{{ detail.run.model_id || k('unknown') }}</dd>
-              <dt>{{ k('execution') }}</dt>
-              <dd>{{ detail.run.execution_mode || k('unknown') }}</dd>
-              <dt>{{ k('runStatus') }}</dt>
-              <dd>{{ label(detail.run.status) }}</dd>
-              <dt>{{ k('pendingTasks') }}</dt>
-              <dd>{{ detail.pending_tasks ?? 0 }}</dd>
-            </dl>
-            <template v-if="detail.run.gaps?.length"
-              ><h4>{{ k('originalCaptureGaps') }}</h4>
-              <ul>
-                <li v-for="gap in detail.run.gaps" :key="gap">
-                  {{ label(gap) }}
-                </li>
-              </ul></template
-            >
+            </details>
           </details>
         </div>
       </template>
@@ -653,7 +692,7 @@ const props = defineProps<{
   showSourceVersions?: boolean
 }>()
 const emit = defineEmits<{ close: []; changed: [] }>()
-const { k, label, labelVerdict, date } = useOpsText()
+const { k, label, labelVerdict, labelSourceCheck, date } = useOpsText()
 const detail = ref<OpsDetail>()
 const loading = ref(false)
 const loadError = ref('')
@@ -805,6 +844,23 @@ const sourcePending = computed(() => {
         ) &&
           analysis.value?.report.source_check === 'not_checked')))
   )
+})
+const showSourceSection = computed(() => {
+  if (!analysis.value) return false
+  const audit = analysis.value.report.source_audit
+  if (
+    sourcePending.value ||
+    sourceIssues.value.length ||
+    postEvidence.value.length ||
+    audit?.chars ||
+    audit?.evidence_ids?.length
+  )
+    return true
+  if (displaySourceCheck.value === 'not_applicable') return false
+  const plainRag =
+    detail.value?.run.qa_type === 'rag-qa' &&
+    !originalEvidence.value.some((item) => item.page_id)
+  return !(plainRag && displaySourceCheck.value === 'not_checked')
 })
 // Keep lookup failures and unresolved content comparisons visible. Only missing
 // version metadata moves into the disclosure when version reminders are hidden.

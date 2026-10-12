@@ -80,7 +80,7 @@ func TestSourceRuntimeReportsBoundedComparisonReasons(t *testing.T) {
 		`CREATE TABLE knowledge_bases (id TEXT PRIMARY KEY, tenant_id BIGINT, deleted_at TIMESTAMP)`,
 		`CREATE TABLE wiki_pages (id TEXT PRIMARY KEY, knowledge_base_id TEXT, tenant_id BIGINT, status TEXT, version INT, source_refs TEXT, chunk_refs TEXT, deleted_at TIMESTAMP)`,
 		`CREATE TABLE knowledges (id TEXT PRIMARY KEY, knowledge_base_id TEXT, tenant_id BIGINT, title TEXT, deleted_at TIMESTAMP)`,
-		`CREATE TABLE chunks (id TEXT PRIMARY KEY, knowledge_id TEXT, knowledge_base_id TEXT, tenant_id BIGINT, content TEXT, content_revision INT, chunk_index INT, is_enabled BOOLEAN, deleted_at TIMESTAMP)`,
+		`CREATE TABLE chunks (id TEXT PRIMARY KEY, knowledge_id TEXT, knowledge_base_id TEXT, tenant_id BIGINT, content TEXT, content_revision INT, chunk_index INT, chunk_type TEXT DEFAULT 'text', is_enabled BOOLEAN, deleted_at TIMESTAMP)`,
 		`INSERT INTO knowledge_bases (id,tenant_id) VALUES ('kb',1)`,
 		`INSERT INTO wiki_pages VALUES ('page','kb',1,'published',1,'["doc|Title"]','["chunk"]',NULL)`,
 		`INSERT INTO knowledges (id,knowledge_base_id,tenant_id,title) VALUES ('doc','kb',1,'Title')`,
@@ -90,7 +90,7 @@ func TestSourceRuntimeReportsBoundedComparisonReasons(t *testing.T) {
 	require.NoError(t, repo.db.Exec(`UPDATE wiki_pages SET source_refs=?,chunk_refs=?`, []byte(`["doc|Title"]`), []byte(`["chunk","chunk2"]`)).Error)
 	require.NoError(t, repo.db.Exec(`INSERT INTO chunks (id,knowledge_id,knowledge_base_id,tenant_id,content,is_enabled) VALUES ('chunk','doc','kb',1,?,true)`, strings.Repeat("字", 16001)).Error)
 	require.NoError(t, repo.db.Exec(`INSERT INTO chunks (id,knowledge_id,knowledge_base_id,tenant_id,content,is_enabled) VALUES ('chunk2','doc','kb',1,'later',true)`).Error)
-	adapter := RuntimeAdapter{DB: repo.db}
+	adapter := RuntimeAdapter{DB: repo.db, SourcePolicy: SourceLookupPolicy{MaxChars: 16000, MaxChunksPerDocument: 8}}
 	ctx := types.WithCaller(context.Background(), types.Caller{TenantID: 1, UserID: "owner", Role: types.TenantRoleAdmin})
 	out, err := adapter.Sources(ctx, Run{TenantID: 1}, []Evidence{{KBID: "kb", PageID: "page", Version: "1", SentToModel: true}})
 	require.Len(t, out, 1, "reader error: %v", err)
@@ -165,7 +165,7 @@ func TestSourceRuntimeDoesNotInferMissingRefsOutsideReadBounds(t *testing.T) {
 				`CREATE TABLE knowledge_bases (id TEXT PRIMARY KEY, tenant_id BIGINT, deleted_at TIMESTAMP)`,
 				`CREATE TABLE wiki_pages (id TEXT PRIMARY KEY, knowledge_base_id TEXT, tenant_id BIGINT, status TEXT, version INT, source_refs TEXT, chunk_refs TEXT, deleted_at TIMESTAMP)`,
 				`CREATE TABLE knowledges (id TEXT PRIMARY KEY, knowledge_base_id TEXT, tenant_id BIGINT, title TEXT, deleted_at TIMESTAMP)`,
-				`CREATE TABLE chunks (id TEXT PRIMARY KEY, knowledge_id TEXT, knowledge_base_id TEXT, tenant_id BIGINT, content TEXT, content_revision INT, chunk_index INT, is_enabled BOOLEAN, deleted_at TIMESTAMP)`,
+				`CREATE TABLE chunks (id TEXT PRIMARY KEY, knowledge_id TEXT, knowledge_base_id TEXT, tenant_id BIGINT, content TEXT, content_revision INT, chunk_index INT, chunk_type TEXT DEFAULT 'text', is_enabled BOOLEAN, deleted_at TIMESTAMP)`,
 				`INSERT INTO knowledge_bases (id,tenant_id) VALUES ('kb',1)`,
 				`INSERT INTO wiki_pages (id,knowledge_base_id,tenant_id,status,version) VALUES ('page','kb',1,'published',1)`,
 			} {
@@ -192,7 +192,7 @@ func TestSourceRuntimeDoesNotInferMissingRefsOutsideReadBounds(t *testing.T) {
 			refs, err := json.Marshal(chunkRefs)
 			require.NoError(t, err)
 			require.NoError(t, repo.db.Exec(`UPDATE wiki_pages SET source_refs=?,chunk_refs=?`, sources, refs).Error)
-			adapter := RuntimeAdapter{DB: repo.db}
+			adapter := RuntimeAdapter{DB: repo.db, SourcePolicy: SourceLookupPolicy{MaxChars: 16000, MaxChunksPerDocument: 8}}
 			ctx := types.WithCaller(context.Background(), types.Caller{TenantID: 1, UserID: "owner", Role: types.TenantRoleAdmin})
 			out, err := adapter.Sources(ctx, Run{TenantID: 1}, []Evidence{{KBID: "kb", PageID: "page", Version: "1", SentToModel: true}})
 			require.Len(t, out, tc.wantCount)
@@ -215,7 +215,7 @@ func TestSummaryPageUsesDocumentScopeWithoutInventingMissingChunkLinks(t *testin
 				`CREATE TABLE knowledge_bases (id TEXT PRIMARY KEY, tenant_id BIGINT, deleted_at TIMESTAMP)`,
 				`CREATE TABLE wiki_pages (id TEXT PRIMARY KEY, knowledge_base_id TEXT, tenant_id BIGINT, status TEXT, version INT, page_type TEXT, source_refs TEXT, chunk_refs TEXT, deleted_at TIMESTAMP)`,
 				`CREATE TABLE knowledges (id TEXT PRIMARY KEY, knowledge_base_id TEXT, tenant_id BIGINT, title TEXT, deleted_at TIMESTAMP)`,
-				`CREATE TABLE chunks (id TEXT PRIMARY KEY, knowledge_id TEXT, knowledge_base_id TEXT, tenant_id BIGINT, content TEXT, content_revision INT, chunk_index INT, is_enabled BOOLEAN, deleted_at TIMESTAMP)`,
+				`CREATE TABLE chunks (id TEXT PRIMARY KEY, knowledge_id TEXT, knowledge_base_id TEXT, tenant_id BIGINT, content TEXT, content_revision INT, chunk_index INT, chunk_type TEXT DEFAULT 'text', is_enabled BOOLEAN, deleted_at TIMESTAMP)`,
 				`INSERT INTO knowledge_bases (id,tenant_id) VALUES ('kb',1)`,
 				`INSERT INTO wiki_pages (id,knowledge_base_id,tenant_id,status,version) VALUES ('page','kb',1,'published',1)`,
 				`INSERT INTO knowledges (id,knowledge_base_id,tenant_id,title) VALUES ('doc','kb',1,'Title')`,
@@ -224,7 +224,7 @@ func TestSummaryPageUsesDocumentScopeWithoutInventingMissingChunkLinks(t *testin
 				require.NoError(t, repo.db.Exec(sql).Error)
 			}
 			require.NoError(t, repo.db.Exec(`UPDATE wiki_pages SET page_type=?,source_refs=?,chunk_refs=?`, pageType, []byte(`["doc|Title"]`), []byte(`[]`)).Error)
-			adapter := RuntimeAdapter{DB: repo.db}
+			adapter := RuntimeAdapter{DB: repo.db, SourcePolicy: SourceLookupPolicy{MaxChars: 16000, MaxChunksPerDocument: 8}}
 			ctx := types.WithCaller(context.Background(), types.Caller{TenantID: 1, UserID: "owner", Role: types.TenantRoleAdmin})
 			out, err := adapter.Sources(ctx, Run{TenantID: 1}, []Evidence{{KBID: "kb", PageID: "page", Version: "1", SentToModel: true}})
 			require.Len(t, out, 1)

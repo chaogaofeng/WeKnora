@@ -13,9 +13,8 @@ import (
 // Follow only their recorded Wiki links, within the already-authorized KB.
 // Linked pages that were not captured at answer time remain post-hoc scope:
 // their current version cannot establish the answer-time source version.
-const folderSourcePageLimit = 32
-
 func (a *RuntimeAdapter) sourcePages(ctx context.Context, run Run, evidence []Evidence) ([]types.WikiPage, []string) {
+	policy := a.SourcePolicy.normalized()
 	pages := []types.WikiPage{}
 	issues := []string{}
 	addIssue := func(code string) {
@@ -80,7 +79,7 @@ func (a *RuntimeAdapter) sourcePages(ctx context.Context, run Run, evidence []Ev
 			lookupKey := page.KnowledgeBaseID + "/" + strconv.FormatUint(page.TenantID, 10) + "/" + slug
 			child, cached := linkedPages[lookupKey]
 			if !cached {
-				if linkedReads >= folderSourcePageLimit {
+				if linkedReads >= policy.MaxLinkedPages {
 					addIssue("source_folder_page_limit")
 					continue
 				}

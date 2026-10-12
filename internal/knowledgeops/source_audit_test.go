@@ -98,6 +98,9 @@ func TestSourceAuditFreshPerAttemptAndSurvivesFailure(t *testing.T) {
 		require.Len(t, audit.EvidenceIDs, 1)
 		require.Equal(t, 2, audit.Chars)
 		require.Equal(t, 16000, audit.CharLimit)
+		require.NotNil(t, audit.LookupPolicy)
+		require.Equal(t, audit.CharLimit, audit.LookupPolicy.MaxChars)
+		require.NotEmpty(t, audit.SelectionStrategy)
 		require.Contains(t, audit.Issues, "source_char_budget_exhausted")
 		if attempt == 0 {
 			require.NoError(t, repo.Retry(ctx, 1, run.ID))

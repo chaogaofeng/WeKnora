@@ -16,7 +16,7 @@ func folderSourceFixture(t *testing.T) (*RuntimeAdapter, context.Context) {
 		`CREATE TABLE knowledge_bases (id TEXT PRIMARY KEY, tenant_id BIGINT, deleted_at TIMESTAMP)`,
 		`CREATE TABLE wiki_pages (id TEXT PRIMARY KEY, knowledge_base_id TEXT, tenant_id BIGINT, slug TEXT, title TEXT, content TEXT, page_type TEXT, status TEXT, version INT, source_refs TEXT, chunk_refs TEXT, out_links TEXT, deleted_at TIMESTAMP)`,
 		`CREATE TABLE knowledges (id TEXT PRIMARY KEY, knowledge_base_id TEXT, tenant_id BIGINT, title TEXT, deleted_at TIMESTAMP)`,
-		`CREATE TABLE chunks (id TEXT PRIMARY KEY, knowledge_id TEXT, knowledge_base_id TEXT, tenant_id BIGINT, content TEXT, content_revision INT, chunk_index INT, is_enabled BOOLEAN, deleted_at TIMESTAMP)`,
+		`CREATE TABLE chunks (id TEXT PRIMARY KEY, knowledge_id TEXT, knowledge_base_id TEXT, tenant_id BIGINT, content TEXT, content_revision INT, chunk_index INT, chunk_type TEXT DEFAULT 'text', is_enabled BOOLEAN, deleted_at TIMESTAMP)`,
 		`INSERT INTO knowledge_bases (id,tenant_id) VALUES ('kb',1),('other',2)`,
 		`INSERT INTO knowledges (id,knowledge_base_id,tenant_id,title) VALUES ('doc','kb',1,'Original')`,
 		`INSERT INTO chunks (id,knowledge_id,knowledge_base_id,tenant_id,content,content_revision,chunk_index,is_enabled) VALUES ('chunk','doc','kb',1,'Original body',2,0,true)`,
