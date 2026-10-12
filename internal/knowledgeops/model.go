@@ -23,6 +23,10 @@ func DefaultSettings(tenant uint64) Settings {
 }
 
 type Run struct {
+	EffectiveRisk         string          `json:"effective_risk" gorm:"-"`
+	SourceCheckDisplay    string          `json:"source_check_display" gorm:"-"`
+	PendingReviewTargets  []string        `json:"pending_review_targets" gorm:"-"`
+	PendingItems          []PendingItem   `json:"pending_items" gorm:"-"`
 	SourceFollowupPending bool            `json:"source_followup_pending" gorm:"-"`
 	Coverage              CaptureCoverage `json:"coverage" gorm:"-"`
 	ReviewState           string          `json:"review_state" gorm:"-"`

@@ -47,45 +47,10 @@ func (v *Coverage) observe(status string) {
 	}
 }
 func queueRoutes(d Detail) []string {
-	a := d.Run.Analysis
 	result := []string{}
-	if a != nil && humanReviewState(d) != "reviewed" && a.Route != "auto_record" {
-		result = append(result, a.Route)
-	}
-	if sourceFollowupPending(d.Run) && !slices.Contains(result, "source_verification") {
-		result = append(result, "source_verification")
-	}
-	// Technical failures stay actionable even after a business conclusion is recorded.
-	if (a != nil && a.Status == "failed") || d.Run.Status == "failed" || d.Run.Status == "cancelled" {
-		found := false
-		for _, r := range result {
-			if r == "technical_followup" {
-				found = true
-			}
-		}
-		if !found {
-			result = append(result, "technical_followup")
-		}
-	}
-	if a != nil {
-		seen := map[string]bool{}
-		for _, r := range d.Reviews {
-			if r.AnalysisID != a.ID || seen[r.Target] {
-				continue
-			}
-			seen[r.Target] = true
-			if r.Action == "needs_more_evidence" {
-				found := false
-				for _, route := range result {
-					if route == "needs_evidence" {
-						found = true
-					}
-				}
-				if !found {
-					result = append(result, "needs_evidence")
-				}
-				break
-			}
+	for _, item := range deriveCurrentWork(d).Items {
+		if !slices.Contains(result, item.Route) {
+			result = append(result, item.Route)
 		}
 	}
 	return result
@@ -133,17 +98,7 @@ func (v *WorkbenchStats) observe(d Detail) {
 	if a.Status != "succeeded" {
 		return
 	}
-	source := a.Report.SourceCheck
-	if source == "" {
-		source = "unknown"
-	} else if source == "not_checked" && d.Run.QAType == "rag-qa" && !slices.ContainsFunc(d.Evidence, func(e Evidence) bool {
-		return e.SentToModel && !e.PostHoc && e.PageID != ""
-	}) {
-		// The runtime compares Wiki pages to their linked originals. Plain RAG
-		// with no consumed Wiki page has no such comparison; this is not a fault.
-		source = "not_applicable"
-	}
-	v.SourceChecks[source]++
+	v.SourceChecks[sourceCheckDisplay(d)]++
 	seen := map[string]bool{}
 	for _, cause := range assessCauses(a.Report).Candidates {
 		if !seen[cause.Category] {
@@ -165,33 +120,16 @@ func (v *WorkbenchStats) observe(d Detail) {
 	}
 }
 func queueBefore(a, b Run) bool {
-	risk := func(r Run) int {
-		if r.Analysis == nil {
-			return 3
-		}
-		switch r.Analysis.Report.Risk {
-		case "high":
-			return 0
-		case "medium":
-			return 1
-		case "low":
-			return 2
-		}
-		return 3
-	}
-	if risk(a) != risk(b) {
-		return risk(a) < risk(b)
-	}
-	// No unsupported business-impact score: oldest analysis first within a risk tier.
+	// Newest diagnosis first, falling back to the question time before diagnosis.
 	at, bt := a.StartedAt, b.StartedAt
-	if a.Analysis != nil {
+	if a.Analysis != nil && !a.Analysis.CreatedAt.IsZero() {
 		at = a.Analysis.CreatedAt
 	}
-	if b.Analysis != nil {
+	if b.Analysis != nil && !b.Analysis.CreatedAt.IsZero() {
 		bt = b.Analysis.CreatedAt
 	}
 	if !at.Equal(bt) {
-		return at.Before(bt)
+		return at.After(bt)
 	}
 	return a.ID < b.ID
 }

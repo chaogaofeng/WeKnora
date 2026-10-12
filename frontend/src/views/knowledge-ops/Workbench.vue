@@ -123,6 +123,7 @@
       </template>
       <section v-if="tab === 'queue' && overview" class="panel queue-counts">
         <h2>{{ k('queueStats') }}</h2>
+        <p class="scope-note">{{ k('queueCountsHint') }}</p>
         <div class="queue-count-grid">
           <button
             v-for="value in [
@@ -133,6 +134,8 @@
               'technical_followup',
             ]"
             :key="value"
+            :class="{ active: filters.route === value }"
+            :aria-pressed="filters.route === value"
             @click="filterQueue(value)"
           >
             <span>{{ label(value) }}</span>
@@ -147,6 +150,8 @@
         :groups="groups"
         :grouped="grouped && !selectedGroup"
         :selectedGroup="selectedGroup"
+        :filtered="hasQueueFilters"
+        :total="total"
         @open="openRun"
         @group="selectGroup"
         @toggle="toggleGroups"
@@ -195,6 +200,11 @@
           :current="page"
           :page-size="pageSize"
           :total="total"
+          :total-content="
+            tab === 'queue'
+              ? `${total} ${k(grouped && !selectedGroup ? 'queueGroupUnit' : 'queueRunUnit')}`
+              : true
+          "
           :show-page-size="false"
           :show-jumper="false"
           size="small"
@@ -319,6 +329,9 @@ const blankFilters = () => ({
 })
 const draftFilters = reactive(blankFilters())
 const filters = ref<OpsFilters>({})
+const hasQueueFilters = computed(() =>
+  Object.values(filters.value).some((value) => value !== undefined && value !== ''),
+)
 let token = 0
 const metrics = computed(() => [
   {
@@ -384,6 +397,12 @@ async function loadData(background = false) {
           : getOpsRuns(params),
     ])
     if (current !== token) return
+    const lastPage = Math.max(1, Math.ceil(result.total / pageSize))
+    if (page.value > lastPage) {
+      page.value = lastPage
+      await loadData(background)
+      return
+    }
     settings.value = config
     overview.value = stats
     total.value = result.total
@@ -467,7 +486,6 @@ function applyFilters() {
     void reload()
     return
   }
-  selectedGroup.value = ''
   if (
     draftFilters.from &&
     draftFilters.to &&
@@ -476,6 +494,7 @@ function applyFilters() {
     filterError.value = k('dateInvalid')
     return
   }
+  selectedGroup.value = ''
   filters.value = buildFilters(draftFilters)
   page.value = 1
   void reload()
@@ -514,8 +533,15 @@ function toggleGroups() {
   void reload()
 }
 function filterQueue(value: string) {
-  draftFilters.route = filters.value.route === value ? '' : value
-  applyFilters()
+  const applied = { ...filters.value }
+  if (applied.route === value) delete applied.route
+  else applied.route = value
+  filters.value = applied
+  Object.assign(draftFilters, blankFilters(), applied)
+  filterError.value = ''
+  selectedGroup.value = ''
+  page.value = 1
+  void reload()
 }
 async function filterCause(category: string) {
   if (filters.value.cause_category && filters.value.cause_category !== category)
@@ -817,6 +843,11 @@ button:focus-visible {
   color: var(--td-text-color-primary);
   cursor: pointer;
   transition: border-color var(--app-motion-fast);
+}
+.queue-count-grid button.active {
+  border-color: var(--td-brand-color);
+  background: var(--td-brand-color-light);
+  color: var(--td-brand-color);
 }
 .queue-count-grid button:hover {
   border-color: var(--td-brand-color);

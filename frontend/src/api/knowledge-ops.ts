@@ -75,8 +75,21 @@ export interface OpsCaptureCoverage {
   content_gaps: string[]
   provenance_gaps: string[]
 }
+export interface OpsPendingItem {
+  route: string
+  reason: string
+  target?: 'answer' | 'cause'
+  cause_category?: string
+  review_id?: string
+  reviewer_id?: string
+  created_at?: string
+}
 export interface OpsRun {
   source_followup_pending?: boolean
+  effective_risk?: string
+  source_check_display?: string
+  pending_review_targets?: ('answer' | 'cause')[]
+  pending_items?: OpsPendingItem[]
   id: string
   actor_id: string
   session_id: string

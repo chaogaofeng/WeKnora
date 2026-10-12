@@ -67,6 +67,19 @@ function setup(
     'filters',
     'draftFilters',
     'page',
+    'grouped',
+    'selectedGroup',
+    'groups',
+    'runs',
+    'total',
+    'filterQueue',
+    'applyFilters',
+    'filterError',
+    'reload',
+    'effectiveRisk',
+    'displaySourceCheck',
+    'pendingEvidenceRequests',
+    'pendingReviewTargets',
   ]
   const expose = names
     .map(
@@ -124,6 +137,107 @@ function deferred<T>() {
   })
   return { promise, resolve, reject }
 }
+
+function queueWorkbench(grouped = true) {
+  const requests: Record<string, any>[] = []
+  const response = { total: 20 }
+  const fetchPage = async (params: Record<string, any>) => {
+    requests.push({ ...params })
+    return {
+      total: response.total,
+      items: params.page === 1 ? [{ id: 'remaining-case' }] : [],
+    }
+  }
+  const h = setup('Workbench.vue', {}, {
+    useRouter: () => ({ replace: () => {} }),
+    useRoute: () => ({ query: { tab: 'queue' } }),
+    onMounted: () => {},
+    getOpsSettings: async () => ({}),
+    getOpsOverview: async () => ({}),
+    getOpsGroups: fetchPage,
+    getOpsRuns: fetchPage,
+  })
+  h.api.grouped.value = grouped
+  return { ...h, requests, response }
+}
+
+test('queue count drilldown changes only the route in the counted scope', async () => {
+  const h = queueWorkbench()
+  h.api.filters.value = { channel: 'web', search: 'applied' }
+  h.api.draftFilters.channel = 'api'
+  h.api.draftFilters.search = 'unapplied'
+  h.api.filterQueue('human_review')
+  await setImmediate()
+  assert.equal(h.requests[0].channel, 'web')
+  assert.equal(h.requests[0].search, 'applied')
+  assert.equal(h.requests[0].route, 'human_review')
+  h.api.filterQueue('human_review')
+  await setImmediate()
+  assert.equal(h.requests[1].route, undefined, 'clicking again clears only the route')
+  assert.equal(h.requests[1].channel, 'web')
+  h.stop()
+})
+
+for (const grouped of [true, false]) {
+  test(`reviewing the last item on the last ${grouped ? 'group' : 'case'} page returns to remaining work`, async () => {
+    const h = queueWorkbench(grouped)
+    h.api.page.value = 2
+    await h.api.reload()
+    assert.equal(h.api.page.value, 1)
+    assert.deepEqual(h.requests.map((r) => r.page), [2, 1])
+    const rows = grouped ? h.api.groups : h.api.runs
+    assert.equal(rows.value[0]?.id, 'remaining-case')
+    assert.equal(h.api.total.value, 20)
+    h.stop()
+  })
+}
+
+test('an invalid period preserves the selected group and does not reload', () => {
+  const h = queueWorkbench()
+  h.api.selectedGroup.value = 'group-1'
+  h.api.page.value = 2
+  h.api.runs.value = [{ id: 'group-member' }]
+  h.api.draftFilters.from = '2026-10-10T00:00:00Z'
+  h.api.draftFilters.to = '2026-10-09T00:00:00Z'
+  h.api.applyFilters()
+  assert.equal(h.api.selectedGroup.value, 'group-1')
+  assert.equal(h.api.page.value, 2)
+  assert.equal(h.api.runs.value[0].id, 'group-member')
+  assert.equal(h.api.filterError.value, 'dateInvalid')
+  assert.equal(h.requests.length, 0)
+  h.stop()
+})
+
+test('detail uses current work fields only for the latest analysis and keeps open cause requests visible', async () => {
+  const latest = { id: 'latest', version: 2, report: { risk: 'low', source_check: 'not_checked' } }
+  const historical = { id: 'old', version: 1, report: { risk: 'medium', source_check: 'unresolved' } }
+  const h = setup('DetailDrawer.vue', vue.reactive({ runID: 'A', enabled: true }), {
+    getOpsDetail: async () => ({
+      ...detail('A'),
+      run: {
+        id: 'A', analysis: latest, effective_risk: 'high', source_check_display: 'not_applicable',
+        pending_review_targets: ['cause'],
+        pending_items: [
+          { route: 'source_verification', reason: 'source unknown' },
+          { route: 'needs_evidence', target: 'cause', cause_category: 'retrieval', review_id: 'request-1', reason: 'missing retrieval logs' },
+        ],
+      },
+      analyses: [latest, historical],
+    }),
+  })
+  await setImmediate()
+  assert.equal(h.api.effectiveRisk?.value, 'high')
+  assert.equal(h.api.displaySourceCheck?.value, 'not_applicable')
+  assert.equal(h.api.pendingEvidenceRequests?.value.length, 1)
+  assert.equal(h.api.pendingEvidenceRequests.value[0].reason, 'missing retrieval logs')
+  assert.deepEqual(Array.from(h.api.pendingReviewTargets.value), ['cause'])
+  h.api.selectedID.value = 'old'
+  assert.equal(h.api.effectiveRisk.value, 'medium')
+  assert.equal(h.api.displaySourceCheck.value, 'unresolved')
+  assert.equal(h.api.pendingEvidenceRequests.value.length, 0)
+  assert.equal(h.api.pendingReviewTargets.value.length, 0)
+  h.stop()
+})
 const settings = (sample: number) => ({
   enabled: false,
   model_id: '',

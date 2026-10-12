@@ -72,7 +72,7 @@
         <section
           v-if="analysis"
           class="diagnosis-first"
-          :class="analysis.report.risk"
+          :class="effectiveRisk"
         >
           <div class="section-heading">
             <h3>{{ k('diagnosisSummaryTitle') }} · v{{ analysis.version }}</h3>
@@ -89,11 +89,11 @@
             </div>
             <div>
               <span class="field-label">{{ k('sourceCheck') }}</span
-              ><StatusBadge :value="analysis.report.source_check" />
+              ><StatusBadge :value="displaySourceCheck" />
             </div>
             <div>
               <span class="field-label">{{ k('risk') }}</span
-              ><StatusBadge :value="analysis.report.risk" />
+              ><StatusBadge :value="effectiveRisk" />
             </div>
             <div>
               <span class="field-label">{{
@@ -189,7 +189,7 @@
         <section v-if="analysis" id="ops-source-check">
           <div class="section-heading">
             <h3>{{ k('sourceReviewTitle') }}</h3>
-            <StatusBadge :value="analysis.report.source_check" />
+            <StatusBadge :value="displaySourceCheck" />
           </div>
           <p v-if="showSourceFollowupNotice" class="notice">
             {{ k('sourceFollowupNotice') }}
@@ -390,13 +390,41 @@
           </p>
           <p v-if="!canReview" class="notice">{{ k('reviewUnavailable') }}</p>
           <p class="muted">{{ k('reviewNotice') }}</p>
+          <p v-if="pendingReviewTargets.length" class="muted">
+            {{ k('remainingReviews') }}：
+            {{
+              pendingReviewTargets
+                .map((target) => k(target === 'answer' ? 'answerTarget' : 'causeTarget'))
+                .join(' · ')
+            }}
+          </p>
+          <div v-if="pendingEvidenceRequests.length" class="pending-evidence">
+            <h4>{{ k('pendingEvidenceRequests') }}</h4>
+            <article
+              v-for="item in pendingEvidenceRequests"
+              :key="item.review_id"
+            >
+              <strong>
+                {{ k(item.target === 'answer' ? 'answerTarget' : 'causeTarget') }}
+                <template v-if="item.cause_category">
+                  · {{ label(item.cause_category) }}
+                </template>
+              </strong>
+              <p>{{ item.reason }}</p>
+              <small class="muted">
+                {{ item.reviewer_id }}
+                <template v-if="item.created_at"> · {{ date(item.created_at) }}</template>
+              </small>
+            </article>
+          </div>
           <p v-if="showSourceFollowupNotice" class="notice">
             {{ k('answerReviewKeepsSourceOpen') }}
           </p>
           <div
             class="review-grid"
             :class="{
-              'with-causes': causeCandidates.length || showCauseEditor,
+              'with-causes':
+                causeCandidates.length || showCauseEditor || pendingReviewTargets.includes('cause'),
             }"
           >
             <ReviewForm
@@ -410,12 +438,17 @@
               @submit="saveReview"
             />
             <ReviewForm
-              v-if="causeCandidates.length || showCauseEditor"
+              v-if="
+                causeCandidates.length || showCauseEditor || pendingReviewTargets.includes('cause')
+              "
               :key="`${analysis.id}:cause:${savedReviews.cause}`"
               target="cause"
               :analysisID="analysis.id"
               :initial-verdict="causeCandidates[0]?.status || 'unresolved'"
-              :initial-category="causeCandidates[0]?.category"
+              :initial-category="
+                causeCandidates[0]?.category ||
+                pendingEvidenceRequests.find((item) => item.target === 'cause')?.cause_category
+              "
               :initial-action="causeCandidates.length ? undefined : 'corrected'"
               :machine-causes="causeCandidates"
               :disabled="!canReview"
@@ -424,7 +457,10 @@
               @submit="saveReview"
             />
           </div>
-          <div v-if="!causeCandidates.length" class="no-cause">
+          <div
+            v-if="!causeCandidates.length && !pendingReviewTargets.includes('cause')"
+            class="no-cause"
+          >
             <span>{{
               k(
                 analysis.status === 'failed'
@@ -649,6 +685,28 @@ const latestID = computed(
 )
 const analysis = computed(() =>
   detail.value?.analyses.find((item) => item.id === selectedID.value),
+)
+// Current work is derived from the latest diagnosis; historical reports retain
+// the original machine judgment and must not inherit today's pending requests.
+const effectiveRisk = computed(() =>
+  isCurrent.value
+    ? detail.value?.run.effective_risk || analysis.value?.report.risk
+    : analysis.value?.report.risk,
+)
+const displaySourceCheck = computed(() =>
+  isCurrent.value
+    ? detail.value?.run.source_check_display || analysis.value?.report.source_check
+    : analysis.value?.report.source_check,
+)
+const pendingReviewTargets = computed(() =>
+  isCurrent.value ? detail.value?.run.pending_review_targets || [] : [],
+)
+const pendingEvidenceRequests = computed(() =>
+  isCurrent.value
+    ? (detail.value?.run.pending_items || []).filter(
+        (item) => item.route === 'needs_evidence' && item.review_id,
+      )
+    : [],
 )
 const causeCandidates = computed(
   () =>
@@ -1141,6 +1199,26 @@ summary {
 }
 .review-grid.with-causes {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.pending-evidence {
+  border: 1px solid var(--td-component-stroke);
+  border-radius: var(--app-radius-lg);
+  padding: var(--app-space-4);
+  margin-top: var(--app-space-4);
+  overflow-wrap: anywhere;
+}
+.pending-evidence h4 {
+  margin: 0 0 var(--app-space-3);
+  font-size: var(--app-text-md);
+}
+.pending-evidence article + article {
+  border-top: 1px solid var(--td-component-border);
+  padding-top: var(--app-space-3);
+  margin-top: var(--app-space-3);
+}
+.pending-evidence p {
+  margin: var(--app-space-1) 0;
+  white-space: pre-wrap;
 }
 .no-cause {
   justify-content: space-between;

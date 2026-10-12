@@ -201,7 +201,34 @@ const en: Record<string, string> = {
   sampleNotice:
     'Descriptive counts only; corrections are not a calibrated false-negative rate. Automatic records are machine conclusions.',
   queueIntro:
-    'Read the diagnosis and adjudication questions before reviewing. Sorted by risk, then oldest diagnosis; every group member retains an independent conclusion.',
+    'Start with the current tasks and remaining reviews. Newest diagnosis first; groups use their latest case.',
+  queueGroupUnit: 'issue groups',
+  queueRunUnit: 'Q&A runs',
+  queueCountsHint:
+    'A run may have several types of pending work. Queue counts cannot be added together.',
+  currentPending: 'Current tasks',
+  remainingReviews: 'Reviews still needed',
+  pendingEvidenceRequests: 'Human evidence requests',
+  pendingDetailsUnavailable:
+    'Open the diagnosis to check the current follow-up details.',
+  originalDiagnosis: 'Original machine diagnosis · expand to read',
+  originalRoute: 'Original machine routing',
+  originalRisk: 'Original machine risk',
+  showFullReason: 'Read the full request',
+  hideFullReason: 'Collapse request',
+  noValidVerdict: 'No valid assessment is available',
+  queueEmpty: 'No current tasks',
+  queueEmptyHint:
+    'No captured Q&A runs currently need follow-up. View the overview or review records for completed work.',
+  queueFilteredEmpty: 'No tasks match these filters',
+  queueFilteredEmptyHint:
+    'Adjust or reset the filters to view other pending work.',
+  queueGroupEmpty: 'No tasks remain in this group',
+  queueGroupEmptyHint:
+    'Return to all issue groups to continue reviewing other pending work.',
+  queuePageEmpty: 'No tasks on this page',
+  queuePageEmptyHint:
+    'Return to a previous page or refresh to view the remaining tasks.',
   groupView: 'Group related issues',
   individualView: 'Individual cases',
   relatedCount: 'Visible pending cases',
@@ -648,7 +675,29 @@ const zh: Record<string, string> = {
   sampleNotice:
     '这里只展示计数；人工纠正不等于已校准的漏报率。自动记录始终保留机器结论身份。',
   queueIntro:
-    '先读诊断摘要与待裁决点，再进行复核。按风险、同风险下最早诊断排序；归组后的每条回答仍独立保存结论。',
+    '先处理当前待办与剩余复核项。按诊断时间从新到旧排列，问题组以组内最新诊断为准。',
+  queueGroupUnit: '组问题',
+  queueRunUnit: '条问答',
+  queueCountsHint: '同一问答可同时有多类待办，各队列数量不相加。',
+  currentPending: '当前待办',
+  remainingReviews: '仍需复核',
+  pendingEvidenceRequests: '人工补证要求',
+  pendingDetailsUnavailable: '打开诊断详情，核对当前待处理事项。',
+  originalDiagnosis: '原始机器诊断 · 展开查看',
+  originalRoute: '原始机器分流',
+  originalRisk: '原始机器风险',
+  showFullReason: '查看完整要求',
+  hideFullReason: '收起要求',
+  noValidVerdict: '尚无有效判定',
+  queueEmpty: '当前暂无待办',
+  queueEmptyHint:
+    '已采集问答当前没有需要跟进的事项；已完成内容可在总览或复核记录中查看。',
+  queueFilteredEmpty: '没有符合筛选条件的待办',
+  queueFilteredEmptyHint: '调整或重置筛选条件，查看其他待处理事项。',
+  queueGroupEmpty: '本组已无待办',
+  queueGroupEmptyHint: '返回全部问题组，继续查看其他待处理事项。',
+  queuePageEmpty: '当前页暂无待办',
+  queuePageEmptyHint: '返回上一页或刷新，查看剩余待处理事项。',
   groupView: '按问题组查看',
   individualView: '逐条案例',
   relatedCount: '可见待办回答',

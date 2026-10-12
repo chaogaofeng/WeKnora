@@ -287,7 +287,6 @@ func (s *Service) loadDetail(ctx context.Context, tenant uint64, id string, full
 	}
 	if len(d.Analyses) > 0 {
 		d.Run.Analysis = &d.Analyses[0]
-		d.Run.SourceFollowupPending = sourceFollowupPending(d.Run)
 	}
 	var pending int64
 	if err = s.repo.db.WithContext(ctx).Model(&Task{}).Where("tenant_id = ? AND run_id = ? AND status IN ?", tenant, id, []string{"pending", "running"}).Count(&pending).Error; err != nil {
@@ -296,6 +295,9 @@ func (s *Service) loadDetail(ctx context.Context, tenant uint64, id string, full
 	d.PendingTasks = int(pending)
 	d.Reviews = []Review{}
 	err = s.repo.db.WithContext(ctx).Where("tenant_id = ? AND run_id = ?", tenant, id).Order("created_at DESC,id").Find(&d.Reviews).Error
+	if err == nil {
+		populateCurrentWork(&d)
+	}
 	return d, err
 }
 func (s *Service) RunOnce(ctx context.Context) error {

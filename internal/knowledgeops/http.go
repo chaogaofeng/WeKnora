@@ -92,7 +92,6 @@ func (s *Service) putSettings(c *gin.Context) {
 }
 func (s *Service) detail(c *gin.Context) {
 	v, e := s.Detail(c.Request.Context(), tenant(c), c.Param("id"))
-	v.Run.ReviewState = reviewState(v)
 	reply(c, v, e)
 }
 func (s *Service) retry(c *gin.Context) {
@@ -198,16 +197,17 @@ func (s *Service) walk(c *gin.Context, visit func(Detail)) error {
 				continue
 			}
 			a := d.Run.Analysis
+			routes := queueRoutes(d)
 			if route := c.Query("route"); route != "" {
 				match := a != nil && a.Route == route
-				for _, pendingRoute := range queueRoutes(d) {
+				for _, pendingRoute := range routes {
 					if pendingRoute == route {
 						match = true
 					}
 				}
 				if c.Query("view") == "queue" {
 					match = false
-					for _, pendingRoute := range queueRoutes(d) {
+					for _, pendingRoute := range routes {
 						if pendingRoute == route {
 							match = true
 						}
@@ -220,11 +220,10 @@ func (s *Service) walk(c *gin.Context, visit func(Detail)) error {
 			if verdict := c.Query("verdict"); verdict != "" && (a == nil || a.Report.Verdict != verdict) {
 				continue
 			}
-			d.Run.ReviewState = reviewState(d)
-			if c.Query("view") == "queue" && len(queueRoutes(d)) == 0 {
+			if c.Query("view") == "queue" && len(routes) == 0 {
 				continue
 			}
-			if risk := c.Query("risk"); risk != "" && (a == nil || a.Report.Risk != risk) {
+			if risk := c.Query("risk"); risk != "" && d.Run.EffectiveRisk != risk {
 				continue
 			}
 			if category := c.Query("cause_category"); category != "" {
@@ -255,32 +254,7 @@ func reviewState(d Detail) string {
 
 // Human review completion is independent of outstanding source verification.
 func humanReviewState(d Detail) string {
-	if d.Run.Analysis == nil {
-		return "pending_analysis"
-	}
-	a := d.Run.Analysis
-	hasCauses := len(assessCauses(a.Report).Candidates) > 0
-	answer, cause := false, !hasCauses
-	seen := map[string]bool{}
-	for _, r := range d.Reviews {
-		if r.AnalysisID != a.ID || seen[r.Target] {
-			continue
-		}
-		seen[r.Target] = true
-		if r.Target == "answer" {
-			answer = r.Action != "needs_more_evidence"
-		}
-		if r.Target == "cause" {
-			cause = r.Action != "needs_more_evidence"
-		}
-	}
-	if answer && cause {
-		return "reviewed"
-	}
-	if answer || cause && hasCauses {
-		return "partially_reviewed"
-	}
-	return "unreviewed"
+	return currentReviewProgress(d).state
 }
 func (s *Service) listRuns(c *gin.Context) {
 	p, n := pagination(c)

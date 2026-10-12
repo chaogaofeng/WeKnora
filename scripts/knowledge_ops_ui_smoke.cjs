@@ -145,11 +145,16 @@ const fs = require('fs')
       answer: '经营满两年即可申请固定额度。',
       status: 'completed',
       capture_status: 'complete',
+      coverage: { content_status: 'complete', provenance_status: 'known', content_gaps: [], provenance_gaps: [] },
       gaps: [],
       started_at: '2026-09-28T08:01:00Z',
       finished_at: '2026-09-28T08:01:20Z',
       updated_at: '2026-09-28T08:01:20Z',
       review_state: 'unreviewed',
+      effective_risk: 'high',
+      source_check_display: 'consistent',
+      pending_review_targets: ['answer', 'cause'],
+      pending_items: [{ route: 'human_review', reason: '高风险业务结论，须人工复核' }],
       analysis,
     },
   ]
@@ -172,7 +177,7 @@ const fs = require('fs')
     const req = route.request(),
       url = new URL(req.url()),
       path = url.pathname
-    if (path.endsWith('/knowledge-ops/runs'))
+    if (path.endsWith('/knowledge-ops/runs') || path.endsWith('/knowledge-ops/groups'))
       filterRequests.push(Object.fromEntries(url.searchParams))
     if (!path.startsWith('/api/')) {
       await route.continue()
@@ -208,14 +213,17 @@ const fs = require('fs')
           'hybrid-rag-wiki': { total: runs.length, complete: runs.length, partial: 0, missing: 0 },
         },
         source_checks: runs.reduce((counts, run) => {
-          const status = run.analysis.report.source_check
+          const status = run.source_check_display || run.analysis.report.source_check
           counts[status] = (counts[status] || 0) + 1
           return counts
         }, {}),
         causes: analysis.cause_assessment.candidates.length ? { generation: runs.length } : {},
-        queue_counts: { human_review: runs.length },
+        queue_counts: runs.reduce((counts, run) => {
+          for (const route of new Set(run.pending_items.map((item) => item.route))) counts[route] = (counts[route] || 0) + 1
+          return counts
+        }, {}),
         diagnosis_status: { succeeded: runs.length },
-        pending_runs: runs.length,
+        pending_runs: runs.filter((run) => run.pending_items.length).length,
         content_coverage: { total: runs.length, complete: runs.length, partial: 0, missing: 0 },
         content_coverage_by_mode: {
           'hybrid-rag-wiki': { total: runs.length, complete: runs.length, partial: 0, missing: 0 },
@@ -369,7 +377,19 @@ const fs = require('fs')
   await page.screenshot({ path: out + '/insights.png', fullPage: true })
   await page.goto(baseURL + '/platform/knowledge-ops?tab=queue')
   await page.getByRole('button', { name: '查看组内案例', exact: true }).waitFor()
-  await page.getByText('确认资质和额度条件是否适用于当前申请对象。', { exact: true }).waitFor()
+  const diagnosisDisclosure = page.locator('.queue-case .diagnosis').first()
+  if (await diagnosisDisclosure.getByText('确认资质和额度条件是否适用于当前申请对象。', { exact: true }).isVisible())
+    throw new Error('original machine diagnosis should start folded')
+  await diagnosisDisclosure.locator('summary').click()
+  await diagnosisDisclosure.getByText('确认资质和额度条件是否适用于当前申请对象。', { exact: true }).waitFor()
+  await diagnosisDisclosure.locator('summary').click()
+  if (!(await page.locator('.pagination').innerText()).includes('1 组问题')) throw new Error('group total unit is missing')
+  await page.locator('.filter-search input').fill('未提交的搜索草稿')
+  await page.locator('.queue-count-grid button').filter({ hasText: '业务复核' }).click()
+  await page.locator('.queue-count-grid button[aria-pressed=true]').waitFor()
+  if (filterRequests.at(-1).search || filterRequests.at(-1).route !== 'human_review') throw new Error('queue shortcut applied an unrelated draft')
+  await page.locator('.queue-count-grid button').filter({ hasText: '业务复核' }).click()
+  await page.waitForFunction(() => !document.querySelector('.queue-count-grid button[aria-pressed=true]'))
   await page.screenshot({ path: out + '/queue.png', fullPage: true })
   await page.evaluate(async () => {
     const { useTheme } = await import('/src/composables/useTheme.ts')
@@ -387,6 +407,7 @@ const fs = require('fs')
     !(await page.locator('.ops-workbench').evaluate((el) => el.scrollWidth <= el.clientWidth + 1))
   )
     throw new Error('queue overflows narrow workbench')
+  await page.locator('.queue-case').first().scrollIntoViewIfNeeded()
   await page.screenshot({ path: out + '/queue-compact.png', fullPage: true })
   await page.setViewportSize({ width: 1512, height: 1100 })
 
@@ -394,6 +415,37 @@ const fs = require('fs')
   await page.getByText('同类企业额度是否需要单独审批？', { exact: true }).waitFor()
   if ((await page.locator('.queue-case').count()) !== 2)
     throw new Error('group members not listed independently')
+  if (!(await page.locator('.pagination').innerText()).includes('2 条问答')) throw new Error('group member count should use answers')
+
+  // Current work is a server read model, independent of the original machine route.
+  const originalRun = { ...runs[0] }
+  Object.assign(runs[0], {
+    question: '什么是用户意图识别？', answer: '识别用户的目标和意图。', qa_type: 'rag-qa',
+    effective_risk: 'low', source_check_display: 'not_applicable',
+    pending_review_targets: ['answer'],
+    pending_items: [{ route: 'needs_evidence', target: 'answer', reason: '请补充本次检索的完整日志', review_id: 'request-1', reviewer_id: '复核员', created_at: '2026-10-10T09:00:00Z' }],
+    analysis: {
+      ...analysis, route: 'auto_record', route_reason: '低风险自动记录',
+      cause_assessment: { candidates: [], unlinked: [] },
+      report: { ...analysis.report, verdict: 'supported', claims: [], causes: [], review_questions: [], risk: 'low', source_check: 'not_checked' },
+    },
+  })
+  await page.goto(baseURL + '/platform/knowledge-ops?tab=queue')
+  await page.locator('.current-work').getByText('请补充本次检索的完整日志', { exact: true }).waitFor()
+  if ((await page.locator('.current-work').first().innerText()).includes('自动记录')) throw new Error('old route displayed as current work')
+  await page.locator('.queue-case .diagnosis summary').first().click()
+  await page.locator('.queue-case .diagnosis').first().getByText('不适用 · 无 Wiki 对照', { exact: false }).waitFor()
+  await page.screenshot({ path: out + '/queue-current-request.png', fullPage: true })
+  const fullReason = '请提供本轮实际使用的检索记录及来源范围。'.repeat(30) + '完整理由结尾'
+  runs[0].pending_items[0].reason = fullReason
+  await page.reload()
+  const longReason = page.locator('.queue-case .long-reason').first()
+  if (await longReason.getByText(fullReason, { exact: true }).isVisible()) throw new Error('long request should start as a preview')
+  await longReason.locator('summary').click()
+  await longReason.getByText(fullReason, { exact: true }).waitFor()
+  await longReason.locator('summary').click()
+  if (await longReason.getByText(fullReason, { exact: true }).isVisible()) throw new Error('long request cannot be collapsed')
+  Object.assign(runs[0], originalRun)
   await page.goto(baseURL + '/platform/knowledge-ops?tab=queue&run=run-1')
   await page.waitForSelector('.ops-detail')
   await page.locator('.answer-disclosure > summary').click()
@@ -466,6 +518,9 @@ const fs = require('fs')
   analysis.cause_assessment = { candidates: [], unlinked: [] }
   runs[0].review_state = 'reviewed'
   runs[0].source_followup_pending = true
+  runs[0].source_check_display = 'unresolved'
+  runs[0].pending_review_targets = []
+  runs[0].pending_items = [{ route: 'source_verification', reason: '来源比较仍有未决事项，回答有正文支持' }]
   await page.goto(baseURL + '/platform/knowledge-ops')
   const reviewCell = page.locator('.review-state-cell').first()
   await reviewCell.getByText('已复核', { exact: true }).waitFor()
@@ -480,13 +535,15 @@ const fs = require('fs')
   })
   await page.screenshot({ path: out + '/reviewed-source-pending.png' })
   await page.goto(baseURL + '/platform/knowledge-ops?tab=queue')
-  await page.locator('.queue-case .source-followup').getByText('来源待核验', { exact: true }).first().waitFor()
+  await page.locator('.queue-case .current-work').getByText('来源待核验', { exact: true }).first().waitFor()
+  if ((await page.locator('.queue-case .current-work').first().innerText()).includes('高风险业务结论')) throw new Error('closed human task reason leaked into source task')
   if (!(await page.locator('.queue-case').first().innerText()).includes('已复核')) throw new Error('queue lost human completion')
   runs[0].coverage = {
     content_status: 'complete', provenance_status: 'pending', content_gaps: [],
     provenance_gaps: ['wiki_linked_summary_versions_unknown'],
   }
   analysis.report.source_check = 'inconsistent'
+  runs[0].source_check_display = 'inconsistent'
   analysis.report.source_audit = {
     issues: ['source_linked_versions_unknown', 'source_lookup_failed'],
     evidence_ids: ['ev-2'], chars: 100, char_limit: 16000,
@@ -525,14 +582,15 @@ const fs = require('fs')
   await page.locator('#ops-evidence-summary-unknown').getByText('Wiki 关联页摘要', { exact: true }).waitFor()
   await page.goto(baseURL + '/platform/knowledge-ops?tab=queue')
   await page.locator('.queue-case').first().waitFor()
-  if (await page.locator('.queue-case .source-followup, .queue-case .provenance').count()) throw new Error('queue ignores display preference')
+  if (await page.locator('.queue-case .provenance').count()) throw new Error('queue ignores display preference')
+  await page.locator('.queue-case .current-work').first().getByText('来源待核验', { exact: true }).waitFor()
   await page.locator('.queue-case').first().getByText('已复核', { exact: false }).waitFor()
   await page.setViewportSize({ width: 800, height: 1000 })
   await page.screenshot({ path: out + '/source-versions-hidden-narrow.png', fullPage: true })
   await page.setViewportSize({ width: 1512, height: 1100 })
   await versionSwitch.focus()
   await versionSwitch.press('Space')
-  await page.locator('.queue-case .source-followup').first().waitFor()
+  await page.locator('.queue-case .current-work').first().getByText('来源待核验', { exact: true }).waitFor()
   await page.locator('.queue-case .provenance').first().waitFor()
   awaitingDiagnosis = true
   await page.goto(baseURL + '/platform/knowledge-ops?run=run-1')
@@ -551,6 +609,9 @@ const fs = require('fs')
   evidence.pop()
   runs[0].review_state = 'unreviewed'
   runs[0].source_followup_pending = false
+  runs[0].source_check_display = 'consistent'
+  runs[0].pending_review_targets = ['answer']
+  runs[0].pending_items = [{ route: 'human_review', reason: '生成归因缺少对应的异常论断，需核实诊断' }]
   const positiveCause = { ...originalReport.causes[0], summary: '模型准确提取要点，生成内容与原文高度一致，无幻觉或遗漏。' }
   analysis.report = { ...originalReport, claims: originalReport.claims.map((claim) => ({ ...claim, verdict: 'supported' })), causes: [positiveCause] }
   analysis.cause_assessment = { candidates: [], unlinked: [positiveCause] }
@@ -567,12 +628,20 @@ const fs = require('fs')
   await page.setViewportSize({ width: 800, height: 1000 })
   await page.screenshot({ path: out + '/unlinked-cause-narrow.png' })
   await page.goto(baseURL + '/platform/knowledge-ops?tab=queue')
+  await page.locator('.queue-case .diagnosis summary').first().click()
   await page.locator('.unlinked-cause-notice').first().waitFor()
   if (await page.locator('.diagnosis').filter({ hasText: positiveCause.summary }).count())
     throw new Error('queue still presents an excluded attribution as a root-cause diagnosis')
   analysis.report = originalReport
   analysis.cause_assessment = { candidates: originalReport.causes, unlinked: [] }
   runs.splice(0)
+  await page.goto(baseURL + '/platform/knowledge-ops?tab=queue')
+  await page.getByText('当前暂无待办', { exact: true }).waitFor()
+  await page.locator('.filter-search input').fill('无匹配结果')
+  await page.getByRole('button', { name: '应用筛选', exact: true }).click()
+  await page.getByText('没有符合筛选条件的待办', { exact: true }).waitFor()
+  await page.getByRole('button', { name: '重置', exact: true }).click()
+  await page.getByText('当前暂无待办', { exact: true }).waitFor()
   await page.goto(baseURL + '/platform/knowledge-ops')
   await page.getByText('当前范围内暂无记录', { exact: true }).waitFor()
   await page.screenshot({ path: out + '/empty.png', fullPage: true })
@@ -595,6 +664,13 @@ const fs = require('fs')
         checks: [
           'TDesign tab route state',
           'server pagination',
+          'queue count shortcut preserves applied scope',
+          'queue and group member totals use distinct units',
+          'current human request replaces the original automatic route',
+          'plain RAG source comparison is not applicable',
+          'original machine diagnosis is folded',
+          'long human request expands and collapses without losing text',
+          'queue empty state distinguishes no tasks from filtered results',
           'dark theme',
           'narrow queue layout',
           'compact filter bar',

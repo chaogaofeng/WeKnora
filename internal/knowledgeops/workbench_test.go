@@ -39,21 +39,50 @@ func workbenchGET(t *testing.T, e *gin.Engine, path string) map[string]any {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 	return body["data"].(map[string]any)
 }
-func TestWorkbenchQueuePriorityAndAuthorizedGrouping(t *testing.T) {
+func TestWorkbenchQueueNewestDiagnosisAndAuthorizedGrouping(t *testing.T) {
 	_, r, e := workbenchFixture(t)
 	seedWorkbench(t, r, "low", "low", "quality_sample", "", 0)
 	seedWorkbench(t, r, "high-old", "high", "human_review", "g", 3)
 	seedWorkbench(t, r, "high-new", "high", "human_review", "g", 1)
-	seedWorkbench(t, r, "private", "high", "human_review", "g", 4)
+	seedWorkbench(t, r, "private", "high", "human_review", "g", -1)
 	page := workbenchGET(t, e, "/runs?view=queue&page_size=1")
-	require.Equal(t, "high-old", page["items"].([]any)[0].(map[string]any)["id"])
+	require.Equal(t, "low", page["items"].([]any)[0].(map[string]any)["id"])
+	secondPage := workbenchGET(t, e, "/runs?view=queue&page_size=1&page=2")
+	require.Equal(t, "high-new", secondPage["items"].([]any)[0].(map[string]any)["id"])
 	groups := workbenchGET(t, e, "/groups?page_size=1")
 	require.EqualValues(t, 2, groups["total"])
 	first := groups["items"].([]any)[0].(map[string]any)
-	require.Equal(t, "g", first["key"])
-	require.EqualValues(t, 2, first["count"])
+	require.Equal(t, "run:low", first["key"])
+	second := workbenchGET(t, e, "/groups?page_size=1&page=2")["items"].([]any)[0].(map[string]any)
+	require.Equal(t, "g", second["key"])
+	require.EqualValues(t, 2, second["count"])
+	require.Equal(t, "high-new", second["representative"].(map[string]any)["id"])
 	members := workbenchGET(t, e, "/runs?view=queue&group_key=g")
 	require.EqualValues(t, 2, members["total"])
+	require.Equal(t, "high-new", members["items"].([]any)[0].(map[string]any)["id"])
+	require.Equal(t, "high-old", members["items"].([]any)[1].(map[string]any)["id"])
+}
+
+func TestWorkbenchQueueUsesLatestDiagnosisTime(t *testing.T) {
+	_, r, e := workbenchFixture(t)
+	seedWorkbench(t, r, "recent-question", "low", "human_review", "", 1)
+	seedWorkbench(t, r, "older-question", "low", "human_review", "", 5)
+	require.NoError(t, r.db.Create(&Analysis{ID: "retry-a", RunID: "older-question", TenantID: 1, Version: 2, Status: "succeeded", Route: "human_review", CreatedAt: time.Now().UTC(), Report: Report{Verdict: "supported", Risk: "low", SourceCheck: "consistent"}}).Error)
+	page := workbenchGET(t, e, "/runs?view=queue&page_size=1")
+	first := page["items"].([]any)[0].(map[string]any)
+	require.Equal(t, "older-question", first["id"])
+	require.Equal(t, "retry-a", first["analysis"].(map[string]any)["id"])
+}
+
+func TestQueueTimeFallbackAndStableTie(t *testing.T) {
+	now := time.Now().UTC()
+	older := Run{ID: "older", StartedAt: now.Add(-time.Hour)}
+	require.True(t, queueBefore(Run{ID: "newer", StartedAt: now}, older))
+	require.True(t, queueBefore(Run{ID: "newer", StartedAt: now, Analysis: &Analysis{}}, older))
+	a, b := Run{ID: "a", StartedAt: now}, Run{ID: "b", StartedAt: now}
+	require.True(t, queueBefore(a, b))
+	require.False(t, queueBefore(b, a))
+	require.False(t, queueBefore(a, a))
 }
 func TestWorkbenchOverviewSeparatesCoverageSourceAndPending(t *testing.T) {
 	_, r, e := workbenchFixture(t)
