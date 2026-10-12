@@ -104,6 +104,16 @@ const en: Record<string, string> = {
   source_page_version_changed: 'Wiki page version changed',
   source_page_version_changed_action:
     'Compare against the captured Wiki version; a newer page cannot replace answer-time evidence.',
+  source_folder_links_missing: 'Folder summary source links were not recorded',
+  source_folder_links_missing_action: 'Verify the linked document summaries or child folders; navigation text alone cannot establish original-source consistency.',
+  source_folder_link_unavailable: 'A folder summary link is unavailable',
+  source_folder_link_unavailable_action: 'Check that the linked page is published and accessible in the same knowledge base, then retry diagnosis.',
+  source_folder_link_cycle: 'Folder summary source links contain a cycle',
+  source_folder_link_cycle_action: 'Check the folder link chain; a circular reference cannot establish original-source support.',
+  source_folder_page_limit: 'Folder source traversal limit reached',
+  source_folder_page_limit_action: 'Review linked pages outside this bounded lookup before treating the comparison as complete.',
+  source_folder_versions_unknown: 'Answer-time versions of linked folder pages were not captured',
+  source_folder_versions_unknown_action: 'Current linked material is available for comparison, but does not establish the answer-time version; preserve this uncertainty.',
   source_linkage_missing: 'Source linkage missing',
   source_linkage_missing_action:
     'Identify which original document supports this Wiki page and verify the existing linkage.',
@@ -585,6 +595,16 @@ const zh: Record<string, string> = {
   source_page_version_changed: 'Wiki 页面版本已变化',
   source_page_version_changed_action:
     '应对照回答时的 Wiki 版本，不能以当前新版本替代历史证据。',
+  source_folder_links_missing: '文件夹摘要未记录来源页面链接',
+  source_folder_links_missing_action: '核对关联的文档摘要或子文件夹页面；目录导览文字本身不能证明与原文一致。',
+  source_folder_link_unavailable: '文件夹摘要的关联页面不可用',
+  source_folder_link_unavailable_action: '检查关联页面是否已发布、位于同一知识库且有访问权限，再重新诊断。',
+  source_folder_link_cycle: '文件夹摘要的来源关联存在循环',
+  source_folder_link_cycle_action: '核对文件夹的关联链路；循环引用不能作为原文支持的依据。',
+  source_folder_page_limit: '文件夹来源页面补查达到上限',
+  source_folder_page_limit_action: '本次只覆盖有限数量的关联页面，需核对剩余范围后才能认定对照完整。',
+  source_folder_versions_unknown: '文件夹关联页未采集回答时版本',
+  source_folder_versions_unknown_action: '当前关联材料可用于补查，但不能证明回答时的版本关系；需保留这一不确定性。',
   source_linkage_missing: '来源关联缺失',
   source_linkage_missing_action:
     '确认该 Wiki 页对应的原始文档，并核对现有来源关联。',

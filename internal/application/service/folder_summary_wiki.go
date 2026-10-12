@@ -140,6 +140,9 @@ func (s *folderSummaryWikiService) Handle(ctx context.Context, t *asynq.Task) er
 	if err != nil || kb == nil {
 		return fmt.Errorf("folder summary: kb %s not found: %v", p.KnowledgeBaseID, err)
 	}
+	if err := validateFolderSummaryTenant(kb, p.TenantID); err != nil {
+		return err
+	}
 	if !kb.IsWikiEnabled() {
 		logger.Infof(ctx, "[folder-summary] skipped: wiki not enabled for kb %s", p.KnowledgeBaseID)
 		return nil
@@ -457,6 +460,12 @@ func (s *folderSummaryWikiService) listChildFolders(ctx context.Context, tenantI
 
 // generateRootMap writes the KB-wide map page (folder_summary/index).
 func (s *folderSummaryWikiService) generateRootMap(ctx context.Context, model chat.Chat, kb *types.KnowledgeBase, tree []*folderNode) error {
+	if kb == nil {
+		return fmt.Errorf("folder summary: missing knowledge base")
+	}
+	if err := validateFolderSummaryTenant(kb, kb.TenantID); err != nil {
+		return err
+	}
 	var tops []*folderNode
 	for _, n := range tree {
 		if n.Path != "" && n.Parent == "" {
@@ -468,12 +477,14 @@ func (s *folderSummaryWikiService) generateRootMap(ctx context.Context, model ch
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "知识库「%s」共有 %d 个顶层文件夹。\n\n## 顶层文件夹摘要\n", kb.Name, len(tops))
+	sources := []*folderNode{}
 	for _, t := range tops {
 		page, err := s.wikiService.GetPageBySlug(ctx, kb.ID, t.Slug)
 		if err != nil || page == nil {
 			fmt.Fprintf(&b, "\n## %s（尚未生成摘要）\n", displayPath(t.Path))
 			continue
 		}
+		sources = append(sources, t)
 		fmt.Fprintf(&b, "\n## %s\n%s\n", displayPath(t.Path), strings.TrimSpace(page.Content))
 	}
 	resp, err := model.Chat(ctx, []chat.Message{
@@ -483,10 +494,13 @@ func (s *folderSummaryWikiService) generateRootMap(ctx context.Context, model ch
 	if err != nil {
 		return err
 	}
-	content := strings.TrimSpace(resp.Content)
+	content := rootMapWithSourceLinks(resp.Content, sources)
 	slug := types.WikiFolderSummarySlug("")
 	page, err := s.wikiService.GetPageBySlug(ctx, kb.ID, slug)
 	if err == nil && page != nil {
+		if page.TenantID != kb.TenantID {
+			return fmt.Errorf("folder summary: existing page tenant mismatch")
+		}
 		if types.IsFolderSummaryPageManualEdit(page) {
 			return nil
 		}
@@ -500,6 +514,7 @@ func (s *folderSummaryWikiService) generateRootMap(ctx context.Context, model ch
 		return err
 	}
 	_, err = s.wikiService.CreatePage(ctx, &types.WikiPage{
+		TenantID:        kb.TenantID,
 		KnowledgeBaseID: kb.ID,
 		Slug:            slug,
 		Title:           fmt.Sprintf("🗺️ %s · 全库导览", kb.Name),
@@ -534,6 +549,12 @@ func (s *folderSummaryWikiService) projectPage(
 	page *types.WikiPage,
 	existed bool,
 ) error {
+	if err := validateFolderSummaryTenant(kb, tenantID); err != nil {
+		return err
+	}
+	if page != nil && (page.KnowledgeBaseID != kb.ID || page.TenantID != kb.TenantID) {
+		return fmt.Errorf("folder summary: existing page tenant mismatch")
+	}
 	// Template-built link listing (never LLM-generated: listings must be exact).
 	docLinks := s.buildDocLinkListing(ctx, kb.ID, node)
 	childLinks := s.buildChildLinkListing(ctx, tenantID, kb.ID, node)
@@ -551,6 +572,7 @@ func (s *folderSummaryWikiService) projectPage(
 		return err
 	}
 	_, err := s.wikiService.CreatePage(ctx, &types.WikiPage{
+		TenantID:        kb.TenantID,
 		KnowledgeBaseID: kb.ID,
 		Slug:            node.Slug,
 		Title:           fmt.Sprintf("📁 %s · 文件夹摘要", displayPath(node.Path)),

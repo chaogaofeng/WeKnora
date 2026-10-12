@@ -809,6 +809,7 @@ const sourcePending = computed(() => {
 // Keep lookup failures and unresolved content comparisons visible. Only missing
 // version metadata moves into the disclosure when version reminders are hidden.
 const versionIssueCodes = new Set([
+  'source_folder_versions_unknown',
   'source_version_unknown',
   'wiki_linked_summary_versions_unknown',
   'source_linked_versions_unknown',
@@ -831,6 +832,8 @@ const showSourceFollowupNotice = computed(
 )
 function versionGapSources(issue: string) {
   if (!versionIssueCodes.has(issue)) return []
+  // Uncaptured descendants have no answer-time evidence row to identify here.
+  if (issue === 'source_folder_versions_unknown') return []
   const seen = new Set<string>()
   return (detail.value?.evidence || []).filter((item) => {
     if (

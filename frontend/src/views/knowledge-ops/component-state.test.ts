@@ -406,6 +406,11 @@ test('version gaps identify consumed unversioned summaries without including can
     ['used'],
   )
   assert.equal(h.api.versionGapSources('source_lookup_failed').length, 0)
+  assert.equal(
+    h.api.versionGapSources('source_folder_versions_unknown').length,
+    0,
+    'uncaptured folder descendants cannot be identified by unrelated captured unversioned summaries',
+  )
   h.stop()
 })
 

@@ -134,9 +134,8 @@ func (a *RuntimeAdapter) kb(ctx context.Context, run Run, id string) (*types.Kno
 func (a *RuntimeAdapter) Sources(ctx context.Context, run Run, evidence []Evidence) ([]Evidence, error) {
 	out := []Evidence{}
 	seen := map[string]bool{}
-	pageVersions := map[string]string{}
 	budget := sourceCharLimit
-	issues := []string{}
+	pages, issues := a.sourcePages(ctx, run, evidence)
 	addIssue := func(code string) {
 		if !slices.Contains(issues, code) {
 			issues = append(issues, code)
@@ -146,29 +145,7 @@ func (a *RuntimeAdapter) Sources(ctx context.Context, run Run, evidence []Eviden
 		addIssue(code)
 		return &SourceReadError{Issues: issues, CharLimit: sourceCharLimit}
 	}
-	for _, e := range evidence {
-		if !e.SentToModel || e.PostHoc || e.PageID == "" {
-			continue
-		}
-		if version, found := pageVersions[e.PageID]; found {
-			if version != e.Version {
-				addIssue("source_page_version_changed")
-			}
-			continue
-		}
-		pageVersions[e.PageID] = e.Version
-		kb, err := a.kb(ctx, run, e.KBID)
-		if err != nil {
-			return out, sourceError("source_access_denied")
-		}
-		var page types.WikiPage
-		if err = a.DB.WithContext(ctx).First(&page, "id = ? AND knowledge_base_id = ? AND tenant_id = ? AND status = ?", e.PageID, kb.ID, kb.TenantID, "published").Error; err != nil {
-			return out, sourceError("source_lookup_failed")
-		}
-		if e.Version != strconv.Itoa(page.Version) {
-			addIssue("source_page_version_changed")
-			continue
-		}
+	for _, page := range pages {
 		ids := page.SourceKnowledgeIDs()
 		if len(ids) == 0 {
 			addIssue("source_linkage_missing")
@@ -183,13 +160,13 @@ func (a *RuntimeAdapter) Sources(ctx context.Context, run Run, evidence []Eviden
 		foundRefs := map[string]bool{}
 		for _, id := range ids {
 			var doc types.Knowledge
-			if err = a.DB.WithContext(ctx).First(&doc, "id = ? AND knowledge_base_id = ? AND tenant_id = ?", id, kb.ID, kb.TenantID).Error; err != nil {
+			if err := a.DB.WithContext(ctx).First(&doc, "id = ? AND knowledge_base_id = ? AND tenant_id = ?", id, page.KnowledgeBaseID, page.TenantID).Error; err != nil {
 				allRefsChecked = false
 				addIssue("source_document_lookup_failed")
 				continue
 			}
 			var chunks []types.Chunk
-			query := a.DB.WithContext(ctx).Where("knowledge_id = ? AND knowledge_base_id = ? AND tenant_id = ? AND is_enabled = ?", id, kb.ID, kb.TenantID, true)
+			query := a.DB.WithContext(ctx).Where("knowledge_id = ? AND knowledge_base_id = ? AND tenant_id = ? AND is_enabled = ?", id, page.KnowledgeBaseID, page.TenantID, true)
 			if len(page.ChunkRefs) > 0 {
 				query = query.Where("id IN ?", []string(page.ChunkRefs))
 			} else if page.PageType != types.WikiPageTypeSummary {
@@ -197,7 +174,7 @@ func (a *RuntimeAdapter) Sources(ctx context.Context, run Run, evidence []Eviden
 				// no chunk refs. Their bounded document scan still reports real limits.
 				addIssue("source_chunk_refs_missing")
 			}
-			if err = query.Order("chunk_index,id").Limit(9).Find(&chunks).Error; err != nil {
+			if err := query.Order("chunk_index,id").Limit(9).Find(&chunks).Error; err != nil {
 				return out, sourceError("source_lookup_failed")
 			}
 			if len(chunks) == 0 {
@@ -228,7 +205,7 @@ func (a *RuntimeAdapter) Sources(ctx context.Context, run Run, evidence []Eviden
 					continue
 				}
 				budget -= len(body)
-				out = append(out, Evidence{Kind: "source_document", KBID: kb.ID, KnowledgeID: id, ChunkID: c.ID, Title: doc.Title, Version: strconv.Itoa(c.ContentRevision), Content: string(body), PostHoc: true, Truncated: truncated})
+				out = append(out, Evidence{Kind: "source_document", KBID: page.KnowledgeBaseID, KnowledgeID: id, ChunkID: c.ID, Title: doc.Title, Version: strconv.Itoa(c.ContentRevision), Content: string(body), PostHoc: true, Truncated: truncated})
 			}
 		}
 		// Limits and lookup failures leave unvisited references unknown. Only a
