@@ -71,8 +71,8 @@ test('human evidence requests replace historical automatic routing as current wo
   assert.match(current, /人工补证要求/)
   assert.match(current, /复核人[^<]*reviewer-7/)
   assert.match(current, /2026\/10\/2/)
-  assert.match(current, /仍需复核[^<]*根因/)
-  assert.doesNotMatch(current, /仍需复核[^<]*回答/)
+  assert.match(current, /待复核[^<]*根因判断/)
+  assert.doesNotMatch(current, /待复核[^<]*回答判定/)
   assert.doesNotMatch(current, /机器自动记录|原始自动记录理由/)
   assert.equal(html.match(/原始自动记录理由/g)?.length, 1)
   assert.match(html, /<details\b(?![^>]*\bopen)[^>]*>[\s\S]*原始机器分流[\s\S]*机器自动记录/)
@@ -87,7 +87,7 @@ test('effective risk and normalized RAG source assessment override the original 
 
 test('successful original answer support remains scannable without claiming the original risk is current', async () => {
   const html = await render([run({ effective_risk: 'high', pending_items: [], pending_review_targets: [] })])
-  assert.match(currentContent(html), /机器原结论 · 得到支持/)
+  assert.match(currentContent(html), /机器判定 · 得到支持/)
   assert.match(html, /原始机器风险: 低/)
   assert.match(currentContent(html), /风险 · 高/)
 })
@@ -135,7 +135,7 @@ test('a successfully diagnosed cancelled answer keeps its valid verdict and tech
     pending_items: [{ route: 'technical_followup', reason: '排查问答中断原因' }],
     pending_review_targets: ['answer'],
   })])
-  assert.match(currentContent(html), /机器原结论 · 得到支持/)
+  assert.match(currentContent(html), /机器判定 · 得到支持/)
   assert.match(currentContent(html), /技术排查/)
   assert.match(currentContent(html), /排查问答中断原因/)
   assert.doesNotMatch(html, /尚无有效判定/)
@@ -180,6 +180,54 @@ test('group context shows counts without exposing the opaque group fingerprint',
   assert.doesNotMatch(plain, /仅按同来源、版本和适用范围归组/)
   assert.match(grouped, /仅按同来源、版本和适用范围归组/)
   assert.match(grouped, /查看组内案例/)
+  assert.match(grouped, /代表案例/)
+  assert.match(grouped, /组内待办可能不同/)
+  assert.doesNotMatch(plain, /代表案例/)
   assert.match(selected, /当前问题组/)
   assert.doesNotMatch(selected, /opaque:group:key/)
+})
+
+test('queue conversation identity exposes the actual turn without inventing an unknown ordinal', async () => {
+  const known = await render([run({
+    session_id: 'f68d8963-1a78-4b54-8e19-ac71012f09ae',
+    conversation: { session_id: 'f68d8963-1a78-4b54-8e19-ac71012f09ae', turn_known: true, turn_number: 4, has_earlier: true, incomplete: false, truncated: false, status: 'available' },
+  })])
+  assert.match(known, /多轮对话 · 轮次 4/)
+  assert.match(known, /查看上下文/)
+  assert.match(known, /f68d8963-1a78-4b54-8e19-ac71012f09ae/)
+  const unknown = await render([run({
+    conversation: { session_id: 'session-1', turn_known: false, turn_number: 0, has_earlier: true, incomplete: true, truncated: false, status: 'available' },
+  })])
+  assert.match(unknown, /后续对话 · 轮次未知/)
+  assert.doesNotMatch(unknown, /轮次 0|首轮/)
+})
+
+test('a redundant machine summary is hidden while distinct historical routing stays available', async () => {
+  const item = run({ source_check_display: 'not_applicable', pending_review_targets: ['answer'] })
+  item.analysis!.route = 'human_review'
+  item.analysis!.route_reason = '自动记录尚未启用，保守人工复核'
+  item.pending_items = [{ route: 'human_review', reason: item.analysis!.route_reason }]
+  const same = await render([item])
+  assert.doesNotMatch(same, /原始机器诊断/)
+  assert.match(currentContent(same), /待复核[^<]*回答判定/)
+  assert.match(currentContent(same), /自动记录尚未启用/)
+  assert.match(currentContent(same), /去复核/)
+
+  item.pending_items = [{ route: 'needs_evidence', reason: '人工要求补齐附件', review_id: 'review-2' }]
+  const changed = await render([item])
+  assert.match(currentContent(changed), /人工要求补齐附件/)
+  assert.doesNotMatch(currentContent(changed), /自动记录尚未启用/)
+  assert.match(changed, /原始机器诊断[\s\S]*自动记录尚未启用/)
+})
+
+test('source-only tasks do not request another answer review', async () => {
+  const html = await render([run({
+    review_state: 'reviewed', pending_review_targets: [],
+    pending_items: [{ route: 'source_verification', reason: '补齐原文来源' }],
+  })])
+  const current = currentContent(html)
+  assert.match(current, /当前待办/)
+  assert.match(current, /补齐原文来源/)
+  assert.match(current, /查看待办/)
+  assert.doesNotMatch(current, /去复核|待复核[^<]*回答判定/)
 })
