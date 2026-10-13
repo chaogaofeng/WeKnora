@@ -70,6 +70,8 @@ func currentReviewProgress(d Detail) reviewProgress {
 		}
 	}
 	switch {
+	case nonKnowledgeRun(d.Run) && len(seenTargets) == 0:
+		progress.state = "not_required"
 	case progress.answerDone && progress.causeDone:
 		progress.state = "reviewed"
 	case progress.answerDone || progress.causeDone && hasCauses:
@@ -154,6 +156,9 @@ func effectiveRisk(run Run) string {
 func sourceCheckDisplay(d Detail) string {
 	if d.Run.Analysis == nil || d.Run.Analysis.Report.SourceCheck == "" {
 		return "unknown"
+	}
+	if nonKnowledgeRun(d.Run) {
+		return "not_applicable"
 	}
 	source := d.Run.Analysis.Report.SourceCheck
 	if source == "not_checked" && d.Run.QAType == "rag-qa" && !slices.ContainsFunc(d.Evidence, func(e Evidence) bool {

@@ -6,7 +6,13 @@
         :text="k(`content_${coverage?.content_status || 'unknown'}`)"
       />
     </t-tooltip>
-    <t-tooltip v-if="showSourceVersions !== false" :content="provenanceHint">
+    <t-tooltip
+      v-if="
+        showSourceVersions !== false &&
+        coverage?.content_status !== 'not_required'
+      "
+      :content="provenanceHint"
+    >
       <span
         class="provenance"
         :class="{ pending: coverage?.provenance_status === 'pending' }"
@@ -27,9 +33,11 @@ const props = defineProps<{
 }>()
 const { k, label } = useOpsText()
 const contentHint = computed(() =>
-  props.coverage?.content_gaps?.length
-    ? props.coverage.content_gaps.map(label).join('；')
-    : k('contentCoverageNotice'),
+  props.coverage?.content_status === 'not_required'
+    ? k('nonKnowledgeNotice')
+    : props.coverage?.content_gaps?.length
+      ? props.coverage.content_gaps.map(label).join('；')
+      : k('contentCoverageNotice'),
 )
 const provenanceHint = computed(() =>
   props.coverage?.provenance_gaps?.length

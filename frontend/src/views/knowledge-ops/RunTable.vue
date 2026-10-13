@@ -5,6 +5,31 @@
         <div class="question-cell">
           <span>{{ run.question }}</span>
           <small>{{ run.execution_mode || k('unknown') }}</small>
+          <div
+            v-if="run.conversation || run.session_id"
+            class="conversation-meta"
+          >
+            <button
+              v-if="run.conversation"
+              class="conversation-link"
+              type="button"
+              @click="emit('open', run.id)"
+            >
+              {{
+                run.conversation.turn_known
+                  ? `${k(run.conversation.turn_number > 1 ? 'multiTurn' : 'firstTurn')} · ${k('turnNumber')} ${run.conversation.turn_number}`
+                  : k(
+                      run.conversation.has_earlier
+                        ? 'laterTurnUnknown'
+                        : 'turnUnknown',
+                    )
+              }}
+              · {{ k('viewConversation') }}
+            </button>
+            <span v-if="run.session_id" class="session-id">
+              {{ k('sessionIdLabel') }}: <span>{{ run.session_id }}</span>
+            </span>
+          </div>
         </div>
       </template>
       <template #type="{ row: run }">
@@ -143,5 +168,34 @@ small {
 }
 .route-reason {
   -webkit-line-clamp: 2;
+}
+.conversation-link {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--td-brand-color);
+  font-size: var(--app-text-sm);
+  cursor: pointer;
+  text-align: left;
+}
+.conversation-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--app-space-1) var(--app-space-3);
+}
+.session-id {
+  color: var(--td-text-color-secondary);
+  font-size: var(--app-text-sm);
+  font-weight: 400;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.conversation-link:hover {
+  text-decoration: underline;
+}
+.conversation-link:focus-visible {
+  outline: 2px solid var(--td-brand-color);
+  outline-offset: 3px;
 }
 </style>

@@ -1,7 +1,11 @@
 // Package knowledgeops implements read-only observation and diagnosis of new QA runs.
 package knowledgeops
 
-import "time"
+import (
+	"time"
+
+	"github.com/Tencent/WeKnora/internal/knowledgeops/capture"
+)
 
 type Settings struct {
 	CalibrationNote   string     `json:"calibration_note"`
@@ -23,33 +27,35 @@ func DefaultSettings(tenant uint64) Settings {
 }
 
 type Run struct {
-	EffectiveRisk         string          `json:"effective_risk" gorm:"-"`
-	SourceCheckDisplay    string          `json:"source_check_display" gorm:"-"`
-	PendingReviewTargets  []string        `json:"pending_review_targets" gorm:"-"`
-	PendingItems          []PendingItem   `json:"pending_items" gorm:"-"`
-	SourceFollowupPending bool            `json:"source_followup_pending" gorm:"-"`
-	Coverage              CaptureCoverage `json:"coverage" gorm:"-"`
-	ReviewState           string          `json:"review_state" gorm:"-"`
-	ID                    string          `json:"id" gorm:"primaryKey"`
-	TenantID              uint64          `json:"-"`
-	ActorID               string          `json:"actor_id"`
-	SessionID             string          `json:"session_id"`
-	MessageID             string          `json:"message_id"`
-	RequestID             string          `json:"request_id"`
-	Channel               string          `json:"channel"`
-	QAType                string          `json:"qa_type"`
-	ExecutionMode         string          `json:"execution_mode"`
-	AgentID               string          `json:"agent_id"`
-	ModelID               string          `json:"model_id"`
-	Question              string          `json:"question"`
-	Answer                string          `json:"answer"`
-	Status                string          `json:"status"`
-	CaptureStatus         string          `json:"capture_status"`
-	Gaps                  []string        `json:"gaps" gorm:"serializer:json;type:text"`
-	StartedAt             time.Time       `json:"started_at"`
-	FinishedAt            *time.Time      `json:"finished_at"`
-	UpdatedAt             time.Time       `json:"updated_at"`
-	Analysis              *Analysis       `json:"analysis,omitempty" gorm:"-"`
+	Conversation          *Conversation            `json:"conversation,omitempty" gorm:"-"`
+	HistoryContext        *capture.HistorySnapshot `json:"history_context,omitempty" gorm:"serializer:json;type:text"`
+	EffectiveRisk         string                   `json:"effective_risk" gorm:"-"`
+	SourceCheckDisplay    string                   `json:"source_check_display" gorm:"-"`
+	PendingReviewTargets  []string                 `json:"pending_review_targets" gorm:"-"`
+	PendingItems          []PendingItem            `json:"pending_items" gorm:"-"`
+	SourceFollowupPending bool                     `json:"source_followup_pending" gorm:"-"`
+	Coverage              CaptureCoverage          `json:"coverage" gorm:"-"`
+	ReviewState           string                   `json:"review_state" gorm:"-"`
+	ID                    string                   `json:"id" gorm:"primaryKey"`
+	TenantID              uint64                   `json:"-"`
+	ActorID               string                   `json:"actor_id"`
+	SessionID             string                   `json:"session_id"`
+	MessageID             string                   `json:"message_id"`
+	RequestID             string                   `json:"request_id"`
+	Channel               string                   `json:"channel"`
+	QAType                string                   `json:"qa_type"`
+	ExecutionMode         string                   `json:"execution_mode"`
+	AgentID               string                   `json:"agent_id"`
+	ModelID               string                   `json:"model_id"`
+	Question              string                   `json:"question"`
+	Answer                string                   `json:"answer"`
+	Status                string                   `json:"status"`
+	CaptureStatus         string                   `json:"capture_status"`
+	Gaps                  []string                 `json:"gaps" gorm:"serializer:json;type:text"`
+	StartedAt             time.Time                `json:"started_at"`
+	FinishedAt            *time.Time               `json:"finished_at"`
+	UpdatedAt             time.Time                `json:"updated_at"`
+	Analysis              *Analysis                `json:"analysis,omitempty" gorm:"-"`
 }
 
 func (Run) TableName() string { return "knowledge_ops_runs" }
@@ -102,7 +108,9 @@ type SourceAudit struct {
 }
 
 type Report struct {
-	SourceAudit *SourceAudit `json:"source_audit,omitempty"`
+	Applicability       string       `json:"applicability,omitempty"`
+	ApplicabilityReason string       `json:"applicability_reason,omitempty"`
+	SourceAudit         *SourceAudit `json:"source_audit,omitempty"`
 	// These audit fields are populated by policy, never trusted from model output.
 	ModelVerdict      string   `json:"model_verdict,omitempty"`
 	VerdictAdjustment string   `json:"verdict_adjustment,omitempty"`
@@ -117,6 +125,7 @@ type Report struct {
 	Scope             string   `json:"scope"`
 }
 type Analysis struct {
+	CaptureCoverage *CaptureCoverage `json:"capture_coverage,omitempty" gorm:"-"`
 	CauseAssessment *CauseAssessment `json:"cause_assessment,omitempty" gorm:"-"`
 	SamplePercent   int              `json:"sample_percent"`
 	SampleStratum   string           `json:"sample_stratum"`

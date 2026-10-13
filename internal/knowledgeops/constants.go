@@ -1,7 +1,7 @@
 package knowledgeops
 
 const (
-	PolicyVersion = "knowledge-ops-v1.2-10"
+	PolicyVersion = "knowledge-ops-v1.2-11"
 
 	defaultMaxEvidenceChars = 96000
 	defaultMaxOutputTokens  = 8192

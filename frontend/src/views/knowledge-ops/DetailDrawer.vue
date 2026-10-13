@@ -66,14 +66,16 @@
             </t-tooltip>
           </div>
         </div>
+        <ConversationPanel
+          v-if="detail.run.session_id"
+          :key="detail.run.id"
+          :run="detail.run"
+          @open="emit('open', $event)"
+        />
         <p v-if="detail.pending_tasks" class="notice" role="status">
           {{ k('diagnosisInProgress') }}
         </p>
-        <section
-          v-if="analysis"
-          class="diagnosis-first"
-          :class="effectiveRisk"
-        >
+        <section v-if="analysis" class="diagnosis-first" :class="effectiveRisk">
           <div class="section-heading">
             <h3>{{ k('diagnosisSummaryTitle') }} · v{{ analysis.version }}</h3>
             <StatusBadge :value="analysis.status" />
@@ -107,12 +109,15 @@
                 )
               }}</span
               ><CaptureCoverage
-                :coverage="detail.run.coverage"
+                :coverage="selectedCoverage"
                 :show-source-versions="showSourceVersions"
               />
             </div>
           </div>
           <p class="muted">{{ k('supportScopeNotice') }}</p>
+          <p v-if="analysis.report.applicability_reason" class="muted">
+            {{ analysis.report.applicability_reason }}
+          </p>
           <p class="route-reason">
             <strong>{{ label(analysis.route) }}</strong
             ><span>{{ analysis.route_reason }}</span>
@@ -125,7 +130,7 @@
             {{ label(analysis.report.verdict_adjustment) }}
           </p>
           <p
-            v-for="gap in detail.run.coverage?.content_gaps || []"
+            v-for="gap in selectedCoverage?.content_gaps || []"
             :key="gap"
             class="notice"
           >
@@ -134,7 +139,7 @@
         </section>
         <section v-else>
           <CaptureCoverage
-            :coverage="detail.run.coverage"
+            :coverage="selectedCoverage"
             :show-source-versions="showSourceVersions"
           />
           <p class="notice">
@@ -186,7 +191,9 @@
               </div>
             </article>
           </div>
-          <p v-else class="muted">{{ k('noClaims') }}</p>
+          <p v-else class="muted">
+            {{ k(noKnowledgeCheck ? 'nonKnowledgeNotice' : 'noClaims') }}
+          </p>
         </section>
 
         <section v-if="showSourceSection" id="ops-source-check">
@@ -385,7 +392,23 @@
           </details>
         </section>
 
-        <section v-if="analysis" id="ops-review-form" tabindex="-1">
+        <section
+          v-if="noKnowledgeCheck && !showOptionalReview"
+          class="optional-review"
+        >
+          <p>{{ k('nonKnowledgeNotice') }}</p>
+          <t-button
+            variant="text"
+            theme="primary"
+            @click="showOptionalReview = true"
+            >{{ k('addOptionalReview') }}</t-button
+          >
+        </section>
+        <section
+          v-if="analysis && (!noKnowledgeCheck || showOptionalReview)"
+          id="ops-review-form"
+          tabindex="-1"
+        >
           <div class="section-heading">
             <h3>{{ k('humanDecision') }}</h3>
             <span class="muted"
@@ -401,7 +424,9 @@
             {{ k('remainingReviews') }}：
             {{
               pendingReviewTargets
-                .map((target) => k(target === 'answer' ? 'answerTarget' : 'causeTarget'))
+                .map((target) =>
+                  k(target === 'answer' ? 'answerTarget' : 'causeTarget'),
+                )
                 .join(' · ')
             }}
           </p>
@@ -671,6 +696,7 @@
 import { computed, nextTick, onScopeDispose, reactive, ref, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import CaptureCoverage from './CaptureCoverage.vue'
+import ConversationPanel from './ConversationPanel.vue'
 import EvidenceList from './EvidenceList.vue'
 import AnswerContent from './AnswerContent.vue'
 import StatusBadge from './StatusBadge.vue'
@@ -691,7 +717,7 @@ const props = defineProps<{
   enabled: boolean
   showSourceVersions?: boolean
 }>()
-const emit = defineEmits<{ close: []; changed: [] }>()
+const emit = defineEmits<{ close: []; changed: []; open: [id: string] }>()
 const { k, label, labelVerdict, labelSourceCheck, date } = useOpsText()
 const detail = ref<OpsDetail>()
 const loading = ref(false)
@@ -699,6 +725,13 @@ const loadError = ref('')
 const selectedID = ref('')
 const retrying = ref(false)
 const showCauseEditor = ref(false)
+const showOptionalReview = ref(false)
+const noKnowledgeCheck = computed(
+  () =>
+    analysis.value?.route === 'not_required' &&
+    analysis.value?.status === 'succeeded' &&
+    !(isCurrent.value && detail.value?.run.pending_items?.length),
+)
 const notice = ref('')
 const savedReviews = reactive({ answer: 0, cause: 0 })
 const reviewing = reactive({ answer: false, cause: false })
@@ -733,9 +766,16 @@ const effectiveRisk = computed(() =>
     : analysis.value?.report.risk,
 )
 const displaySourceCheck = computed(() =>
-  isCurrent.value
-    ? detail.value?.run.source_check_display || analysis.value?.report.source_check
-    : analysis.value?.report.source_check,
+  analysis.value?.route === 'not_required' &&
+  analysis.value.status === 'succeeded'
+    ? 'not_applicable'
+    : isCurrent.value
+      ? detail.value?.run.source_check_display ||
+        analysis.value?.report.source_check
+      : analysis.value?.report.source_check,
+)
+const selectedCoverage = computed(
+  () => analysis.value?.capture_coverage || detail.value?.run.coverage,
 )
 const pendingReviewTargets = computed(() =>
   isCurrent.value ? detail.value?.run.pending_review_targets || [] : [],
@@ -809,7 +849,7 @@ const sourceEvidenceNotice = computed(() =>
 )
 const unboundEvidence = computed(() => evidenceGroups.value[3].items)
 const sourceIssues = computed(() => {
-  const captured = detail.value?.run.coverage?.provenance_gaps || []
+  const captured = selectedCoverage.value?.provenance_gaps || []
   const audit = (analysis.value?.report.source_audit?.issues || []).filter(
     (issue) =>
       issue !== 'source_linked_versions_unknown' ||
@@ -830,6 +870,7 @@ const sourceIssues = computed(() => {
   return issues
 })
 const sourcePending = computed(() => {
+  if (noKnowledgeCheck.value) return false
   if (
     isCurrent.value &&
     detail.value?.run.source_followup_pending !== undefined
@@ -1007,6 +1048,7 @@ async function saveReview(value: ReviewInput) {
 }
 watch(selectedID, () => {
   showCauseEditor.value = false
+  showOptionalReview.value = false
 })
 watch(
   () => [props.runID, props.analysisID, auth.effectiveTenantId],

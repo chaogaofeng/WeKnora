@@ -24,7 +24,7 @@ func applySupportPolicy(run Run, report *Report) {
 	// fields remain distinguishable from new, audited diagnoses.
 	report.ModelVerdict = report.Verdict
 	report.VerdictAdjustment = ""
-	if run.CaptureStatus == "complete" {
+	if needsNoKnowledgeCheck(run, *report) || run.CaptureStatus == "complete" {
 		return
 	}
 	if provenanceOnlyCapture(run) {

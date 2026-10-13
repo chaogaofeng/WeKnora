@@ -218,6 +218,7 @@
       @saved="settingsSaved"
     />
     <DetailDrawer
+      @open="openRun"
       :show-source-versions="showSourceVersions"
       :runID="activeRun"
       :analysisID="activeAnalysis"
@@ -303,6 +304,7 @@ const groups = ref<OpsGroup[]>([])
 const grouped = ref(true)
 const selectedGroup = ref('')
 const recordDraft = reactive({
+  session_id: '',
   review_from: '',
   review_to: '',
   target: '',
@@ -315,6 +317,7 @@ const activeRun = computed(() =>
   typeof route.query.run === 'string' ? route.query.run : '',
 )
 const blankFilters = () => ({
+  session_id: '',
   from: '',
   to: '',
   qa_type: '',
@@ -330,7 +333,9 @@ const blankFilters = () => ({
 const draftFilters = reactive(blankFilters())
 const filters = ref<OpsFilters>({})
 const hasQueueFilters = computed(() =>
-  Object.values(filters.value).some((value) => value !== undefined && value !== ''),
+  Object.values(filters.value).some(
+    (value) => value !== undefined && value !== '',
+  ),
 )
 let token = 0
 const metrics = computed(() => [

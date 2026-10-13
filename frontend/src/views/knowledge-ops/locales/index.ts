@@ -1,5 +1,41 @@
 import { useI18n } from 'vue-i18n'
 const en: Record<string, string> = {
+  not_required: 'No knowledge verification needed',
+  content_not_required: 'No knowledge content needed',
+  provenance_not_required: 'Not applicable',
+  nonKnowledgeRuns: 'Non-knowledge conversations:',
+  nonKnowledgeNotice:
+    'This turn contains no knowledge task or factual claims. No source evidence or required review is needed; it is excluded from knowledge quality metrics.',
+  addOptionalReview: 'Add a review if needed',
+  multiTurn: 'Multi-turn conversation',
+  firstTurn: 'First turn',
+  turnNumber: 'Turn',
+  laterTurnUnknown: 'Follow-up · turn number unknown',
+  turnUnknown: 'Turn number unavailable',
+  viewConversation: 'View context',
+  conversationContext: 'Conversation context',
+  sessionIdLabel: 'Session ID',
+  sessionIdFilterPlaceholder: 'Paste the complete session ID',
+  conversation: 'Conversation',
+  conversationNotice:
+    'For understanding the conversation only. This is not the original model input or authoritative knowledge evidence.',
+  openConversation: 'Open original conversation',
+  lastModelHistory: 'Last captured model input included',
+  historyTurns: 'prior turns',
+  historyCompacted:
+    'plus a compressed history summary; earlier turn count is unavailable',
+  historyIDsUnknown: 'turn identities were not recorded',
+  historyNotRecorded:
+    'This record has no model history snapshot; the exact history used cannot be reconstructed from the current chat.',
+  conversationIncomplete:
+    'Only recent, available captured turns are shown. Missing or inaccessible history is not reconstructed; an exact turn number may be unavailable.',
+  currentTurn: 'Current turn',
+  previousTurn: 'Previous turn',
+  viewTurnDiagnosis: 'View this diagnosis',
+  expandAnswer: 'Expand answer',
+  conversationTurnUnavailable:
+    'This turn was not captured, has been deleted, or is no longer accessible.',
+
   capturedRuns: 'Captured Q&A runs',
   countRunsNotice: 'Current scope · repeated questions count separately',
   latestDiagnosisNotice: 'Latest diagnosis succeeded',
@@ -11,8 +47,9 @@ const en: Record<string, string> = {
   successfulDiagnosisBase: 'Quality metrics · successful diagnoses:',
   unassessedDiagnoses: 'No valid assessment (failed or pending):',
   noSuccessfulDiagnoses: 'No successful diagnoses in this scope',
+  noKnowledgeAssessments: 'No successful diagnoses requiring knowledge assessment in this scope',
   qualityCountsNotice:
-    'Only runs whose latest diagnosis succeeded are counted. Answer support is not knowledge accuracy.',
+    'Only successful diagnoses requiring knowledge assessment are counted; non-knowledge conversations are separate. Answer support is not knowledge accuracy.',
   sourceNotApplicable: 'Not applicable · no Wiki comparison',
   sourceCheckPending: 'Verification incomplete',
   sourceComparisonNotice:
@@ -508,6 +545,40 @@ const en: Record<string, string> = {
     'Diagnosis failed. Use the run ID to locate the detailed error in backend logs.',
 }
 const zh: Record<string, string> = {
+  not_required: '无需知识核验',
+  content_not_required: '无需知识正文',
+  provenance_not_required: '不适用',
+  nonKnowledgeRuns: '非知识对话',
+  nonKnowledgeNotice:
+    '本轮无知识任务或事实性论断，无需补证或必做复核；单独记录，不计入知识质量统计。',
+  addOptionalReview: '有疑问，补充人工复核',
+  multiTurn: '多轮对话',
+  firstTurn: '首轮对话',
+  turnNumber: '轮次',
+  laterTurnUnknown: '后续对话 · 轮次未知',
+  turnUnknown: '轮次未知',
+  viewConversation: '查看上下文',
+  conversationContext: '会话上下文',
+  sessionIdLabel: '会话 ID',
+  sessionIdFilterPlaceholder: '粘贴完整会话 ID',
+  conversation: '会话',
+  conversationNotice:
+    '仅用于理解前后文；聊天记录不等于模型当时的实际输入，也不直接作为知识正确性的证据。',
+  openConversation: '打开原会话',
+  lastModelHistory: '最后一次已采集模型输入带入',
+  historyTurns: '轮历史对话',
+  historyCompacted: '另含压缩历史摘要，摘要覆盖的更早轮数未知',
+  historyIDsUnknown: '未记录具体历史轮次标识',
+  historyNotRecorded:
+    '本记录未保存模型历史输入快照，不能从当前聊天记录还原当时实际使用的历史。',
+  conversationIncomplete:
+    '仅展示最近可用的已采集轮次；未采集、已删除或无权访问的内容不作补推，完整轮次可能无法确定。',
+  currentTurn: '当前这一轮',
+  previousTurn: '前序对话',
+  viewTurnDiagnosis: '查看本轮诊断',
+  expandAnswer: '展开回答',
+  conversationTurnUnavailable: '本轮未采集、已删除或当前无权查看。',
+
   capturedRuns: '采集问答数',
   countRunsNotice: '当前筛选范围 · 重复提问分别计数',
   latestDiagnosisNotice: '每条问答的最新诊断已成功',
@@ -519,7 +590,9 @@ const zh: Record<string, string> = {
   successfulDiagnosisBase: '判定统计范围：成功诊断',
   unassessedDiagnoses: '尚无有效判定（失败或待诊断）',
   noSuccessfulDiagnoses: '当前范围暂无成功诊断',
-  qualityCountsNotice: '仅统计最新诊断成功的问答；回答支持性不等于知识正确率。',
+  noKnowledgeAssessments: '当前范围暂无需知识核验的成功诊断',
+  qualityCountsNotice:
+    '仅统计最新诊断成功且未被判为无需知识核验的问答；非知识对话单列。回答支持性不等于知识正确率。',
   sourceNotApplicable: '不适用 · 无 Wiki 对照',
   sourceCheckPending: '尚未完成核验',
   sourceComparisonNotice:

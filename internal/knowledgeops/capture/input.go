@@ -85,6 +85,10 @@ func boundModelBlocks(content string) []modelSourceBlock {
 // are intentionally outside this contract. encode maps durable source IDs to
 // the handles appearing in this exact request (nil means identity).
 func RecordModelInput(ctx context.Context, messages []chat.Message, encode func(string) string, modelIDs ...string) {
+	recordModelInput(ctx, messages, encode, historyInput(messages), modelIDs...)
+}
+
+func recordModelInput(ctx context.Context, messages []chat.Message, encode func(string) string, history *HistoryInput, modelIDs ...string) {
 	r := state(ctx)
 	if r == nil {
 		return
@@ -92,7 +96,7 @@ func RecordModelInput(ctx context.Context, messages []chat.Message, encode func(
 	if encode == nil {
 		encode = func(s string) string { return s }
 	}
-	in := Input{}
+	in := Input{History: history}
 	if len(modelIDs) > 0 {
 		in.ModelID = modelIDs[0]
 		if in.ModelID == "" {

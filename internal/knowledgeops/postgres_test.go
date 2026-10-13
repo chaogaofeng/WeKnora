@@ -2,6 +2,7 @@ package knowledgeops
 
 import (
 	"context"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,17 +31,33 @@ func TestPostgresMigrationAndConcurrentReviewVersionGate(t *testing.T) {
 		raw, _ := admin.DB()
 		raw.Close()
 	}()
-	db, err := gorm.Open(postgres.Open(dsn+" search_path="+schema), &gorm.Config{})
+	scopedDSN := dsn + " search_path=" + schema
+	if u, parseErr := url.Parse(dsn); parseErr == nil && (u.Scheme == "postgres" || u.Scheme == "postgresql") {
+		q := u.Query()
+		q.Set("search_path", schema)
+		u.RawQuery = q.Encode()
+		scopedDSN = u.String()
+	}
+	db, err := gorm.Open(postgres.Open(scopedDSN), &gorm.Config{})
 	require.NoError(t, err)
 	raw, err := db.DB()
 	require.NoError(t, err)
 	defer raw.Close()
+	var activeSchema string
+	require.NoError(t, db.Raw("SELECT current_schema()").Scan(&activeSchema).Error)
+	require.Equal(t, schema, activeSchema, "never run integration migrations against application tables")
 	apply := func(suffix string) {
-		b, err := os.ReadFile(filepath.Join("..", "..", "migrations", "versioned", "000115_knowledge_ops."+suffix+".sql"))
-		require.NoError(t, err)
-		for _, stmt := range strings.Split(string(b), ";") {
-			if strings.TrimSpace(stmt) != "" {
-				require.NoError(t, db.Exec(stmt).Error)
+		names := []string{"000115_knowledge_ops", "000116_knowledge_ops_history"}
+		if suffix == "down" {
+			names[0], names[1] = names[1], names[0]
+		}
+		for _, name := range names {
+			b, err := os.ReadFile(filepath.Join("..", "..", "migrations", "versioned", name+"."+suffix+".sql"))
+			require.NoError(t, err)
+			for _, stmt := range strings.Split(string(b), ";") {
+				if strings.TrimSpace(stmt) != "" {
+					require.NoError(t, db.Exec(stmt).Error)
+				}
 			}
 		}
 	}

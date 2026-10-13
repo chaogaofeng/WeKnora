@@ -52,6 +52,7 @@ export const answerVerdicts = [
 ]
 export const causeVerdicts = ['suspected', 'evidence_backed', 'unresolved']
 export const routes = [
+  'not_required',
   'auto_record',
   'human_review',
   'quality_sample',

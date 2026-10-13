@@ -32,6 +32,7 @@ type Source struct {
 	Truncated, SentToModel, PostHoc                                                         bool
 }
 type Input struct {
+	History  *HistoryInput `json:"history,omitempty"`
 	Messages []InputMessage
 	ModelID  string
 }

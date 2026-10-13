@@ -22,11 +22,13 @@ func testStore(t *testing.T) *Repository {
 	require.NoError(t, err)
 	raw.SetMaxOpenConns(1)
 	t.Cleanup(func() { raw.Close() })
-	data, err := os.ReadFile(filepath.Join("..", "..", "migrations", "sqlite", "000034_knowledge_ops.up.sql"))
-	require.NoError(t, err)
-	for _, sql := range strings.Split(string(data), ";") {
-		if strings.TrimSpace(sql) != "" {
-			require.NoError(t, db.Exec(sql).Error)
+	for _, name := range []string{"000034_knowledge_ops", "000035_knowledge_ops_history"} {
+		data, err := os.ReadFile(filepath.Join("..", "..", "migrations", "sqlite", name+".up.sql"))
+		require.NoError(t, err)
+		for _, sql := range strings.Split(string(data), ";") {
+			if strings.TrimSpace(sql) != "" {
+				require.NoError(t, db.Exec(sql).Error)
+			}
 		}
 	}
 	return NewRepository(db)

@@ -17,6 +17,7 @@ type Coverage struct {
 	Missing  int `json:"missing"`
 }
 type WorkbenchStats struct {
+	NonKnowledgeRuns      int                  `json:"non_knowledge_runs"`
 	ContentCoverage       Coverage             `json:"content_coverage"`
 	ContentCoverageByMode map[string]*Coverage `json:"content_coverage_by_mode"`
 	ProvenanceCounts      map[string]int       `json:"provenance_counts"`
@@ -36,6 +37,9 @@ func newWorkbenchStats() WorkbenchStats {
 }
 
 func (v *Coverage) observe(status string) {
+	if status == "not_required" {
+		return
+	}
 	v.Total++
 	switch status {
 	case "complete":
@@ -66,7 +70,9 @@ func (v *WorkbenchStats) observe(d Detail) {
 		v.ContentCoverageByMode[mode] = &Coverage{}
 	}
 	v.ContentCoverageByMode[mode].observe(assessment.ContentStatus)
-	v.ProvenanceCounts[assessment.ProvenanceStatus]++
+	if assessment.ContentStatus != "not_required" {
+		v.ProvenanceCounts[assessment.ProvenanceStatus]++
+	}
 	if v.CoverageByMode[mode] == nil {
 		v.CoverageByMode[mode] = &Coverage{}
 	}
@@ -96,6 +102,10 @@ func (v *WorkbenchStats) observe(d Detail) {
 	// Execution failures have no valid quality finding. Keep them in diagnosis
 	// status and actionable queues, never in answer/source/cause distributions.
 	if a.Status != "succeeded" {
+		return
+	}
+	if nonKnowledgeRun(d.Run) {
+		v.NonKnowledgeRuns++
 		return
 	}
 	v.SourceChecks[sourceCheckDisplay(d)]++
@@ -171,7 +181,11 @@ func (s *Service) listGroups(c *gin.Context) {
 	sort.Slice(all, func(i, j int) bool { return queueBefore(all[i].Representative, all[j].Representative) })
 	p, n := pagination(c)
 	start := min((p-1)*n, len(all))
-	reply(c, Page[IssueGroup]{Items: all[start:min(start+n, len(all))], Total: len(all)}, nil)
+	page := all[start:min(start+n, len(all))]
+	for i := range page {
+		s.populateConversation(c.Request.Context(), &page[i].Representative)
+	}
+	reply(c, Page[IssueGroup]{Items: page, Total: len(all)}, nil)
 }
 
 type ReviewRecord struct {

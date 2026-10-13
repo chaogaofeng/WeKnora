@@ -994,7 +994,7 @@ func (s *sessionService) handleModelFallback(ctx context.Context, chatManage *ty
 
 	// Start streaming response
 	fallbackMessages, modelContext := prepareFallbackMessages(chatManage, promptContent)
-	capture.RecordModelInput(ctx, fallbackMessages, modelContext.CompactKnownText, chatModel.GetModelID())
+	capture.RecordRAGModelInput(ctx, fallbackMessages, modelContext.CompactKnownText, chatModel.GetModelID(), len(chatManage.History))
 	capture.Gap(ctx, "fallback_system_source_listing_not_captured")
 	if leaks := modelContext.LeakedIdentifiers(fallbackMessages); len(leaks) > 0 {
 		logger.Warnf(ctx, "[Fallback][ModelContext] %d message field(s) carry raw identifiers after encoding: %s",

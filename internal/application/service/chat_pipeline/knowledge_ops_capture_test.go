@@ -51,6 +51,7 @@ func TestKnowledgeOpsStreamCapturesEncodedInputAndTerminalStatus(t *testing.T) {
 			r := &opsRecorder{finish: make(chan capture.Completion, 2)}
 			ctx := capture.WithRecorder(context.Background(), r)
 			cm := &types.ChatManage{PipelineRequest: types.PipelineRequest{SummaryConfig: types.SummaryConfig{Prompt: "private full prompt {contexts}"}}, PipelineState: types.PipelineState{MergeResult: []*types.SearchResult{{ID: "chunk-real", KnowledgeID: "doc-real", KnowledgeBaseID: "kb-real", Content: "model-visible evidence"}}, RenderedContexts: "{old}"}, PipelineContext: types.PipelineContext{EventBus: &syncEventBus{}}}
+			cm.History = []*types.History{{Query: "prior Q", Answer: "prior A"}}
 			cm.UserContent = "{old}\nquestion"
 			p := &PluginChatCompletionStream{modelService: &stubModelService{model: &openStreamChat{closeStream: true, chunks: tc.chunks}}}
 			require.Nil(t, p.OnEvent(ctx, types.CHAT_COMPLETION_STREAM, cm, func() *PluginError { return nil }))
@@ -64,6 +65,8 @@ func TestKnowledgeOpsStreamCapturesEncodedInputAndTerminalStatus(t *testing.T) {
 			r.mu.Lock()
 			defer r.mu.Unlock()
 			require.Len(t, r.inputs, 1)
+			require.NotNil(t, r.inputs[0].History)
+			require.Equal(t, 1, r.inputs[0].History.Turns)
 			all := ""
 			for _, m := range r.inputs[0].Messages {
 				all += m.Content
@@ -106,11 +109,14 @@ func TestKnowledgeOpsSyncCompletionCapturesRun(t *testing.T) {
 	r := &opsRecorder{finish: make(chan capture.Completion, 1)}
 	ctx := capture.WithRecorder(context.Background(), r)
 	p := &PluginChatCompletion{modelService: &stubModelService{model: opsSyncChat{}}}
-	require.Nil(t, p.OnEvent(ctx, types.CHAT_COMPLETION, &types.ChatManage{}, func() *PluginError { return nil }))
+	require.Nil(t, p.OnEvent(ctx, types.CHAT_COMPLETION, &types.ChatManage{PipelineState: types.PipelineState{History: []*types.History{{Query: "earlier", Answer: "earlier answer"}}}}, func() *PluginError { return nil }))
 	select {
 	case c := <-r.finish:
 		require.Equal(t, "completed", c.Status)
 		require.Equal(t, "sync answer", c.Answer)
+		require.Len(t, r.inputs, 1)
+		require.NotNil(t, r.inputs[0].History)
+		require.Equal(t, 1, r.inputs[0].History.Turns)
 	default:
 		t.Fatal("sync run did not finish")
 	}

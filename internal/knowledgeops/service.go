@@ -96,6 +96,13 @@ func (r *recorder) RecordInput(ctx context.Context, in capture.Input) {
 		return
 	}
 	r.inputs++
+	if in.History != nil {
+		previous := r.run.HistoryContext
+		r.run.HistoryContext = &capture.HistorySnapshot{HistoryInput: *in.History, ModelCalls: r.inputs, EverCompacted: in.History.Compacted}
+		if previous != nil {
+			r.run.HistoryContext.EverCompacted = r.run.HistoryContext.EverCompacted || previous.EverCompacted
+		}
+	}
 	if in.ModelID != "" {
 		if r.run.ModelID != "" && r.run.ModelID != "unknown" && r.run.ModelID != in.ModelID {
 			r.gap("multiple_generation_models")
@@ -232,10 +239,11 @@ func (r *recorder) Finish(ctx context.Context, end capture.Completion) {
 		}
 	}
 	gaps, _ := json.Marshal(r.run.Gaps)
+	history, _ := json.Marshal(r.run.HistoryContext)
 	bounded, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 	defer cancel()
 	err := r.service.repo.db.WithContext(bounded).Transaction(func(tx *gorm.DB) error {
-		q := tx.Model(&Run{}).Where("id = ? AND status = ?", r.run.ID, "running").Updates(map[string]any{"answer": end.Answer, "model_id": r.run.ModelID, "status": end.Status, "capture_status": status, "gaps": string(gaps), "finished_at": end.FinishedAt, "updated_at": time.Now().UTC()})
+		q := tx.Model(&Run{}).Where("id = ? AND status = ?", r.run.ID, "running").Updates(map[string]any{"history_context": string(history), "answer": end.Answer, "model_id": r.run.ModelID, "status": end.Status, "capture_status": status, "gaps": string(gaps), "finished_at": end.FinishedAt, "updated_at": time.Now().UTC()})
 		if q.Error != nil {
 			return q.Error
 		}
@@ -272,7 +280,6 @@ func (s *Service) loadDetail(ctx context.Context, tenant uint64, id string, full
 	if err = s.access(ctx, d.Run, d.Evidence); err != nil {
 		return Detail{}, ErrForbidden
 	}
-	d.Run.Coverage = captureCoverage(d.Run, d.Evidence)
 	if full {
 		d.Analyses, err = s.repo.Analyses(ctx, tenant, id)
 	} else {
@@ -284,10 +291,15 @@ func (s *Service) loadDetail(ctx context.Context, tenant uint64, id string, full
 	for i := range d.Analyses {
 		assessment := assessCauses(d.Analyses[i].Report)
 		d.Analyses[i].CauseAssessment = &assessment
+		versionRun := d.Run
+		versionRun.Analysis = &d.Analyses[i]
+		coverage := captureCoverage(versionRun, d.Evidence)
+		d.Analyses[i].CaptureCoverage = &coverage
 	}
 	if len(d.Analyses) > 0 {
 		d.Run.Analysis = &d.Analyses[0]
 	}
+	d.Run.Coverage = captureCoverage(d.Run, d.Evidence)
 	var pending int64
 	if err = s.repo.db.WithContext(ctx).Model(&Task{}).Where("tenant_id = ? AND run_id = ? AND status IN ?", tenant, id, []string{"pending", "running"}).Count(&pending).Error; err != nil {
 		return Detail{}, err
@@ -297,6 +309,9 @@ func (s *Service) loadDetail(ctx context.Context, tenant uint64, id string, full
 	err = s.repo.db.WithContext(ctx).Where("tenant_id = ? AND run_id = ?", tenant, id).Order("created_at DESC,id").Find(&d.Reviews).Error
 	if err == nil {
 		populateCurrentWork(&d)
+		if full {
+			s.populateConversation(ctx, &d.Run)
+		}
 	}
 	return d, err
 }

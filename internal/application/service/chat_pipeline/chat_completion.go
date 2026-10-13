@@ -54,7 +54,7 @@ func (p *PluginChatCompletion) OnEvent(
 	chatMessages, modelContext := prepareMessagesWithModelContext(ctx, chatManage)
 	chatMessages = modelContext.EncodeMessages(chatMessages)
 	capture.RecordSources(ctx, capture.SearchSources(chatManage.MergeResult, ""))
-	capture.RecordModelInput(ctx, chatMessages, modelContext.CompactKnownText, chatModel.GetModelID())
+	capture.RecordRAGModelInput(ctx, chatMessages, modelContext.CompactKnownText, chatModel.GetModelID(), len(chatManage.History))
 	if len(chatManage.History) > 0 {
 		capture.Gap(ctx, "history_source_permissions_unbound")
 	}

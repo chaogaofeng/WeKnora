@@ -5,6 +5,10 @@
         >{{ k('successfulDiagnosisBase') }}
         <strong>{{ successfulCount }}</strong></span
       >
+      <span v-if="stats.non_knowledge_runs"
+        >{{ k('nonKnowledgeRuns') }}
+        <strong>{{ stats.non_knowledge_runs }}</strong></span
+      >
       <span v-if="unassessedCount" class="unassessed">
         {{ k('unassessedDiagnoses') }} <strong>{{ unassessedCount }}</strong>
       </span>
@@ -14,7 +18,13 @@
         <h2>{{ k('verdicts') }}</h2>
         <EmptyState
           v-if="!supportRows.length"
-          :title="k('noSuccessfulDiagnoses')"
+          :title="
+            k(
+              stats.non_knowledge_runs
+                ? 'noKnowledgeAssessments'
+                : 'noSuccessfulDiagnoses',
+            )
+          "
           compact
         />
         <div v-for="row in supportRows" :key="row.key" class="distribution">
@@ -31,7 +41,13 @@
         <h2>{{ k('sourceStats') }}</h2>
         <EmptyState
           v-if="!sourceRows.length"
-          :title="k('noSuccessfulDiagnoses')"
+          :title="
+            k(
+              stats.non_knowledge_runs
+                ? 'noKnowledgeAssessments'
+                : 'noSuccessfulDiagnoses',
+            )
+          "
           compact
         />
         <p v-for="row in sourceRows" :key="row.key" class="stat">
@@ -52,7 +68,7 @@
             >{{ k('content_complete') }}
             <strong
               >{{ stats.content_coverage?.complete || 0 }} /
-              {{ stats.total }}</strong
+              {{ stats.content_coverage?.total || 0 }}</strong
             ></span
           >
           <span v-if="stats.content_coverage?.partial"
@@ -165,6 +181,9 @@ const successfulCount = computed(
 const unassessedCount = computed(() =>
   Math.max(0, props.stats.total - successfulCount.value),
 )
+const qualityCount = computed(() =>
+  Math.max(0, successfulCount.value - (props.stats.non_knowledge_runs || 0)),
+)
 const supportRows = computed(() =>
   [
     'supported',
@@ -177,8 +196,8 @@ const supportRows = computed(() =>
     .map((key) => ({
       key,
       count: props.stats.by_verdict?.[key] || 0,
-      percent: successfulCount.value
-        ? ((props.stats.by_verdict?.[key] || 0) / successfulCount.value) * 100
+      percent: qualityCount.value
+        ? ((props.stats.by_verdict?.[key] || 0) / qualityCount.value) * 100
         : 0,
     }))
     .filter((row) => row.count > 0),

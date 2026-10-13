@@ -21,7 +21,7 @@ func sourceFollowupPending(run Run) bool {
 
 func sourceFollowupReason(run Run) string {
 	a := run.Analysis
-	if a == nil {
+	if a == nil || nonKnowledgeRun(run) {
 		return ""
 	}
 	if a.Report.SourceAudit != nil && len(a.Report.SourceAudit.Issues) > 0 {

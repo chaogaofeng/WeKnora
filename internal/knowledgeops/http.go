@@ -34,6 +34,7 @@ func (s *Service) RegisterHTTP(g *gin.RouterGroup) {
 	g.GET("/overview", s.overview)
 	g.GET("/runs", s.listRuns)
 	g.GET("/runs/:id", s.detail)
+	g.GET("/runs/:id/conversation", s.getConversation)
 	g.POST("/runs/:id/retry", s.retry)
 	g.POST("/runs/:id/reviews", s.review)
 	g.GET("/reviews", s.listReviewRecords)
@@ -149,6 +150,9 @@ func (s *Service) walk(c *gin.Context, visit func(Detail)) error {
 	var lastTime time.Time
 	for {
 		q := s.repo.db.WithContext(ctx).Where("tenant_id = ?", tenant(c))
+		if sessionID := strings.TrimSpace(c.Query("session_id")); sessionID != "" {
+			q = q.Where("session_id = ?", sessionID)
+		}
 		if last != "" {
 			q = q.Where("started_at < ? OR (started_at = ? AND id < ?)", lastTime, lastTime, last)
 		}
@@ -277,6 +281,9 @@ func (s *Service) listRuns(c *gin.Context) {
 		start := min(offset, len(all))
 		all = all[start:min(start+n, len(all))]
 	}
+	for i := range all {
+		s.populateConversation(c.Request.Context(), &all[i])
+	}
 	reply(c, Page[Run]{Items: all, Total: total}, nil)
 }
 func (s *Service) overview(c *gin.Context) {
@@ -295,7 +302,7 @@ func (s *Service) overview(c *gin.Context) {
 		v.ByMode[d.Run.QAType]++
 		if a := d.Run.Analysis; a != nil {
 			v.ByRoute[a.Route]++
-			if a.Status == "succeeded" {
+			if a.Status == "succeeded" && !nonKnowledgeRun(d.Run) {
 				v.ByVerdict[a.Report.Verdict]++
 			}
 		}

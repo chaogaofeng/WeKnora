@@ -17,6 +17,10 @@ func captureCoverage(run Run, evidence []Evidence) CaptureCoverage {
 		ContentStatus: run.CaptureStatus, ProvenanceStatus: "unknown",
 		ContentGaps: []string{}, ProvenanceGaps: []string{},
 	}
+	if nonKnowledgeRun(run) {
+		v.ContentStatus, v.ProvenanceStatus = "not_required", "not_required"
+		return v
+	}
 	for _, gap := range run.Gaps {
 		switch gap {
 		case "source_version_unknown", "wiki_linked_summary_versions_unknown", "source_lookup_incomplete":

@@ -31,6 +31,9 @@ function setup(
     .join('\n')
   const names = [
     'load',
+    'onToggle',
+    'conversation',
+    'selectedCoverage',
     'save',
     'rerun',
     'saveReview',
@@ -75,6 +78,10 @@ function setup(
     'total',
     'filterQueue',
     'applyFilters',
+    'changeFilter',
+    'removeFilter',
+    'resetFilters',
+    'tab',
     'filterError',
     'reload',
     'effectiveRisk',
@@ -161,6 +168,49 @@ function queueWorkbench(grouped = true) {
   h.api.grouped.value = grouped
   return { ...h, requests, response }
 }
+
+test('session filter applies to every view and its stats, and can be removed or reset', async () => {
+  for (const tab of ['overview', 'queue', 'records']) {
+    const requests: { endpoint: string; params: Record<string, any> }[] = []
+    const capture = (endpoint: string) => async (params: Record<string, any>) => {
+      requests.push({ endpoint, params: { ...params } })
+      return { total: 0, items: [] }
+    }
+    const h = setup('Workbench.vue', {}, {
+      useRouter: () => ({ replace: () => {} }),
+      useRoute: () => ({ query: { tab } }),
+      onMounted: () => {},
+      getOpsSettings: async () => ({}),
+      getOpsOverview: capture('overview'),
+      getOpsGroups: capture('groups'),
+      getOpsRuns: capture('runs'),
+      getOpsReviews: capture('reviews'),
+    })
+    h.api.changeFilter('session_id', ' session-1 ')
+    h.api.changeFilter(tab === 'records' ? 'review_search' : 'search', 'keyword')
+    h.api.page.value = 3
+    h.api.applyFilters()
+    await setImmediate()
+    assert.equal(h.api.page.value, 1)
+    assert.deepEqual(requests.map((r) => r.endpoint), tab === 'records' ? ['reviews'] : ['overview', tab === 'queue' ? 'groups' : 'runs'])
+    assert.ok(requests.every((r) => r.params.session_id === 'session-1'), tab)
+
+    requests.length = 0
+    h.api.removeFilter('session_id')
+    await setImmediate()
+    assert.ok(requests.every((r) => r.params.session_id === undefined))
+    assert.ok(requests.every((r) => r.params[tab === 'records' ? 'review_search' : 'search'] === 'keyword'))
+
+    h.api.changeFilter('session_id', 'session-2')
+    h.api.applyFilters()
+    await setImmediate()
+    requests.length = 0
+    h.api.resetFilters()
+    await setImmediate()
+    assert.ok(requests.every((r) => r.params.session_id === undefined))
+    h.stop()
+  }
+})
 
 test('queue count drilldown changes only the route in the counted scope', async () => {
   const h = queueWorkbench()
@@ -889,5 +939,80 @@ test('historical post-hoc materials follow explicit report references rather tha
   assert.deepEqual(ids('postEvidence'), ['v2-support'])
   h.api.selectedID.value = ''
   assert.deepEqual(ids('postEvidence'), [])
+  h.stop()
+})
+
+test('non-knowledge conversations stay outside support percentages', () => {
+  const h = setup(
+    'OverviewInsights.vue',
+    vue.reactive({
+      stats: {
+        total: 4,
+        diagnosis_status: { succeeded: 4 },
+        non_knowledge_runs: 1,
+        by_verdict: { supported: 3 },
+        source_checks: {},
+        content_coverage: { total: 3, complete: 3, partial: 0, missing: 0 },
+      },
+    }),
+  )
+  assert.equal(h.api.supportRows.value[0].percent, 100)
+  assert.equal(h.api.successfulCount.value, 4)
+  h.stop()
+})
+
+test('conversation navigation and tenant changes discard stale history responses', async () => {
+  const pending = deferred<unknown>()
+  const props = vue.reactive({ run: { id: 'A', updated_at: '1' } })
+  const h = setup('ConversationPanel.vue', props, {
+    getOpsConversation: (id: string) =>
+      id === 'A' ? pending.promise : Promise.resolve({ title: 'B', turns: [] }),
+  })
+  const loading = h.api.load()
+  props.run = { id: 'B', updated_at: '1' }
+  await h.api.load()
+  pending.resolve({ title: 'private A', turns: [{ answer: 'old content' }] })
+  await loading
+  assert.equal(h.api.conversation.value.title, 'B')
+  h.auth.effectiveTenantId = 2
+  assert.equal(h.api.conversation.value, undefined)
+  h.stop()
+})
+
+test('historical diagnosis uses its own capture assessment', async () => {
+  const older = {
+    id: 'v1',
+    version: 1,
+    status: 'succeeded',
+    capture_coverage: { content_status: 'missing' },
+    report: { verdict: 'not_applicable', claims: [], causes: [], unknowns: [] },
+  }
+  const latest = {
+    id: 'v2',
+    version: 2,
+    status: 'succeeded',
+    route: 'not_required',
+    capture_coverage: { content_status: 'not_required' },
+    report: { verdict: 'not_applicable', claims: [], causes: [], unknowns: [] },
+  }
+  const h = setup(
+    'DetailDrawer.vue',
+    vue.reactive({ runID: 'A', enabled: true }),
+    {
+      getOpsDetail: async () => ({
+        ...detail('A'),
+        run: {
+          ...detail('A').run,
+          analysis: latest,
+          coverage: latest.capture_coverage,
+        },
+        analyses: [latest, older],
+      }),
+    },
+  )
+  await setImmediate()
+  assert.equal(h.api.selectedCoverage.value.content_status, 'not_required')
+  h.api.selectedID.value = 'v1'
+  assert.equal(h.api.selectedCoverage.value.content_status, 'missing')
   h.stop()
 })

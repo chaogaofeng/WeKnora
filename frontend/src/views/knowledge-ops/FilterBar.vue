@@ -53,13 +53,18 @@
       </div>
     </div>
     <div class="quick-filters">
-      <div v-for="field in primaryFields" :key="field.key" class="inline-field">
+      <div
+        v-for="field in primaryFields"
+        :key="field.key"
+        class="inline-field"
+        :class="{ 'session-filter': field.key === 'session_id' }"
+      >
         <label :id="`${id}-${field.key}`">{{ k(field.title) }}</label>
         <t-input
-          v-if="field.key === 'reviewer_id'"
+          v-if="field.key === 'reviewer_id' || field.key === 'session_id'"
           :value="values[field.key]"
           :aria-labelledby="`${id}-${field.key}`"
-          :placeholder="k('allReviewers')"
+          :placeholder="k(field.key === 'session_id' ? 'sessionIdFilterPlaceholder' : 'allReviewers')"
           clearable
           @change="(value: unknown) => change(field.key, value)"
         />
@@ -230,7 +235,7 @@ const advancedFields: Field[] = [
   {
     key: 'content_status',
     title: 'content_status',
-    values: ['complete', 'partial', 'missing', 'unknown'],
+    values: ['complete', 'partial', 'missing', 'unknown', 'not_required'],
   },
   {
     key: 'provenance_status',
@@ -254,8 +259,12 @@ const advancedFields: Field[] = [
     ],
   },
 ]
-const primaryFields = computed(() => (props.records ? recordFields : runFields))
+const primaryFields = computed<Field[]>(() => [
+  ...(props.records ? recordFields : runFields),
+  { key: 'session_id', title: 'sessionIdLabel', values: [] },
+])
 function displayValue(key: string, value: string) {
+  if (key === 'session_id') return value
   if (key === 'content_status') return k(`content_${value}`)
   if (key === 'provenance_status') return k(`provenance_${value}`)
   if (key === 'target')
@@ -408,6 +417,9 @@ const activeTags = computed(() => {
   white-space: nowrap;
   font-size: var(--app-text-md);
   color: var(--td-text-color-secondary);
+}
+.inline-field.session-filter {
+  flex-basis: 340px;
 }
 .inline-field :deep(.t-select__wrap),
 .inline-field :deep(.t-input__wrap) {

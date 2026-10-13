@@ -27,6 +27,8 @@ export interface OpsCause {
   status: string
 }
 export interface OpsReport {
+  applicability?: 'knowledge' | 'non_knowledge' | 'unknown'
+  applicability_reason?: string
   source_audit?: {
     selection_strategy?: string
     lookup_policy?: {
@@ -53,6 +55,7 @@ export interface OpsReport {
   scope: string
 }
 export interface OpsAnalysis {
+  capture_coverage?: OpsCaptureCoverage
   cause_assessment?: {
     candidates: OpsCause[]
     unlinked: OpsCause[]
@@ -77,8 +80,13 @@ export interface OpsAnalysis {
   duration_ms: number
 }
 export interface OpsCaptureCoverage {
-  content_status: 'complete' | 'partial' | 'missing' | 'unknown'
-  provenance_status: 'known' | 'pending' | 'unknown'
+  content_status:
+    | 'complete'
+    | 'partial'
+    | 'missing'
+    | 'unknown'
+    | 'not_required'
+  provenance_status: 'known' | 'pending' | 'unknown' | 'not_required'
   content_gaps: string[]
   provenance_gaps: string[]
 }
@@ -91,7 +99,37 @@ export interface OpsPendingItem {
   reviewer_id?: string
   created_at?: string
 }
+export interface OpsConversationTurn {
+  run_id?: string
+  question?: string
+  answer?: string
+  turn_number: number
+  current: boolean
+  status: string
+  started_at: string
+}
+export interface OpsConversation {
+  session_id: string
+  title?: string
+  turn_number: number
+  turn_known: boolean
+  has_earlier: boolean
+  incomplete: boolean
+  truncated: boolean
+  status: string
+  turns?: OpsConversationTurn[]
+}
+export interface OpsHistoryContext {
+  turns: number
+  turn_ids?: string[]
+  ids_known: boolean
+  compacted: boolean
+  model_calls: number
+  ever_compacted: boolean
+}
 export interface OpsRun {
+  conversation?: OpsConversation
+  history_context?: OpsHistoryContext
   source_followup_pending?: boolean
   effective_risk?: string
   source_check_display?: string
@@ -176,6 +214,7 @@ export interface OpsGroup {
   representative: OpsRun
 }
 export interface OpsOverview {
+  non_knowledge_runs?: number
   content_coverage: {
     total: number
     complete: number
@@ -210,6 +249,7 @@ export interface OpsOverview {
   review_count: number
 }
 export interface OpsFilters {
+  session_id?: string
   risk?: string
   cause_category?: string
   group_key?: string
@@ -286,3 +326,10 @@ export function opsErrorCode(error: unknown): string {
   }
   return 'knowledge_ops_failed'
 }
+
+export const getOpsConversation = (id: string) =>
+  unwrap(
+    get<Envelope<OpsConversation>>(
+      `${base}/runs/${encodeURIComponent(id)}/conversation`,
+    ),
+  )
