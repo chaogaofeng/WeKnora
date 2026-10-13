@@ -10,11 +10,17 @@
         class="review-action"
         v-model="draft.action"
         :aria-labelledby="`review-action-${target}`"
-        :options="actions.map((value) => ({ value, label: label(value) }))"
+        :options="actions.map((value) => ({
+          value,
+          label: value === 'confirmed' ? k('confirmCurrentVerdict') : label(value),
+        }))"
         :disabled="disabled || busy"
         @change="actionChanged"
       />
     </label>
+    <p v-if="draft.action === 'confirmed'" class="review-hint">
+      {{ k('confirmCurrentVerdictHint') }}
+    </p>
     <label
       v-if="
         target === 'cause' &&
@@ -64,13 +70,14 @@
       />
     </label>
     <label>
-      {{ k('reviewReason') }}
+      {{ k(draft.action === 'confirmed' ? 'reviewNoteOptional' : 'reviewReasonRequired') }}
       <t-textarea
         v-model="draft.reason"
         :autosize="{ minRows: 3, maxRows: 7 }"
         :maxlength="4000"
-        :placeholder="k('reviewReasonHint')"
-        :aria-label="k('reviewReason')"
+        :placeholder="k(draft.action === 'confirmed' ? 'reviewNoteOptionalHint' : 'reviewReasonHint')"
+        :aria-label="k(draft.action === 'confirmed' ? 'reviewNoteOptional' : 'reviewReasonRequired')"
+        :aria-required="draft.action !== 'confirmed'"
         :disabled="disabled || busy"
       />
     </label>
@@ -126,6 +133,7 @@ const categories = [
   'unknown',
 ]
 function actionChanged() {
+  localError.value = ''
   if (props.target === 'cause' && draft.action === 'confirmed') {
     if (!props.machineCauses?.length) {
       applyReviewAction('cause', draft, 'needs_more_evidence', 'unresolved')
@@ -158,6 +166,7 @@ function selectCandidate(value: unknown) {
 watch(
   () => props.analysisID,
   () => {
+    localError.value = ''
     selectedCandidate.value = '0'
     draft.action =
       props.initialAction ||
@@ -172,7 +181,7 @@ watch(
 )
 function submit() {
   localError.value = ''
-  if (!draft.reason.trim()) {
+  if (draft.action !== 'confirmed' && !draft.reason.trim()) {
     localError.value = k('reasonRequired')
     return
   }
@@ -210,6 +219,12 @@ function submit() {
 .error {
   color: var(--td-error-color);
   font-size: var(--app-text-base);
+}
+.review-hint {
+  margin: calc(-1 * var(--app-space-1)) 0 var(--app-space-3);
+  color: var(--td-text-color-secondary);
+  font-size: var(--app-text-sm);
+  line-height: 1.6;
 }
 .review-step {
   display: inline-flex;

@@ -44,6 +44,7 @@ function setup(
     'models',
     'notice',
     'loadError',
+    'localError',
     'saveError',
     'savedReviews',
     'reviewErrors',
@@ -860,6 +861,56 @@ test('a non-first machine cause can be confirmed without recording a correction'
   assert.equal(payload.cause_category, 'retrieval')
   assert.equal(payload.verdict, 'evidence_backed')
   h.stop()
+})
+
+test('confirming a review permits an empty note without changing the machine assessment', () => {
+  for (const target of ['answer', 'cause']) {
+    const verdict = target === 'answer' ? 'partial' : 'suspected'
+    const h = setup('ReviewForm.vue', {
+      target, analysisID: 'v1', initialVerdict: verdict, initialCategory: 'retrieval',
+      machineCauses: [{ category: 'retrieval', status: 'suspected', summary: 'Check retrieval' }],
+      disabled: false, busy: false,
+    })
+    h.api.draft.reason = ' \n '
+    h.api.submit()
+    assert.equal(h.events.length, 1)
+    const payload = h.events[0][1] as Record<string, string>
+    assert.equal(payload.action, 'confirmed')
+    assert.equal(payload.verdict, verdict)
+    assert.equal(payload.reason, '')
+    assert.equal(payload.analysis_id, 'v1')
+    h.stop()
+  }
+})
+
+test('corrections and evidence requests still require explanations, with errors cleared on action change', () => {
+  for (const target of ['answer', 'cause']) {
+    const h = setup('ReviewForm.vue', {
+      target, analysisID: 'v1', initialVerdict: target === 'answer' ? 'supported' : 'suspected',
+      initialCategory: 'retrieval',
+      machineCauses: [{ category: 'retrieval', status: 'suspected', summary: 'Check retrieval' }],
+      disabled: false, busy: false,
+    })
+    for (const action of ['corrected', 'needs_more_evidence']) {
+      h.api.draft.action = action
+      h.api.actionChanged()
+      h.api.draft.reason = ' \n '
+      h.api.submit()
+      assert.equal(h.events.length, 0)
+      assert.equal(h.api.localError.value, 'reasonRequired')
+    }
+    h.api.draft.action = 'confirmed'
+    h.api.actionChanged()
+    assert.equal(h.api.localError.value, '')
+    h.api.draft.reason = '证'.repeat(1334)
+    h.api.submit()
+    assert.equal(h.events.length, 0, 'Optional notes retain the UTF-8 byte limit')
+    assert.equal(h.api.localError.value, 'reasonTooLong')
+    h.api.draft.reason = ''
+    h.api.submit()
+    assert.equal(h.events.length, 1)
+    h.stop()
+  }
 })
 
 test('an explicit manual cause addition starts as a correction without inventing a machine candidate', () => {

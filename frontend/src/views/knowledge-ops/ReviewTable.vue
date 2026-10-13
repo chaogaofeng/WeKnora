@@ -53,7 +53,7 @@
         </div>
       </template>
       <template #reason="{ row: review }">
-        <div class="reason-cell">{{ review.reason }}</div>
+        <div class="reason-cell">{{ review.reason || '—' }}</div>
       </template>
       <template #reviewer="{ row: review }">
         <div>{{ review.reviewer_id }}</div>

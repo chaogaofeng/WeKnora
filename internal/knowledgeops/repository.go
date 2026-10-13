@@ -129,10 +129,14 @@ func (r *Repository) SaveAnalysis(ctx context.Context, t Task, a Analysis) error
 	})
 }
 func (r *Repository) AddReview(ctx context.Context, tenant uint64, v *Review) error {
-	if v.Target != "answer" && v.Target != "cause" || v.ReviewerID == "" || len(strings.TrimSpace(v.Reason)) == 0 || len(v.Reason) > 4000 {
+	v.Reason = strings.TrimSpace(v.Reason)
+	if v.Target != "answer" && v.Target != "cause" || v.ReviewerID == "" || len(v.Reason) > 4000 {
 		return ErrInvalid
 	}
 	if v.Action != "confirmed" && v.Action != "corrected" && v.Action != "needs_more_evidence" {
+		return ErrInvalid
+	}
+	if v.Action != "confirmed" && v.Reason == "" {
 		return ErrInvalid
 	}
 	allowed := map[string]bool{"supported": true, "partial": true, "contradicted": true, "unsupported": true, "unverifiable": true, "not_applicable": true}

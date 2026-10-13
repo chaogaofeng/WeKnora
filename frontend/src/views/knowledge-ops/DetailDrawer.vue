@@ -537,7 +537,7 @@
                 · {{ label(review.cause_category) }}</template
               ></strong
             >
-            <p class="body-text">{{ review.reason }}</p>
+            <p v-if="review.reason" class="body-text">{{ review.reason }}</p>
             <small
               >{{ date(review.created_at) }} · {{ review.reviewer_id }} ·
               {{ reviewVersion(review.analysis_id) }}</small
