@@ -8,6 +8,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/Tencent/WeKnora/internal/knowledgeops/capture"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
@@ -75,6 +76,7 @@ func (p *PluginSearch) runQueryExpansion(ctx context.Context, chatManage *types.
 				if t.Type == types.SearchTargetTypeKnowledge {
 					paramsExp.KnowledgeIDs = t.KnowledgeIDs
 				}
+				capture.RecordQuery(ctx, capture.QueryEvent{Kind: "search", Query: q, Tool: "rag_expansion", Status: "attempted"})
 				res, err := p.knowledgeBaseService.HybridSearch(ctx, t.KnowledgeBaseID, paramsExp)
 				if err != nil {
 					pipelineWarn(ctx, "Search", "expansion_error", map[string]interface{}{

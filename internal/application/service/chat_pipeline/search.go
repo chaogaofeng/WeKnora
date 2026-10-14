@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/Tencent/WeKnora/internal/config"
+	"github.com/Tencent/WeKnora/internal/knowledgeops/capture"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/searchutil"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
@@ -476,6 +477,7 @@ func (p *PluginSearch) searchByTargets(
 						SkipContextEnrichment: true,
 						DisableVectorMatch:    disableVector,
 					}
+					capture.RecordQuery(ctx, capture.QueryEvent{Kind: "search", Query: queryText, Tool: "rag_search", Status: "attempted"})
 					res, err := p.knowledgeBaseService.HybridSearch(ctx, fullKBIDs[0], params)
 					if err != nil {
 						pipelineWarn(ctx, "Search", "combined_kb_search_error", map[string]interface{}{
@@ -558,6 +560,7 @@ func (p *PluginSearch) searchSingleTarget(
 	if t.Type == types.SearchTargetTypeKnowledge {
 		params.KnowledgeIDs = t.KnowledgeIDs
 	}
+	capture.RecordQuery(ctx, capture.QueryEvent{Kind: "search", Query: queryText, Tool: "rag_search", Status: "attempted"})
 	res, err := p.knowledgeBaseService.HybridSearch(ctx, t.KnowledgeBaseID, params)
 	if err != nil {
 		pipelineWarn(ctx, "Search", "kb_search_error", map[string]interface{}{
@@ -616,6 +619,7 @@ func (p *PluginSearch) searchWebIfEnabled(ctx context.Context, chatManage *types
 			"max_results": webConfig.MaxResults,
 		},
 	})
+	capture.RecordQuery(ctx, capture.QueryEvent{Kind: "search", Query: chatManage.RewriteQuery, Tool: "web_search", Status: "attempted"})
 	webResults, err := p.webSearchService.Search(webCtx, providerID, webConfig, chatManage.RewriteQuery)
 	webSpan.Finish(map[string]interface{}{
 		"hit_count": len(webResults),

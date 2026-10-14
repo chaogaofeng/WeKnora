@@ -89,6 +89,10 @@ function setup(
     'displaySourceCheck',
     'pendingEvidenceRequests',
     'pendingReviewTargets',
+    'rewrite',
+    'rewriteStatus',
+    'searchQueries',
+    'showRewriteText',
   ]
   const expose = names
     .map(
@@ -1066,4 +1070,26 @@ test('historical diagnosis uses its own capture assessment', async () => {
   h.api.selectedID.value = 'v1'
   assert.equal(h.api.selectedCoverage.value.content_status, 'missing')
   h.stop()
+})
+
+test('query context distinguishes unknown, disabled and failed without replacing the original question', () => {
+  const props = vue.reactive({ run: { question: '原始问题' } as any })
+  const harness = setup('QueryContextPanel.vue', props)
+  try {
+    assert.equal(harness.api.rewriteStatus.value, 'unrecorded')
+    props.run.query_context = { version: 1, rewrite: { kind: 'rewrite', status: 'disabled', query: '原始问题' } }
+    assert.equal(harness.api.rewriteStatus.value, 'disabled')
+    assert.equal(harness.api.showRewriteText.value, false)
+    props.run.query_context.rewrite = { kind: 'rewrite', status: 'failed', query: '原始问题' }
+    assert.equal(harness.api.rewriteStatus.value, 'failed')
+    assert.equal(harness.api.showRewriteText.value, false)
+    props.run.query_context.rewrite = { kind: 'rewrite', status: 'rewritten', query: '改写的检索问题', history_turns: 0 }
+    assert.equal(harness.api.showRewriteText.value, true, 'single-turn rewrites must also be visible')
+    assert.equal(props.run.question, '原始问题')
+    props.run.query_context.searches = [
+      { query: '实际子问题', tool: 'wiki_search', tool_call_id: 'a', round: 1 },
+      { query: '实际子问题', tool: 'wiki_search', tool_call_id: 'b', round: 2 },
+    ]
+    assert.equal(harness.api.searchQueries.value.length, 2)
+  } finally { harness.stop() }
 })

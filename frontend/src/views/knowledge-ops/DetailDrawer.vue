@@ -66,6 +66,7 @@
             </t-tooltip>
           </div>
         </div>
+        <QueryContextPanel :run="detail.run" />
         <ConversationPanel
           v-if="detail.run.session_id"
           :key="detail.run.id"
@@ -697,6 +698,7 @@ import { computed, nextTick, onScopeDispose, reactive, ref, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import CaptureCoverage from './CaptureCoverage.vue'
 import ConversationPanel from './ConversationPanel.vue'
+import QueryContextPanel from './QueryContextPanel.vue'
 import EvidenceList from './EvidenceList.vue'
 import AnswerContent from './AnswerContent.vue'
 import StatusBadge from './StatusBadge.vue'

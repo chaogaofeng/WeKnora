@@ -552,6 +552,7 @@ func (e *AgentEngine) runToolCall(
 		err = fmt.Errorf("tool arguments contain unresolved model handles: %v", tc.UnresolvedHandles)
 	} else {
 		execCtx, toolCancel := context.WithTimeout(toolExecCtx, execTimeout)
+		capture.RecordToolQueries(execCtx, tc.ID, tc.Function.Name, args, round)
 		result, err = e.toolRegistry.ExecuteTool(
 			execCtx, tc.Function.Name,
 			json.RawMessage(tc.Function.Arguments),

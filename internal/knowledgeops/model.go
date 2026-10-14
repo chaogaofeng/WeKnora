@@ -27,6 +27,7 @@ func DefaultSettings(tenant uint64) Settings {
 }
 
 type Run struct {
+	QueryContext          *capture.QuerySnapshot   `json:"query_context,omitempty" gorm:"serializer:json;type:text"`
 	Conversation          *Conversation            `json:"conversation,omitempty" gorm:"-"`
 	HistoryContext        *capture.HistorySnapshot `json:"history_context,omitempty" gorm:"serializer:json;type:text"`
 	EffectiveRisk         string                   `json:"effective_risk" gorm:"-"`

@@ -52,6 +52,7 @@ func (s *Service) Start(ctx context.Context, in capture.Start) capture.Recorder 
 		run.Question = string([]rune(run.Question)[:16000])
 		run.Gaps = append(run.Gaps, "question_capture_budget")
 	}
+	run.QueryContext = &capture.QuerySnapshot{Version: 1}
 	if err = s.repo.CreateRun(bounded, &run); err != nil {
 		logger.Warnf(ctx, "[KnowledgeOps] capture start failed (tenant=%d message=%s): %v", in.TenantID, in.MessageID, err)
 		return nil
@@ -240,10 +241,11 @@ func (r *recorder) Finish(ctx context.Context, end capture.Completion) {
 	}
 	gaps, _ := json.Marshal(r.run.Gaps)
 	history, _ := json.Marshal(r.run.HistoryContext)
+	queries, _ := json.Marshal(r.run.QueryContext)
 	bounded, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 	defer cancel()
 	err := r.service.repo.db.WithContext(bounded).Transaction(func(tx *gorm.DB) error {
-		q := tx.Model(&Run{}).Where("id = ? AND status = ?", r.run.ID, "running").Updates(map[string]any{"history_context": string(history), "answer": end.Answer, "model_id": r.run.ModelID, "status": end.Status, "capture_status": status, "gaps": string(gaps), "finished_at": end.FinishedAt, "updated_at": time.Now().UTC()})
+		q := tx.Model(&Run{}).Where("id = ? AND status = ?", r.run.ID, "running").Updates(map[string]any{"query_context": string(queries), "history_context": string(history), "answer": end.Answer, "model_id": r.run.ModelID, "status": end.Status, "capture_status": status, "gaps": string(gaps), "finished_at": end.FinishedAt, "updated_at": time.Now().UTC()})
 		if q.Error != nil {
 			return q.Error
 		}

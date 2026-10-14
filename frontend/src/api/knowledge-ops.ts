@@ -128,6 +128,7 @@ export interface OpsHistoryContext {
   ever_compacted: boolean
 }
 export interface OpsRun {
+  query_context?: OpsQueryContext
   conversation?: OpsConversation
   history_context?: OpsHistoryContext
   source_followup_pending?: boolean
@@ -156,6 +157,29 @@ export interface OpsRun {
   updated_at: string
   review_state: string
   analysis?: OpsAnalysis
+}
+export interface OpsQueryEvent {
+  kind: 'rewrite' | 'search'
+  query: string
+  status: string
+  tool?: string
+  tool_call_id?: string
+  round?: number
+  model_id?: string
+  history_turns: number
+  history_status?: string
+  has_images?: boolean
+  has_attachments?: boolean
+  has_memory?: boolean
+  error_code?: string
+  truncated?: boolean
+  redacted?: boolean
+}
+export interface OpsQueryContext {
+  version: number
+  rewrite?: OpsQueryEvent
+  searches?: OpsQueryEvent[]
+  truncated?: boolean
 }
 export interface OpsEvidence {
   id: string

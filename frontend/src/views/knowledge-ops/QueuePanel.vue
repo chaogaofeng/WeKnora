@@ -42,6 +42,7 @@
         </small>
       </div>
       <div class="case-metadata muted">
+        <QueryRewriteBadge :run="row.run" @open="emit('open', $event)" />
         <span>{{ label(row.run.qa_type) }} · {{ row.run.channel || k('unknown') }}</span>
         <span v-if="row.validDiagnosis" class="machine-assessment">
           <StatusBadge
@@ -207,6 +208,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import StatusBadge from './StatusBadge.vue'
 import CaptureCoverage from './CaptureCoverage.vue'
 import ConversationMeta from './ConversationMeta.vue'
+import QueryRewriteBadge from './QueryRewriteBadge.vue'
 import { computed } from 'vue'
 import type { OpsRun, OpsGroup, OpsPendingItem } from '@/api/knowledge-ops'
 import { useOpsText } from './locales'

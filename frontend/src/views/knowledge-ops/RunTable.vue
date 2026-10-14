@@ -4,6 +4,7 @@
       <template #question="{ row: run }">
         <div class="question-cell">
           <span>{{ run.question }}</span>
+          <QueryRewriteBadge :run="run" @open="emit('open', $event)" />
           <small>{{ run.execution_mode || k('unknown') }}</small>
           <ConversationMeta :run="run" @open="emit('open', $event)" />
         </div>
@@ -86,6 +87,7 @@ import type { OpsRun } from '@/api/knowledge-ops'
 import StatusBadge from './StatusBadge.vue'
 import CaptureCoverage from './CaptureCoverage.vue'
 import ConversationMeta from './ConversationMeta.vue'
+import QueryRewriteBadge from './QueryRewriteBadge.vue'
 import { useOpsText } from './locales'
 const props = defineProps<{ runs: OpsRun[]; showSourceVersions?: boolean }>()
 const emit = defineEmits<{ open: [id: string, analysis?: string] }>()

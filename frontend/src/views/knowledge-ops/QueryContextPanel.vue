@@ -1,0 +1,99 @@
+<template>
+  <section class="query-context">
+    <div class="query-heading">
+      <h3>{{ k('queryContextTitle') }}</h3>
+      <t-tag variant="light" :theme="rewriteStatus === 'failed' ? 'warning' : 'default'">
+        {{ k(`queryRewrite_${rewriteStatus}`) }}
+      </t-tag>
+    </div>
+    <p v-if="!run.query_context" class="muted">{{ k('queryContextUnrecorded') }}</p>
+    <template v-else>
+      <div v-if="showRewriteText" class="query-comparison">
+        <div>
+          <span class="field-label">{{ k('queryOriginal') }}</span>
+          <p>{{ run.question }}</p>
+        </div>
+        <div class="rewritten-query">
+          <span class="field-label">{{ k('queryRewritten') }}</span>
+          <p>{{ rewrite?.query }}</p>
+        </div>
+      </div>
+      <p v-else class="muted">{{ k(`queryRewriteHint_${rewriteStatus}`) }}</p>
+      <p v-if="rewrite" class="query-context-meta">
+        <template v-if="rewrite.history_status === 'available'">
+          {{ k('queryRewriteHistory') }} {{ rewrite.history_turns }} {{ k('historyTurns') }}
+          <span v-if="rewrite.history_turns"> · {{ k('historyIDsUnknown') }}</span>
+        </template>
+        <template v-else-if="rewrite.history_status === 'unavailable'">{{ k('queryHistoryUnavailable') }}</template>
+        <span v-if="rewrite.has_images"> · {{ k('queryImageContext') }}</span>
+        <span v-if="rewrite.has_attachments"> · {{ k('queryAttachmentContext') }}</span>
+        <span v-if="rewrite.has_memory"> · {{ k('queryMemoryContext') }}</span>
+      </p>
+      <p v-if="rewrite?.truncated || rewrite?.redacted || run.query_context.truncated" class="muted">
+        {{ k('queryContextLimited') }}
+      </p>
+      <details v-if="searchQueries.length" class="search-queries">
+        <summary>{{ k('querySearchCalls') }} · {{ searchQueries.length }}</summary>
+        <p class="muted">{{ k('querySearchNotice') }}</p>
+        <ol>
+          <li v-for="(query, index) in searchQueries" :key="`${query.tool_call_id || query.tool}-${index}`">
+            <div class="search-meta">
+              <span>{{ k(`queryTool_${query.tool}`) }}</span>
+              <span v-if="query.round">{{ k('queryAgentRound') }} {{ query.round }}</span>
+              <span v-if="query.truncated || query.redacted">{{ k('queryTextLimited') }}</span>
+            </div>
+            <p>{{ query.query }}</p>
+          </li>
+        </ol>
+      </details>
+      <p v-else class="muted">{{ k('querySearchNotRecorded') }}</p>
+      <p class="query-note">{{ k('queryJudgmentNotice') }}</p>
+    </template>
+  </section>
+</template>
+
+<script setup lang="ts">
+import { computed } from 'vue'
+import type { OpsRun } from '@/api/knowledge-ops'
+import { useOpsText } from './locales'
+const props = defineProps<{ run: OpsRun }>()
+const { k } = useOpsText()
+const rewrite = computed(() => props.run.query_context?.rewrite)
+const rewriteStatus = computed(() => rewrite.value?.status || 'unrecorded')
+const searchQueries = computed(() => props.run.query_context?.searches || [])
+const showRewriteText = computed(() => rewrite.value?.status === 'rewritten')
+</script>
+
+<style scoped>
+.query-context {
+  border: 1px solid var(--td-component-stroke);
+  border-radius: var(--app-radius-xl);
+  padding: var(--app-space-5);
+  background: var(--td-bg-color-container);
+  overflow-wrap: anywhere;
+}
+.query-heading, .search-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--app-space-2) var(--app-space-3);
+}
+.query-heading { justify-content: space-between; margin-bottom: var(--app-space-3); }
+h3 { margin: 0; font-size: var(--app-text-md); font-weight: 600; }
+p { margin: var(--app-space-2) 0 0; line-height: 1.7; white-space: pre-wrap; }
+.muted, .query-context-meta, .search-meta, .field-label, .query-note {
+  color: var(--td-text-color-secondary);
+  font-size: var(--app-text-sm);
+}
+.query-comparison { display: grid; grid-template-columns: 1fr 1fr; gap: var(--app-space-3); }
+.query-comparison > div { min-width: 0; padding: var(--app-space-3); border-radius: var(--app-radius-md); background: var(--td-bg-color-secondarycontainer); }
+.query-comparison p { font-size: var(--app-text-md); }
+.query-comparison .rewritten-query { border-inline-start: 2px solid var(--td-brand-color); }
+.query-note { padding-top: var(--app-space-3); }
+.search-queries { margin-top: var(--app-space-3); border-top: 1px solid var(--td-component-stroke); padding-top: var(--app-space-3); }
+summary { cursor: pointer; font-size: var(--app-text-sm); font-weight: 500; }
+summary:focus-visible { outline: 2px solid var(--td-brand-color); outline-offset: var(--app-space-1); }
+ol { padding-left: var(--app-space-5); margin: var(--app-space-3) 0 0; }
+li + li { margin-top: var(--app-space-3); }
+@media (max-width: 640px) { .query-comparison { grid-template-columns: 1fr; } }
+</style>

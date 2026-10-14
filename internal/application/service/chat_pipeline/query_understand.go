@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Tencent/WeKnora/internal/config"
+	"github.com/Tencent/WeKnora/internal/knowledgeops/capture"
 	"github.com/Tencent/WeKnora/internal/models/chat"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -62,6 +63,7 @@ func (p *PluginQueryUnderstand) OnEvent(ctx context.Context,
 	eventType types.EventType, chatManage *types.ChatManage, next func() *PluginError,
 ) *PluginError {
 	chatManage.RewriteQuery = chatManage.Query
+	ctx, next = observeKnowledgeOpsRewrite(ctx, chatManage, next)
 
 	hasImages := len(chatManage.Images) > 0
 	needRewrite := chatManage.EnableRewrite
@@ -126,6 +128,7 @@ func (p *PluginQueryUnderstand) OnEvent(ctx context.Context,
 		MaxCompletionTokens: maxTokens,
 		Thinking:            &thinking,
 	})
+	capture.RecordRewriteCall(ctx, rewriteModel.GetModelID(), useImages && hasImages, err != nil)
 	if err != nil {
 		pipelineError(ctx, "QueryUnderstand", "model_call", map[string]interface{}{
 			"session_id": chatManage.SessionID,
@@ -135,7 +138,12 @@ func (p *PluginQueryUnderstand) OnEvent(ctx context.Context,
 	}
 
 	// --- Parse structured output ---
-	p.parseOutput(chatManage, response.Content)
+	rawOutput := ""
+	if response != nil {
+		rawOutput = response.Content
+	}
+	parsed := p.parseOutput(chatManage, rawOutput)
+	capture.RecordRewriteResult(ctx, parsed)
 
 	// Persist image description asynchronously — this DB write does not affect
 	// the current pipeline result, so it can run in the background.
@@ -159,7 +167,7 @@ func (p *PluginQueryUnderstand) OnEvent(ctx context.Context,
 		"intent":              chatManage.Intent,
 		"has_image_desc":      chatManage.ImageDescription != "",
 		"has_prompt_override": chatManage.SystemPromptOverride != "",
-		"original_output":     response.Content,
+		"original_output":     rawOutput,
 	})
 	return next()
 }
@@ -205,6 +213,7 @@ func (p *PluginQueryUnderstand) loadHistory(ctx context.Context, chatManage *typ
 	maxRounds := chatManage.MaxRounds
 
 	historyList, err := loadAndProcessHistory(ctx, p.messageService, chatManage.SessionID, maxRounds, 20)
+	capture.RecordRewriteHistory(ctx, err == nil)
 	if err != nil {
 		pipelineWarn(ctx, "QueryUnderstand", "history_fetch", map[string]interface{}{
 			"session_id": chatManage.SessionID,
@@ -309,7 +318,9 @@ func (p *PluginQueryUnderstand) buildPrompts(
 	} else {
 		queryContent += "\n<no_document_attached />"
 	}
-	queryContent += p.memoryBackground(ctx, chatManage)
+	memoryBackground := p.memoryBackground(ctx, chatManage)
+	queryContent += memoryBackground
+	capture.RecordRewriteInput(ctx, systemPrompt, userPrompt, len(historyList), len(chatManage.Attachments) > 0, memoryBackground != "")
 
 	vals := types.PlaceholderValues{
 		"conversation": conversationText,
@@ -377,10 +388,10 @@ func (p *PluginQueryUnderstand) memoryBackground(ctx context.Context, chatManage
 // image description from the model's structured JSON output.
 //
 // Expected format: {"rewrite_query":"...","intent":"kb_search","image_description":"..."}
-func (p *PluginQueryUnderstand) parseOutput(chatManage *types.ChatManage, raw string) {
+func (p *PluginQueryUnderstand) parseOutput(chatManage *types.ChatManage, raw string) bool {
 	content := strings.TrimSpace(raw)
 	if content == "" {
-		return
+		return false
 	}
 
 	if output, ok := parseStructuredQueryOutput(content); ok {
@@ -389,10 +400,11 @@ func (p *PluginQueryUnderstand) parseOutput(chatManage *types.ChatManage, raw st
 		}
 		chatManage.Intent = output.Intent
 		chatManage.ImageDescription = strings.TrimSpace(output.ImageDescription)
-		return
+		return strings.TrimSpace(output.RewriteQuery) != ""
 	}
 
 	// On parse failure, keep the original query and intent.
+	return false
 }
 
 func parseStructuredQueryOutput(raw string) (queryUnderstandOutput, bool) {
