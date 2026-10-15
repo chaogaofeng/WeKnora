@@ -35,14 +35,16 @@
         <span>{{ k('representativeNotice') }}</span>
       </div>
       <div class="case-heading">
-        <h3>{{ row.run.question }}</h3>
+        <div class="case-question">
+          <h3>{{ row.run.question }}</h3>
+          <QueryRewriteBadge :run="row.run" @open="emit('open', $event)" />
+        </div>
         <small class="case-time">
           {{ k(row.run.analysis?.created_at ? 'diagnosedAt' : 'time') }}
           {{ date(row.run.analysis?.created_at || row.run.started_at) }}
         </small>
       </div>
       <div class="case-metadata muted">
-        <QueryRewriteBadge :run="row.run" @open="emit('open', $event)" />
         <span>{{ label(row.run.qa_type) }} · {{ row.run.channel || k('unknown') }}</span>
         <span v-if="row.validDiagnosis" class="machine-assessment">
           <StatusBadge
@@ -302,12 +304,18 @@ header,
 .case-heading {
   justify-content: space-between;
 }
+.case-question {
+  display: flex;
+  align-items: baseline;
+  gap: var(--app-space-2);
+  flex: 1;
+  min-width: 0;
+}
 h2 {
   font-size: var(--app-text-2xl);
   margin: 0;
 }
 h3 {
-  flex: 1;
   min-width: 0;
   font-size: var(--app-text-xl);
   line-height: 1.5;

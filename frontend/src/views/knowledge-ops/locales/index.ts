@@ -1,5 +1,10 @@
 import { useI18n } from 'vue-i18n'
 const en: Record<string, string> = {
+  copySessionId: 'Copy full session ID',
+  queryRewriteBadge: 'Rewritten',
+  queryCompare: 'Compare original and rewritten questions',
+  'quick-answer': 'Quick answer',
+  'smart-reasoning': 'Smart reasoning',
   conversationCheck: "Conversation recap comparison",
   conversationCheck_consistent: "Consistent with captured history",
   conversationCheck_inconsistent: "Differs from captured history",
@@ -609,6 +614,11 @@ const en: Record<string, string> = {
     'Diagnosis failed. Use the run ID to locate the detailed error in backend logs.',
 }
 const zh: Record<string, string> = {
+  copySessionId: '复制完整会话 ID',
+  queryRewriteBadge: '已改写',
+  queryCompare: '问题改写对照',
+  'quick-answer': '快速问答',
+  'smart-reasoning': '智能推理',
   conversationCheck: "会话回顾核对",
   conversationCheck_consistent: "与已采集上文一致",
   conversationCheck_inconsistent: "与已采集上文不一致",

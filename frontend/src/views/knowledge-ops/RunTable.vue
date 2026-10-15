@@ -3,16 +3,19 @@
     <t-table row-key="id" :data="runs" :columns="columns" hover size="medium">
       <template #question="{ row: run }">
         <div class="question-cell">
-          <span>{{ run.question }}</span>
-          <QueryRewriteBadge :run="run" @open="emit('open', $event)" />
-          <small>{{ run.execution_mode || k('unknown') }}</small>
+          <div class="question-heading">
+            <span class="question-text" :title="run.question">{{ run.question }}</span>
+            <QueryRewriteBadge :run="run" @open="emit('open', $event)" />
+          </div>
           <ConversationMeta :run="run" @open="emit('open', $event)" />
         </div>
       </template>
       <template #type="{ row: run }">
         <div>
           {{ label(run.qa_type) }}
-          <small>{{ run.channel || k('unknown') }}</small>
+          <small>
+            {{ label(run.execution_mode) }} · {{ run.channel || k('unknown') }}
+          </small>
         </div>
       </template>
       <template #capture="{ row: run }">
@@ -93,7 +96,7 @@ const props = defineProps<{ runs: OpsRun[]; showSourceVersions?: boolean }>()
 const emit = defineEmits<{ open: [id: string, analysis?: string] }>()
 const { k, label, date } = useOpsText()
 const columns = computed(() => [
-  { colKey: 'question', title: k('question'), width: 260 },
+  { colKey: 'question', title: k('question'), width: 320 },
   { colKey: 'type', title: `${k('qa_type')} / ${k('channel')}`, width: 170 },
   {
     colKey: 'capture',
@@ -129,22 +132,34 @@ small {
   overflow-wrap: anywhere;
 }
 .question-cell {
-  font-weight: 500;
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-2);
+  min-width: 0;
   overflow-wrap: anywhere;
 }
-.question-cell small {
-  font-weight: 400;
+.question-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--app-space-2);
+  min-width: 0;
+}
+.question-text {
+  min-width: 0;
+  font-weight: 500;
+  line-height: 1.6;
 }
 .source-followup {
   color: var(--td-warning-color-6);
 }
 .route-reason,
-.question-cell > span {
+.question-text {
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.route-reason { -webkit-line-clamp: 3; }
 .route-reason {
   -webkit-line-clamp: 2;
 }
