@@ -63,7 +63,7 @@ async function render(runs: OpsRun[] = [], props: Record<string, unknown> = {}) 
 async function renderContext(component: Component, props: Record<string, unknown>) {
   const app = createSSRApp({ render: () => h(component, props) })
   app.use(createI18n({ legacy: false, locale: 'zh-CN', messages: { 'zh-CN': {} } }))
-  for (const [name, value] of Object.entries({ Button, Tag, Tooltip })) app.component(`t-${name.toLowerCase()}`, value)
+  for (const [name, value] of Object.entries({ Button, Icon, Popup, Tag, Tooltip })) app.component(`t-${name.toLowerCase()}`, value)
   return renderToString(app)
 }
 
