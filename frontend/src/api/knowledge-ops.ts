@@ -220,13 +220,14 @@ export type ReviewTarget = 'answer' | 'cause'
 export type ReviewAction = 'confirmed' | 'corrected' | 'needs_more_evidence'
 export interface ReviewInput {
   analysis_id: string
-  target: ReviewTarget
+  target: 'answer'
   verdict: string
   action: ReviewAction
   reason: string
-  cause_category?: string
 }
-export interface OpsReview extends ReviewInput {
+export interface OpsReview extends Omit<ReviewInput, 'target'> {
+  target: ReviewTarget
+  cause_category?: string
   question: string
   analysis_version: number
   machine_verdict: string

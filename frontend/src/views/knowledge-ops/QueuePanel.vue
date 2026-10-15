@@ -74,7 +74,7 @@
           <div class="work-heading">
             <h4>{{ row.reviewTitle }}</h4>
             <StatusBadge
-              v-if="['partially_reviewed', 'reviewed'].includes(row.run.review_state)"
+              v-if="['needs_more_evidence', 'reviewed'].includes(row.run.review_state)"
               :value="row.run.review_state"
             />
           </div>
@@ -257,7 +257,7 @@ const rows = computed(() => {
         : [])
     const candidates = analysis?.cause_assessment?.candidates ?? analysis?.report.causes ?? []
     const unlinked = analysis?.cause_assessment?.unlinked ?? []
-    const targets = row.run.pending_review_targets || []
+    const targets = (row.run.pending_review_targets || []).filter((target) => target === 'answer')
     // The full report remains in the drawer. Keep a disclosure only when it
     // adds information beyond the current work and the visible assessment.
     const showDiagnosis = !!analysis && (

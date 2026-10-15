@@ -122,7 +122,7 @@ func (v *WorkbenchStats) observe(d Detail) {
 			v.SampleReviewed++
 		}
 		for _, r := range d.Reviews {
-			if r.AnalysisID == a.ID && r.Action == "corrected" {
+			if r.AnalysisID == a.ID && r.Target == "answer" && r.Action == "corrected" {
 				v.SampleCorrected++
 				break
 			}

@@ -35,17 +35,17 @@ func TestSourcePendingDoesNotReopenCompletedHumanReview(t *testing.T) {
 				require.Equal(t, 1, stats.SampleReviewed)
 			}
 
-			// A real cause still needs its own review; historical reviews do not count.
+			// Automatic causes and historical cause reviews cannot reopen answer review.
 			d.Run.Analysis.Report.Causes = []Cause{{Category: "retrieval", Status: "suspected"}}
 			d.Reviews = append(d.Reviews, Review{AnalysisID: "old", Target: "cause", Action: "confirmed"})
-			require.Equal(t, "partially_reviewed", reviewState(d), "a required cause review is still missing")
-			require.Contains(t, queueRoutes(d), route)
+			require.Equal(t, "reviewed", reviewState(d))
+			require.Equal(t, []string{"source_verification"}, queueRoutes(d))
 			d.Reviews = append([]Review{{AnalysisID: "a", Target: "cause", Action: "confirmed"}}, d.Reviews...)
 			require.Equal(t, "reviewed", reviewState(d))
 			require.Equal(t, []string{"source_verification"}, queueRoutes(d))
 			// A later request for evidence reopens the human task.
 			d.Reviews = append([]Review{{AnalysisID: "a", Target: "answer", Action: "needs_more_evidence"}}, d.Reviews...)
-			require.Equal(t, "partially_reviewed", reviewState(d), "a new human evidence request reopens answer review")
+			require.Equal(t, "needs_more_evidence", reviewState(d), "a new human evidence request reopens answer review")
 			require.Contains(t, queueRoutes(d), route)
 		})
 	}

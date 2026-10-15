@@ -342,7 +342,8 @@
         </section>
 
         <section v-if="causeCandidates.length">
-          <h3>{{ k('causes') }}</h3>
+          <h3>{{ k('automaticCauses') }}</h3>
+          <p class="muted">{{ k('automaticCausesNotice') }}</p>
           <article
             v-for="(cause, index) in causeCandidates"
             :key="index"
@@ -471,63 +472,26 @@
           <p v-if="showSourceFollowupNotice" class="notice">
             {{ k('answerReviewKeepsSourceOpen') }}
           </p>
-          <div
-            class="review-grid"
-            :class="{
-              'with-causes':
-                causeCandidates.length || showCauseEditor || pendingReviewTargets.includes('cause'),
-            }"
-          >
-            <ReviewForm
-              :key="`${analysis.id}:answer:${savedReviews.answer}`"
-              target="answer"
-              :analysisID="analysis.id"
-              :initial-verdict="analysis.report.verdict || 'unverifiable'"
-              :disabled="!canReview"
-              :busy="reviewing.answer"
-              :error="reviewErrors.answer"
-              @submit="saveReview"
-            />
-            <ReviewForm
-              v-if="
-                causeCandidates.length || showCauseEditor || pendingReviewTargets.includes('cause')
-              "
-              :key="`${analysis.id}:cause:${savedReviews.cause}`"
-              target="cause"
-              :analysisID="analysis.id"
-              :initial-verdict="causeCandidates[0]?.status || 'unresolved'"
-              :initial-category="
-                causeCandidates[0]?.category ||
-                pendingEvidenceRequests.find((item) => item.target === 'cause')?.cause_category
-              "
-              :initial-action="causeCandidates.length ? undefined : 'corrected'"
-              :machine-causes="causeCandidates"
-              :disabled="!canReview"
-              :busy="reviewing.cause"
-              :error="reviewErrors.cause"
-              @submit="saveReview"
-            />
+          <div v-if="answerReviewComplete && !showReviewEditor" class="review-complete">
+            <div class="section-heading">
+              <strong><StatusBadge value="reviewed" /> · {{ labelVerdict(answerReview!.verdict) }}</strong>
+              <t-button v-if="canReview" variant="text" theme="primary" @click="showReviewEditor = true">
+                {{ k('reviewAgain') }}
+              </t-button>
+            </div>
+            <p v-if="answerReview!.reason" class="body-text">{{ answerReview!.reason }}</p>
+            <small class="muted">{{ date(answerReview!.created_at) }} · {{ answerReview!.reviewer_id }}</small>
           </div>
-          <div
-            v-if="!causeCandidates.length && !pendingReviewTargets.includes('cause')"
-            class="no-cause"
-          >
-            <span>{{
-              k(
-                analysis.status === 'failed'
-                  ? 'noCauseAfterFailure'
-                  : unlinkedCauses.length
-                    ? 'noQualifiedCause'
-                    : 'noCauseReviewNeeded',
-              )
-            }}</span>
-            <t-button
-              v-if="canReview && !showCauseEditor"
-              variant="text"
-              @click="showCauseEditor = true"
-              >{{ k('addCauseCorrection') }}</t-button
-            >
-          </div>
+          <ReviewForm
+            v-else
+            :key="`${analysis.id}:answer:${savedReviews.answer}`"
+            :analysisID="analysis.id"
+            :initial-verdict="analysis.report.verdict || 'unverifiable'"
+            :disabled="!canReview"
+            :busy="reviewing.answer"
+            :error="reviewErrors.answer"
+            @submit="saveReview"
+          />
         </section>
 
         <section>
@@ -766,7 +730,7 @@ const loading = ref(false)
 const loadError = ref('')
 const selectedID = ref('')
 const retrying = ref(false)
-const showCauseEditor = ref(false)
+const showReviewEditor = ref(false)
 const showOptionalReview = ref(false)
 const noKnowledgeCheck = computed(
   () =>
@@ -775,9 +739,9 @@ const noKnowledgeCheck = computed(
     !(isCurrent.value && detail.value?.run.pending_items?.length),
 )
 const notice = ref('')
-const savedReviews = reactive({ answer: 0, cause: 0 })
-const reviewing = reactive({ answer: false, cause: false })
-const reviewErrors = reactive({ answer: '', cause: '' })
+const savedReviews = reactive({ answer: 0 })
+const reviewing = reactive({ answer: false })
+const reviewErrors = reactive({ answer: '' })
 const auth = useAuthStore()
 let requestID = 0
 let scopeID = 0
@@ -800,6 +764,12 @@ const latestID = computed(
 const analysis = computed(() =>
   detail.value?.analyses.find((item) => item.id === selectedID.value),
 )
+const answerReview = computed(() =>
+  detail.value?.reviews.find((review) => review.analysis_id === analysis.value?.id && review.target === 'answer'),
+)
+const answerReviewComplete = computed(() =>
+  !!answerReview.value && ['confirmed', 'corrected'].includes(answerReview.value.action),
+)
 // Current work is derived from the latest diagnosis; historical reports retain
 // the original machine judgment and must not inherit today's pending requests.
 const effectiveRisk = computed(() =>
@@ -820,12 +790,12 @@ const selectedCoverage = computed(
   () => analysis.value?.capture_coverage || detail.value?.run.coverage,
 )
 const pendingReviewTargets = computed(() =>
-  isCurrent.value ? detail.value?.run.pending_review_targets || [] : [],
+  isCurrent.value ? (detail.value?.run.pending_review_targets || []).filter((target) => target === 'answer') : [],
 )
 const pendingEvidenceRequests = computed(() =>
   isCurrent.value
     ? (detail.value?.run.pending_items || []).filter(
-        (item) => item.route === 'needs_evidence' && item.review_id,
+        (item) => item.route === 'needs_evidence' && item.target === 'answer' && item.review_id,
       )
     : [],
 )
@@ -1079,6 +1049,7 @@ async function saveReview(value: ReviewInput) {
     if (!current()) return
     await load()
     if (!current()) return
+    showReviewEditor.value = false
     notice.value = k('saved')
     savedReviews[target]++
     emit('changed')
@@ -1089,7 +1060,7 @@ async function saveReview(value: ReviewInput) {
   }
 }
 watch(selectedID, () => {
-  showCauseEditor.value = false
+  showReviewEditor.value = false
   showOptionalReview.value = false
 })
 watch(
@@ -1102,10 +1073,8 @@ watch(
     notice.value = ''
     loadError.value = ''
     reviewing.answer = false
-    reviewing.cause = false
     retrying.value = false
     reviewErrors.answer = ''
-    reviewErrors.cause = ''
     if (props.runID) void load()
   },
   { immediate: true, flush: 'sync' },
@@ -1126,8 +1095,7 @@ onScopeDispose(() => {
 .toolbar-actions,
 .section-heading,
 .run-meta,
-.claim-heading,
-.no-cause {
+.claim-heading {
   display: flex;
   align-items: center;
   gap: var(--app-space-3);
@@ -1335,13 +1303,11 @@ summary {
   margin-top: var(--app-space-4);
   padding-top: var(--app-space-4);
 }
-.review-grid {
-  display: grid;
-  gap: var(--app-space-4);
+.review-complete {
   margin-top: var(--app-space-4);
-}
-.review-grid.with-causes {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: var(--app-space-4);
+  border: 1px solid var(--td-component-stroke);
+  border-radius: var(--app-radius-lg);
 }
 .pending-evidence {
   border: 1px solid var(--td-component-stroke);
@@ -1362,13 +1328,6 @@ summary {
 .pending-evidence p {
   margin: var(--app-space-1) 0;
   white-space: pre-wrap;
-}
-.no-cause {
-  justify-content: space-between;
-  flex-wrap: wrap;
-  color: var(--td-text-color-secondary);
-  font-size: var(--app-text-sm);
-  margin-top: var(--app-space-4);
 }
 .review-record {
   padding: var(--app-space-3) 0;
@@ -1418,9 +1377,6 @@ summary:focus-visible,
   border-radius: var(--app-radius-sm);
 }
 @media (max-width: 800px) {
-  .review-grid.with-causes {
-    grid-template-columns: 1fr;
-  }
   .decision-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

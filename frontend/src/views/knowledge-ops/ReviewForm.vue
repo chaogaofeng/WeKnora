@@ -1,74 +1,34 @@
 <template>
   <form class="review-form" @submit.prevent="submit">
-    <h3>
-      <span class="review-step">{{ target === 'answer' ? '01' : '02' }}</span>
-      {{ k(target === 'answer' ? 'answerReview' : 'causeReview') }}
-    </h3>
-    <label :id="`review-action-${target}`">
-      {{ k('reviewAction') }}
-      <t-select
-        class="review-action"
-        v-model="draft.action"
-        :aria-labelledby="`review-action-${target}`"
-        :options="actions.map((value) => ({
-          value,
-          label: value === 'confirmed' ? k('confirmCurrentVerdict') : label(value),
-        }))"
-        :disabled="disabled || busy"
-        @change="actionChanged"
-      />
-    </label>
+    <h3>{{ k('answerReview') }}</h3>
+    <div class="review-fields">
+      <label id="review-action-answer">
+        {{ k('reviewAction') }}
+        <t-select
+          class="review-action"
+          v-model="draft.action"
+          aria-labelledby="review-action-answer"
+          :options="actions.map((value) => ({
+            value,
+            label: value === 'confirmed' ? k('confirmCurrentVerdict') : label(value),
+          }))"
+          :disabled="disabled || busy"
+          @change="actionChanged"
+        />
+      </label>
+      <label id="review-verdict-answer">
+        {{ k('verdict') }}
+        <t-select
+          v-model="draft.verdict"
+          aria-labelledby="review-verdict-answer"
+          :options="answerVerdicts.map((value) => ({ value, label: labelVerdict(value) }))"
+          :disabled="disabled || busy || draft.action !== 'corrected'"
+        />
+      </label>
+    </div>
     <p v-if="draft.action === 'confirmed'" class="review-hint">
       {{ k('confirmCurrentVerdictHint') }}
     </p>
-    <label
-      v-if="
-        target === 'cause' &&
-        draft.action === 'confirmed' &&
-        machineCauses?.length
-      "
-      :id="`review-candidate-${target}`"
-    >
-      {{ k('causes') }}
-      <t-select
-        class="review-candidate"
-        :value="selectedCandidate"
-        :aria-labelledby="`review-candidate-${target}`"
-        :options="
-          machineCauses.map((cause, index) => ({
-            value: String(index),
-            label: `${label(cause.category)} · ${label(cause.status)} — ${cause.summary}`,
-          }))
-        "
-        :disabled="disabled || busy"
-        @change="selectCandidate"
-      />
-    </label>
-    <label :id="`review-verdict-${target}`">
-      {{ k(target === 'answer' ? 'verdict' : 'causeConclusion') }}
-      <t-select
-        v-model="draft.verdict"
-        :aria-labelledby="`review-verdict-${target}`"
-        :options="
-          (target === 'answer' ? answerVerdicts : causeVerdicts).map(
-            (value) => ({
-              value,
-              label: target === 'answer' ? labelVerdict(value) : label(value),
-            }),
-          )
-        "
-        :disabled="disabled || busy || draft.action !== 'corrected'"
-      />
-    </label>
-    <label v-if="target === 'cause'" :id="`review-category-${target}`">
-      {{ k('causeCategory') }}
-      <t-select
-        v-model="draft.cause_category"
-        :aria-labelledby="`review-category-${target}`"
-        :options="categories.map((value) => ({ value, label: label(value) }))"
-        :disabled="disabled || busy || draft.action === 'confirmed'"
-      />
-    </label>
     <label>
       {{ k(draft.action === 'confirmed' ? 'reviewNoteOptional' : 'reviewReasonRequired') }}
       <t-textarea
@@ -84,34 +44,19 @@
     <p v-if="error || localError" class="error" role="alert">
       {{ error || localError }}
     </p>
-    <t-button type="submit" block :loading="busy" :disabled="disabled">
+    <t-button type="submit" :loading="busy" :disabled="disabled">
       {{ k('submit') }}
     </t-button>
   </form>
 </template>
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
-import type {
-  OpsCause,
-  ReviewAction,
-  ReviewTarget,
-  ReviewInput,
-} from '@/api/knowledge-ops'
-import {
-  createReviewDrafts,
-  reviewPayload,
-  answerVerdicts,
-  causeVerdicts,
-  applyReviewAction,
-} from './state'
+import type { ReviewInput } from '@/api/knowledge-ops'
+import { createReviewDraft, reviewPayload, answerVerdicts, applyReviewAction } from './state'
 import { useOpsText } from './locales'
 const props = defineProps<{
-  target: ReviewTarget
   analysisID: string
   initialVerdict: string
-  initialCategory?: string
-  initialAction?: ReviewAction
-  machineCauses?: OpsCause[]
   disabled: boolean
   busy: boolean
   error?: string
@@ -119,63 +64,17 @@ const props = defineProps<{
 const emit = defineEmits<{ submit: [ReviewInput] }>()
 const { k, label, labelVerdict } = useOpsText()
 const localError = ref('')
-const draft = reactive(createReviewDrafts()[props.target])
-const selectedCandidate = ref('0')
+const draft = reactive(createReviewDraft())
 const actions = ['confirmed', 'corrected', 'needs_more_evidence']
-const categories = [
-  'generation',
-  'retrieval',
-  'wiki_source',
-  'source_conflict',
-  'applicability',
-  'capture',
-  'knowledge_gap',
-  'unknown',
-]
 function actionChanged() {
   localError.value = ''
-  if (props.target === 'cause' && draft.action === 'confirmed') {
-    if (!props.machineCauses?.length) {
-      applyReviewAction('cause', draft, 'needs_more_evidence', 'unresolved')
-      return
-    }
-    selectCandidate(selectedCandidate.value)
-    return
-  }
-  applyReviewAction(
-    props.target,
-    draft,
-    draft.action,
-    props.initialVerdict,
-    props.initialCategory,
-  )
-}
-function selectCandidate(value: unknown) {
-  if (props.disabled || props.busy || draft.action !== 'confirmed') return
-  const candidate = props.machineCauses?.[Number(value)]
-  if (!candidate) return
-  selectedCandidate.value = String(value)
-  applyReviewAction(
-    'cause',
-    draft,
-    'confirmed',
-    candidate.status,
-    candidate.category,
-  )
+  applyReviewAction(draft, draft.action, props.initialVerdict)
 }
 watch(
   () => props.analysisID,
   () => {
     localError.value = ''
-    selectedCandidate.value = '0'
-    draft.action =
-      props.initialAction ||
-      (props.target === 'cause' && !props.machineCauses?.length
-        ? 'needs_more_evidence'
-        : 'confirmed')
-    draft.reason = ''
-    draft.verdict = props.initialVerdict
-    draft.cause_category = props.initialCategory || 'unknown'
+    Object.assign(draft, createReviewDraft(), { verdict: props.initialVerdict })
   },
   { immediate: true },
 )
@@ -190,7 +89,7 @@ function submit() {
     return
   }
   if (!props.disabled && !props.busy)
-    emit('submit', reviewPayload(props.target, draft, props.analysisID))
+    emit('submit', reviewPayload(draft, props.analysisID))
 }
 </script>
 <style scoped>
@@ -226,17 +125,12 @@ function submit() {
   font-size: var(--app-text-sm);
   line-height: 1.6;
 }
-.review-step {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: 1px solid var(--td-component-stroke);
-  border-radius: var(--app-radius-sm);
-  background: var(--td-bg-color-secondarycontainer);
-  font-size: var(--app-text-xs);
-  color: var(--td-text-color-secondary);
-  font-variant-numeric: tabular-nums;
+.review-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--app-space-4);
+}
+@media (max-width: 600px) {
+  .review-fields { grid-template-columns: 1fr; gap: 0; }
 }
 </style>

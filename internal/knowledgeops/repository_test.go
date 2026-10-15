@@ -164,7 +164,7 @@ func TestAutoRecordingRequiresCalibrationAndReviewsMatchTarget(t *testing.T) {
 	v.Verdict = "suspected"
 	v.Action = "confirmed"
 	v.CauseCategory = "retrieval"
-	require.NoError(t, r.AddReview(ctx, 1, &v))
+	require.ErrorIs(t, r.AddReview(ctx, 1, &v), ErrInvalid)
 	v.ID = ""
 	v.CauseCategory = "generation"
 	require.ErrorIs(t, r.AddReview(ctx, 1, &v), ErrInvalid)

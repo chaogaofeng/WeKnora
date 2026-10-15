@@ -98,9 +98,9 @@ const currentContent = (html: string) => html.replace(/<details\b[^>]*>[\s\S]*?<
 
 test('human evidence requests replace historical automatic routing as current work', async () => {
   const html = await render([run({
-    review_state: 'partially_reviewed', effective_risk: 'high',
-    pending_review_targets: ['cause'],
-    pending_items: [{ route: 'needs_evidence', reason: '请补充 <contract> 原件', target: 'cause', cause_category: 'retrieval', review_id: 'review-1', reviewer_id: 'reviewer-7', created_at: '2026-10-02T08:00:00Z' }],
+    review_state: 'needs_more_evidence', effective_risk: 'high',
+    pending_review_targets: ['answer'],
+    pending_items: [{ route: 'needs_evidence', reason: '请补充 <contract> 原件', target: 'answer', review_id: 'review-1', reviewer_id: 'reviewer-7', created_at: '2026-10-02T08:00:00Z' }],
   })])
   const current = currentContent(html)
   assert.match(current, /请补充 &lt;contract&gt; 原件/)
@@ -108,8 +108,8 @@ test('human evidence requests replace historical automatic routing as current wo
   assert.match(current, /人工补证要求/)
   assert.match(current, /复核人[^<]*reviewer-7/)
   assert.match(current, /2026\/10\/2/)
-  assert.match(current, /待复核[^<]*根因判断/)
-  assert.doesNotMatch(current, /待复核[^<]*回答判定/)
+  assert.match(current, /待复核[^<]*回答判定/)
+  assert.doesNotMatch(current, /待复核[^<]*根因判断/)
   assert.doesNotMatch(current, /机器自动记录|原始自动记录理由/)
   assert.equal(html.match(/原始自动记录理由/g)?.length, 1)
   assert.match(html, /<details\b(?![^>]*\bopen)[^>]*>[\s\S]*原始机器分流[\s\S]*机器自动记录/)

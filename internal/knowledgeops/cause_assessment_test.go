@@ -79,7 +79,7 @@ func TestUnlinkedGenerationAssessmentCannotAutoRecordOrBeConfirmed(t *testing.T)
 	require.NoError(t, err, "one inconsistent attribution must not discard the valid answer assessment")
 	require.Equal(t, "supported", a.Report.Verdict)
 	require.Equal(t, "human_review", a.Route)
-	require.Equal(t, "生成归因缺少对应的异常论断，需核实诊断", a.RouteReason)
+	require.Equal(t, "自动诊断依据不足，需结合原问题和证据复核回答", a.RouteReason)
 	require.Empty(t, groupKey(Run{TenantID: 1}, r, []Evidence{{KBID: "kb", Version: "v1", SentToModel: true}}))
 	_, repo, _ := workbenchFixture(t)
 	seedWorkbench(t, repo, "run", "low", "human_review", "", 0)
@@ -87,7 +87,10 @@ func TestUnlinkedGenerationAssessmentCannotAutoRecordOrBeConfirmed(t *testing.T)
 	review := Review{RunID: "run", AnalysisID: "run-a", Target: "cause", Verdict: "evidence_backed", CauseCategory: "generation", Action: "confirmed", Reason: "review", ReviewerID: "u", CreatedAt: time.Now()}
 	require.ErrorIs(t, repo.AddReview(context.Background(), 1, &review), ErrInvalid)
 	review.Action = "corrected"
-	require.NoError(t, repo.AddReview(context.Background(), 1, &review), "an explicit human correction remains possible")
+	require.ErrorIs(t, repo.AddReview(context.Background(), 1, &review), ErrInvalid)
+	review.Target = "answer"
+	review.Verdict = "partial"
+	require.NoError(t, repo.AddReview(context.Background(), 1, &review), "answer corrections remain possible")
 }
 
 func TestUnlinkedLegacyAttributionsAreNotGrouped(t *testing.T) {

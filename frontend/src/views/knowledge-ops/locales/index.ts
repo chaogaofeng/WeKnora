@@ -124,14 +124,12 @@ const en: Record<string, string> = {
   causeCountsNotice:
     'Click a category to view matching runs. Unlinked generation attributions are excluded; candidates are not confirmed causes.',
   viewRelatedRuns: 'View runs',
-  unlinkedCauses: 'Attribution consistency needs verification',
+  unlinkedCauses: 'Automatic diagnosis limitations',
   unlinkedCauseShort:
-    'Generation attribution has no corresponding problem claim; excluded from cause counts. Open the diagnosis to verify.',
+    'Generation attribution has no corresponding problem claim and is excluded from cause counts. Review the answer against its evidence.',
   unlinkedCauseNotice:
-    'The report names a generation cause but identifies no partial, unsupported or contradicted claim. The attribution is excluded from cause counts and confirmation; the original report is preserved. Retry diagnosis or review the answer. This check does not establish that the answer is correct.',
+    'The report names a generation cause but identifies no partial, unsupported or contradicted claim. The attribution is excluded from cause counts; the original report is preserved. Retry diagnosis or review the answer. This check does not establish that the answer is correct.',
   originalAttributions: 'Original model attributions',
-  noQualifiedCause:
-    'No candidate passes the consistency check. Verify the attribution above; you can add a cause correction when needed.',
   auditedSourceNotice:
     'These materials were captured for this diagnosis attempt and explicitly linked by the server. A failed diagnosis does not prove the model consumed them. They cannot establish support available at answer time.',
   sourceKBAndDocument: 'KB / Document',
@@ -172,14 +170,12 @@ const en: Record<string, string> = {
     'No source comparison materials are explicitly linked to this report.',
   diagnosisLimitations: 'Limitations recorded in the report',
   humanDecision: 'Human review',
+  automaticCauses: 'Automatic cause analysis',
+  automaticCausesNotice: 'System-generated causes and evidence explain potential answer problems. This information is read-only and requires no separate review.',
+  reviewAgain: 'Review answer again',
   reviewBoundVersion: 'Reviewing diagnosis',
   answerReviewKeepsSourceOpen:
     'Confirming the answer records its support assessment; outstanding source verification stays in the source verification queue.',
-  noCauseReviewNeeded:
-    'No root cause candidate was reported; a root cause review is not required.',
-  noCauseAfterFailure:
-    'The diagnosis did not complete and has no root cause conclusion.',
-  addCauseCorrection: 'Add a human root cause assessment',
   noReviewHistory: 'No human review has been recorded.',
   originalEvidenceNotice:
     'Saved source content available to the answer model. Follow a claim reference to locate the corresponding item.',
@@ -318,7 +314,7 @@ const en: Record<string, string> = {
   queueStats: 'Outstanding work · queues can overlap',
   sampleStats: 'Quality sampling · latest diagnoses',
   sampleTotal: 'Selected runs',
-  sampleReviewed: 'Required reviews completed',
+  sampleReviewed: 'Answer reviews completed',
   sampleCorrected: 'Runs with a human correction',
   sampleNotice:
     'Descriptive counts only; corrections are not a calibrated false-negative rate. Automatic records are machine conclusions.',
@@ -511,7 +507,6 @@ const en: Record<string, string> = {
   notTruncated: 'Not truncated',
   evidenceMissing: 'Referenced evidence is unavailable',
   answerReview: 'Review answer verdict',
-  causeReview: 'Review root cause conclusion',
   reviewAction: 'Review action',
   reviewReason: 'Review reason / required evidence',
   confirmCurrentVerdict: 'Confirm the current assessment',
@@ -519,7 +514,7 @@ const en: Record<string, string> = {
   reviewNoteOptional: 'Additional notes (optional)',
   reviewNoteOptionalHint: 'You can confirm without a note, or add details if needed.',
   reviewReasonRequired: 'Review reason / required evidence (required)',
-  submit: 'Save this review',
+  submit: 'Save answer review',
   saved: 'Review appended',
   reasonRequired: 'Enter a review reason.',
   reviewer: 'Reviewer',
@@ -528,7 +523,7 @@ const en: Record<string, string> = {
   created: 'Reviewed at',
   reviewHistory: 'Human review history',
   reviewNotice:
-    'Answer and cause are reviewed independently. Each save appends one record for the current analysis.',
+    'Review only the answer verdict. Cause analysis is provided by the system; saving a confirmation or correction completes this answer review.',
   save: 'Save settings',
   saving: 'Saving…',
   auto_record_enabled: 'Enable calibrated automatic recording',
@@ -596,7 +591,7 @@ const en: Record<string, string> = {
   medium: 'Medium',
   high: 'High',
   answerTarget: 'Answer',
-  causeTarget: 'Root cause',
+  causeTarget: 'Historical cause review',
   previous: 'Previous',
   next: 'Next',
   page: 'Page',
@@ -745,15 +740,13 @@ const zh: Record<string, string> = {
     '仅统计最新诊断成功的问答；核验回答所用 Wiki 与关联原文是否一致。尚未完成核验不代表发现错误；纯 RAG 无 Wiki 对照时不适用。',
   captureQuality: '正文采集与来源追溯',
   causeCountsNotice:
-    '点击类别查看对应问答；缺少异常论断的生成归因不计入，候选仍需人工确认。',
+    '点击类别查看对应问答；缺少异常论断的生成归因不计入，候选为系统分析的可能原因，不等于已确认事实。',
   viewRelatedRuns: '查看问答',
-  unlinkedCauses: '归因一致性待核实',
-  unlinkedCauseShort: '生成归因缺少异常论断，未计入根因统计，请查看诊断核实。',
+  unlinkedCauses: '自动诊断依据不足',
+  unlinkedCauseShort: '生成归因缺少异常论断，未计入原因统计；请结合证据复核回答。',
   unlinkedCauseNotice:
-    '报告列出了回答生成归因，却没有部分支持、不支持或矛盾的异常论断，因此不计入根因统计，也不能直接确认该归因。原始报告已保留，可重试诊断或核查回答；这不代表回答已被证明正确。',
+    '报告列出了回答生成归因，却没有部分支持、不支持或矛盾的异常论断，因此不计入原因统计，不作为已确认原因。原始报告已保留，可重试诊断或核查回答；这不代表回答已被证明正确。',
   originalAttributions: '模型原始归因',
-  noQualifiedCause:
-    '暂无通过一致性检查的根因候选；请核实上方归因，必要时可主动补充根因纠正。',
   auditedSourceNotice:
     '这些材料由服务端明确关联到本次诊断补查；诊断失败时不代表模型已处理这些材料，事后材料也不能反向证明回答生成时已有依据。',
   sourceKBAndDocument: '知识库 / 文档',
@@ -791,12 +784,12 @@ const zh: Record<string, string> = {
   noBoundSourceEvidence: '暂无与本版报告明确关联的来源对照材料。',
   diagnosisLimitations: '报告记录的限制与未知项',
   humanDecision: '人工复核',
+  automaticCauses: '自动原因分析',
+  automaticCausesNotice: '系统结合证据分析回答问题的可能原因，供复核回答时参考，无需单独确认。',
+  reviewAgain: '重新复核回答',
   reviewBoundVersion: '本次复核绑定诊断',
   answerReviewKeepsSourceOpen:
     '确认回答仅记录支持性结论；来源未决事项仍保留在来源待核验队列。',
-  noCauseReviewNeeded: '本版未发现需要复核的根因候选，无需填写根因复核。',
-  noCauseAfterFailure: '诊断未完成，尚未形成根因结论。',
-  addCauseCorrection: '补充人工根因判断',
   noReviewHistory: '暂无人工复核记录。',
   originalEvidenceNotice:
     '回答生成时模型可见的已保存来源正文；点击论断中的引用可直接定位对应材料。',
@@ -927,7 +920,7 @@ const zh: Record<string, string> = {
   queueStats: '当前待办 · 不同队列可重叠',
   sampleStats: '分层抽检 · 最新诊断',
   sampleTotal: '纳入抽检',
-  sampleReviewed: '所需复核已完成',
+  sampleReviewed: '回答复核已完成',
   sampleCorrected: '发生人工纠正的回答',
   sampleNotice:
     '这里只展示计数；人工纠正不等于已校准的漏报率。自动记录始终保留机器结论身份。',
@@ -1108,7 +1101,6 @@ const zh: Record<string, string> = {
   notTruncated: '未截断',
   evidenceMissing: '引用证据不可用',
   answerReview: '回答判定复核',
-  causeReview: '根因结论复核',
   reviewAction: '复核动作',
   reviewReason: '复核理由 / 所需材料',
   confirmCurrentVerdict: '确认当前判定',
@@ -1116,7 +1108,7 @@ const zh: Record<string, string> = {
   reviewNoteOptional: '补充说明（选填）',
   reviewNoteOptionalHint: '可直接确认；如有补充说明，可在此填写。',
   reviewReasonRequired: '复核理由 / 所需材料（必填）',
-  submit: '保存本项复核',
+  submit: '保存回答复核',
   saved: '复核已追加保存',
   reasonRequired: '请填写复核理由。',
   reviewer: '复核人',
@@ -1124,7 +1116,7 @@ const zh: Record<string, string> = {
   analysisID: '分析版本 ID',
   created: '复核时间',
   reviewHistory: '人工复核历史',
-  reviewNotice: '回答与根因分别复核，每次保存只追加当前分析版本的一项记录。',
+  reviewNotice: '仅需复核回答判定，原因由系统自动分析。确认或修正后即完成本次回答复核。',
   save: '保存设置',
   saving: '保存中…',
   auto_record_enabled: '启用经校准的自动记录',
@@ -1188,7 +1180,7 @@ const zh: Record<string, string> = {
   medium: '中',
   high: '高',
   answerTarget: '回答',
-  causeTarget: '根因',
+  causeTarget: '历史根因复核',
   previous: '上一页',
   next: '下一页',
   page: '页码',

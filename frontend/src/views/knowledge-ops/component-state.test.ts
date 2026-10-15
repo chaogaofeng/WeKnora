@@ -39,7 +39,6 @@ function setup(
     'saveReview',
     'submit',
     'actionChanged',
-    'selectCandidate',
     'draft',
     'models',
     'notice',
@@ -89,6 +88,9 @@ function setup(
     'displaySourceCheck',
     'pendingEvidenceRequests',
     'pendingReviewTargets',
+    'answerReview',
+    'answerReviewComplete',
+    'showReviewEditor',
     'rewrite',
     'rewriteStatus',
     'searchQueries',
@@ -264,7 +266,7 @@ test('an invalid period preserves the selected group and does not reload', () =>
   h.stop()
 })
 
-test('detail uses current work fields only for the latest analysis and keeps open cause requests visible', async () => {
+test('detail shows only current answer evidence requests and leaves historical cause notes in the audit', async () => {
   const latest = { id: 'latest', version: 2, report: { risk: 'low', source_check: 'not_checked' } }
   const historical = { id: 'old', version: 1, report: { risk: 'medium', source_check: 'unresolved' } }
   const h = setup('DetailDrawer.vue', vue.reactive({ runID: 'A', enabled: true }), {
@@ -272,10 +274,11 @@ test('detail uses current work fields only for the latest analysis and keeps ope
       ...detail('A'),
       run: {
         id: 'A', analysis: latest, effective_risk: 'high', source_check_display: 'not_applicable',
-        pending_review_targets: ['cause'],
+        pending_review_targets: ['answer', 'cause'],
         pending_items: [
           { route: 'source_verification', reason: 'source unknown' },
           { route: 'needs_evidence', target: 'cause', cause_category: 'retrieval', review_id: 'request-1', reason: 'missing retrieval logs' },
+          { route: 'needs_evidence', target: 'answer', review_id: 'request-2', reason: 'missing original terms' },
         ],
       },
       analyses: [latest, historical],
@@ -285,13 +288,39 @@ test('detail uses current work fields only for the latest analysis and keeps ope
   assert.equal(h.api.effectiveRisk?.value, 'high')
   assert.equal(h.api.displaySourceCheck?.value, 'not_applicable')
   assert.equal(h.api.pendingEvidenceRequests?.value.length, 1)
-  assert.equal(h.api.pendingEvidenceRequests.value[0].reason, 'missing retrieval logs')
-  assert.deepEqual(Array.from(h.api.pendingReviewTargets.value), ['cause'])
+  assert.equal(h.api.pendingEvidenceRequests.value[0].reason, 'missing original terms')
+  assert.deepEqual(Array.from(h.api.pendingReviewTargets.value), ['answer'])
   h.api.selectedID.value = 'old'
   assert.equal(h.api.effectiveRisk.value, 'medium')
   assert.equal(h.api.displaySourceCheck.value, 'unresolved')
   assert.equal(h.api.pendingEvidenceRequests.value.length, 0)
   assert.equal(h.api.pendingReviewTargets.value.length, 0)
+  h.stop()
+})
+
+test('a completed answer review can collapse independently of automatic causes and legacy cause reviews', async () => {
+  const analysis = { id: 'latest', version: 2, report: { verdict: 'unverifiable', causes: [{ category: 'capture', status: 'unresolved', summary: 'Missing source content' }] } }
+  const h = setup('DetailDrawer.vue', vue.reactive({ runID: 'A', enabled: true }), {
+    getOpsDetail: async () => ({
+      ...detail('A'),
+      run: { id: 'A', analysis, review_state: 'reviewed' },
+      analyses: [analysis, { id: 'old', version: 1, report: {} }],
+      reviews: [
+        { id: 'old-cause', analysis_id: 'latest', target: 'cause', action: 'needs_more_evidence', verdict: 'unresolved' },
+        { id: 'answer', analysis_id: 'latest', target: 'answer', action: 'corrected', verdict: 'partial', reason: 'Missing condition' },
+      ],
+    }),
+  })
+  await setImmediate()
+  assert.equal(h.api.answerReviewComplete?.value, true)
+  assert.equal(h.api.answerReview?.value.verdict, 'partial')
+  assert.equal(h.api.showReviewEditor?.value, false)
+  assert.equal(h.api.causeCandidates.value[0].summary, 'Missing source content', 'Automatic reasons remain available')
+  h.api.showReviewEditor.value = true
+  h.api.selectedID.value = 'old'
+  await vue.nextTick()
+  assert.equal(h.api.answerReviewComplete.value, false, 'A review cannot carry across analysis versions')
+  assert.equal(h.api.showReviewEditor.value, false)
   h.stop()
 })
 const settings = (sample: number) => ({
@@ -840,39 +869,10 @@ test('retry completion and failure stay with the run that was retried', async ()
   }
 })
 
-test('a non-first machine cause can be confirmed without recording a correction', () => {
-  const causes = [
-    { category: 'generation', status: 'suspected', summary: 'First' },
-    { category: 'retrieval', status: 'evidence_backed', summary: 'Second' },
-  ]
-  const h = setup(
-    'ReviewForm.vue',
-    vue.reactive({
-      target: 'cause',
-      analysisID: 'v1',
-      initialVerdict: 'suspected',
-      initialCategory: 'generation',
-      machineCauses: causes,
-      disabled: false,
-      busy: false,
-    }),
-  )
-  h.api.selectCandidate?.('1')
-  h.api.draft.reason = 'Checked the second candidate'
-  h.api.submit()
-  const payload = h.events[0][1] as Record<string, string>
-  assert.equal(payload.action, 'confirmed')
-  assert.equal(payload.cause_category, 'retrieval')
-  assert.equal(payload.verdict, 'evidence_backed')
-  h.stop()
-})
-
 test('confirming a review permits an empty note without changing the machine assessment', () => {
-  for (const target of ['answer', 'cause']) {
-    const verdict = target === 'answer' ? 'partial' : 'suspected'
+  for (const verdict of ['supported', 'partial', 'unverifiable']) {
     const h = setup('ReviewForm.vue', {
-      target, analysisID: 'v1', initialVerdict: verdict, initialCategory: 'retrieval',
-      machineCauses: [{ category: 'retrieval', status: 'suspected', summary: 'Check retrieval' }],
+      analysisID: 'v1', initialVerdict: verdict,
       disabled: false, busy: false,
     })
     h.api.draft.reason = ' \n '
@@ -888,11 +888,9 @@ test('confirming a review permits an empty note without changing the machine ass
 })
 
 test('corrections and evidence requests still require explanations, with errors cleared on action change', () => {
-  for (const target of ['answer', 'cause']) {
+  for (const verdict of ['supported', 'partial', 'unverifiable']) {
     const h = setup('ReviewForm.vue', {
-      target, analysisID: 'v1', initialVerdict: target === 'answer' ? 'supported' : 'suspected',
-      initialCategory: 'retrieval',
-      machineCauses: [{ category: 'retrieval', status: 'suspected', summary: 'Check retrieval' }],
+      analysisID: 'v1', initialVerdict: verdict,
       disabled: false, busy: false,
     })
     for (const action of ['corrected', 'needs_more_evidence']) {
@@ -915,25 +913,6 @@ test('corrections and evidence requests still require explanations, with errors 
     assert.equal(h.events.length, 1)
     h.stop()
   }
-})
-
-test('an explicit manual cause addition starts as a correction without inventing a machine candidate', () => {
-  const h = setup(
-    'ReviewForm.vue',
-    vue.reactive({
-      target: 'cause',
-      analysisID: 'v2',
-      initialVerdict: 'unresolved',
-      initialAction: 'corrected',
-      machineCauses: [],
-      disabled: false,
-      busy: false,
-    }),
-  )
-  h.api.draft.reason = 'A human identifies a missing source linkage'
-  h.api.submit()
-  assert.equal((h.events[0][1] as any).action, 'corrected')
-  h.stop()
 })
 
 test('historical post-hoc materials follow explicit report references rather than the run archive', async () => {

@@ -14,7 +14,7 @@ func TestReviewReasonOptionalOnlyForConfirmation(t *testing.T) {
 		valid                                 bool
 	}{
 		{"confirm answer", "answer", "confirmed", "partial", "", true},
-		{"confirm cause", "cause", "confirmed", "suspected", " \n\t ", true},
+		{"confirm cause", "cause", "confirmed", "suspected", " \n\t ", false},
 		{"optional note", "answer", "confirmed", "partial", " checked evidence ", true},
 		{"cannot silently correct", "answer", "confirmed", "supported", "", false},
 		{"correct answer", "answer", "corrected", "supported", "", false},
@@ -22,7 +22,7 @@ func TestReviewReasonOptionalOnlyForConfirmation(t *testing.T) {
 		{"request answer evidence", "answer", "needs_more_evidence", "unverifiable", "", false},
 		{"request cause evidence", "cause", "needs_more_evidence", "unresolved", " \n ", false},
 		{"explained correction", "answer", "corrected", "supported", " checked the attachment ", true},
-		{"explained evidence request", "cause", "needs_more_evidence", "unresolved", " provide the original ", true},
+		{"explained evidence request", "answer", "needs_more_evidence", "unverifiable", " provide the original ", true},
 		{"optional note still bounded", "answer", "confirmed", "partial", strings.Repeat("证", 1334), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

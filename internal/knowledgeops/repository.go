@@ -130,7 +130,8 @@ func (r *Repository) SaveAnalysis(ctx context.Context, t Task, a Analysis) error
 }
 func (r *Repository) AddReview(ctx context.Context, tenant uint64, v *Review) error {
 	v.Reason = strings.TrimSpace(v.Reason)
-	if v.Target != "answer" && v.Target != "cause" || v.ReviewerID == "" || len(v.Reason) > 4000 {
+	v.CauseCategory = "" // New reviews only assess answers; legacy cause rows are read-only.
+	if v.Target != "answer" || v.ReviewerID == "" || len(v.Reason) > 4000 {
 		return ErrInvalid
 	}
 	if v.Action != "confirmed" && v.Action != "corrected" && v.Action != "needs_more_evidence" {
@@ -140,15 +141,10 @@ func (r *Repository) AddReview(ctx context.Context, tenant uint64, v *Review) er
 		return ErrInvalid
 	}
 	allowed := map[string]bool{"supported": true, "partial": true, "contradicted": true, "unsupported": true, "unverifiable": true, "not_applicable": true}
-	if v.Action == "needs_more_evidence" && ((v.Target == "answer" && v.Verdict != "unverifiable") || (v.Target == "cause" && v.Verdict != "unresolved")) {
+	if v.Action == "needs_more_evidence" && v.Verdict != "unverifiable" {
 		return ErrInvalid
 	}
-	if v.Target == "cause" {
-		if !causeCategories[v.CauseCategory] {
-			return ErrInvalid
-		}
-		allowed = map[string]bool{"suspected": true, "evidence_backed": true, "unresolved": true}
-	}
+
 	if !allowed[v.Verdict] {
 		return ErrInvalid
 	}
@@ -164,21 +160,8 @@ func (r *Repository) AddReview(ctx context.Context, tenant uint64, v *Review) er
 		if err := tx.Model(&Analysis{}).Where("tenant_id = ? AND run_id = ? AND version > ?", tenant, v.RunID, a.Version).Count(&newer).Error; err != nil {
 			return err
 		}
-		if v.Action == "confirmed" {
-			if v.Target == "answer" && v.Verdict != a.Report.Verdict {
-				return ErrInvalid
-			}
-			if v.Target == "cause" {
-				matched := false
-				for _, cause := range assessCauses(a.Report).Candidates {
-					if cause.Category == v.CauseCategory && cause.Status == v.Verdict {
-						matched = true
-					}
-				}
-				if !matched {
-					return ErrInvalid
-				}
-			}
+		if v.Action == "confirmed" && v.Verdict != a.Report.Verdict {
+			return ErrInvalid
 		}
 		if newer > 0 {
 			return ErrStale

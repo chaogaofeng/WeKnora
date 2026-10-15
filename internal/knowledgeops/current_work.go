@@ -27,7 +27,6 @@ type currentWork struct {
 type reviewProgress struct {
 	state            string
 	answerDone       bool
-	causeDone        bool
 	evidenceRequests []Review
 }
 
@@ -36,48 +35,24 @@ func currentReviewProgress(d Detail) reviewProgress {
 	if a == nil {
 		return reviewProgress{state: "pending_analysis"}
 	}
-	hasCauses := len(assessCauses(a.Report).Candidates) > 0
-	progress := reviewProgress{causeDone: !hasCauses}
-	seenTargets, seenCauses := map[string]bool{}, map[string]bool{}
-	// Reviews arrive newest first. Overall completion still has only two
-	// conclusions; explicit requests additionally retain their own scope.
+	progress := reviewProgress{state: "unreviewed"}
+	// Only the newest answer review for this diagnosis controls completion.
+	// Legacy cause reviews remain in audit history, but are no longer tasks.
 	for _, review := range d.Reviews {
-		if review.AnalysisID != a.ID {
+		if review.AnalysisID != a.ID || review.Target != "answer" {
 			continue
 		}
-		if !seenTargets[review.Target] {
-			seenTargets[review.Target] = true
-			switch review.Target {
-			case "answer":
-				progress.answerDone = review.Action != "needs_more_evidence"
-			case "cause":
-				progress.causeDone = review.Action != "needs_more_evidence"
-			}
-			if review.Target == "answer" && review.Action == "needs_more_evidence" {
-				progress.evidenceRequests = append(progress.evidenceRequests, review)
-			}
+		if review.Action == "needs_more_evidence" {
+			progress.state = "needs_more_evidence"
+			progress.evidenceRequests = append(progress.evidenceRequests, review)
+		} else if review.Action == "confirmed" || review.Action == "corrected" {
+			progress.answerDone = true
+			progress.state = "reviewed"
 		}
-		if review.Target == "cause" && !seenCauses[review.CauseCategory] {
-			seenCauses[review.CauseCategory] = true
-			if review.Action == "needs_more_evidence" {
-				progress.evidenceRequests = append(progress.evidenceRequests, review)
-			}
-		}
+		return progress
 	}
-	for _, request := range progress.evidenceRequests {
-		if request.Target == "cause" {
-			progress.causeDone = false
-		}
-	}
-	switch {
-	case nonKnowledgeRun(d.Run) && len(seenTargets) == 0:
+	if nonKnowledgeRun(d.Run) {
 		progress.state = "not_required"
-	case progress.answerDone && progress.causeDone:
-		progress.state = "reviewed"
-	case progress.answerDone || progress.causeDone && hasCauses:
-		progress.state = "partially_reviewed"
-	default:
-		progress.state = "unreviewed"
 	}
 	return progress
 }
@@ -103,9 +78,6 @@ func deriveCurrentWork(d Detail) currentWork {
 		work.Items = append(work.Items, PendingItem{Route: a.Route, Reason: reason})
 		if !progress.answerDone {
 			work.PendingReviewTargets = append(work.PendingReviewTargets, "answer")
-		}
-		if !progress.causeDone {
-			work.PendingReviewTargets = append(work.PendingReviewTargets, "cause")
 		}
 	}
 	for _, request := range progress.evidenceRequests {

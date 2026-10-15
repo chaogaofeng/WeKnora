@@ -35,78 +35,6 @@ func saveWorkbenchReport(t *testing.T, repo *Repository, id string, report Repor
 	require.NoError(t, repo.db.Model(&Analysis{}).Where("id = ?", id).Update("report", string(body)).Error)
 }
 
-func TestPendingCauseEvidenceClosesOnlyForSameCategory(t *testing.T) {
-	_, repo, engine := workbenchFixture(t)
-	seedWorkbench(t, repo, "case", "low", "human_review", "g", 1)
-	saveWorkbenchReport(t, repo, "case-a", Report{Verdict: "supported", SourceCheck: "consistent", Risk: "low", Causes: []Cause{{Category: "retrieval", Status: "suspected"}, {Category: "applicability", Status: "suspected"}}})
-	postWorkbenchReview(t, engine, "case", Review{AnalysisID: "case-a", Target: "answer", Action: "confirmed", Verdict: "supported", Reason: "checked answer"})
-	postWorkbenchReview(t, engine, "case", Review{AnalysisID: "case-a", Target: "cause", CauseCategory: "retrieval", Action: "needs_more_evidence", Verdict: "unresolved", Reason: "old request"})
-	request := postWorkbenchReview(t, engine, "case", Review{AnalysisID: "case-a", Target: "cause", CauseCategory: "retrieval", Action: "needs_more_evidence", Verdict: "unresolved", Reason: "retrieval log still needed"})
-	postWorkbenchReview(t, engine, "case", Review{AnalysisID: "case-a", Target: "cause", CauseCategory: "applicability", Action: "confirmed", Verdict: "suspected", Reason: "confirmed this candidate"})
-
-	require.EqualValues(t, 1, workbenchGET(t, engine, "/runs?view=queue&route=needs_evidence")["total"], "a different cause cannot close the retrieval request")
-	run := workbenchGET(t, engine, "/runs/case")["run"].(map[string]any)
-	require.Equal(t, "partially_reviewed", run["review_state"])
-	require.Equal(t, []any{"cause"}, run["pending_review_targets"])
-	items := run["pending_items"].([]any)
-	require.Len(t, items, 2)
-	item := items[1].(map[string]any)
-	require.Equal(t, map[string]any{"route": "needs_evidence", "reason": "retrieval log still needed", "target": "cause", "cause_category": "retrieval", "review_id": request["id"], "reviewer_id": "reviewer", "created_at": request["created_at"]}, item)
-
-	postWorkbenchReview(t, engine, "case", Review{AnalysisID: "case-a", Target: "cause", CauseCategory: "retrieval", Action: "corrected", Verdict: "evidence_backed", Reason: "retrieval log supplied"})
-	run = workbenchGET(t, engine, "/runs/case")["run"].(map[string]any)
-	require.Equal(t, "reviewed", run["review_state"])
-	require.Equal(t, []any{}, run["pending_items"])
-	require.Equal(t, []any{}, run["pending_review_targets"])
-	require.EqualValues(t, 0, workbenchGET(t, engine, "/groups")["total"])
-}
-
-func TestPendingCauseRequestsAreIndependentWithoutRequiringAllCandidates(t *testing.T) {
-	a := &Analysis{ID: "a", Route: "human_review", Report: Report{SourceCheck: "consistent", Causes: []Cause{{Category: "retrieval"}, {Category: "applicability"}, {Category: "generation"}}}}
-	d := Detail{Run: Run{Analysis: a}, Reviews: []Review{
-		{AnalysisID: "a", Target: "cause", CauseCategory: "applicability", Action: "confirmed"},
-		{AnalysisID: "a", Target: "cause", CauseCategory: "applicability", Action: "needs_more_evidence"},
-		{AnalysisID: "a", Target: "cause", CauseCategory: "retrieval", Action: "needs_more_evidence"},
-		{AnalysisID: "a", Target: "answer", Action: "confirmed"},
-	}}
-	require.Equal(t, "partially_reviewed", reviewState(d))
-	require.Contains(t, queueRoutes(d), "needs_evidence")
-	d.Reviews = append([]Review{{AnalysisID: "a", Target: "cause", CauseCategory: "retrieval", Action: "confirmed"}}, d.Reviews...)
-	require.Equal(t, "reviewed", reviewState(d), "two overall conclusions suffice; no review of every candidate is required")
-	require.Empty(t, queueRoutes(d))
-}
-
-func TestExplicitCauseRequestsRemainActionableWithoutMachineCandidates(t *testing.T) {
-	_, repo, engine := workbenchFixture(t)
-	seedWorkbench(t, repo, "auto", "low", "auto_record", "", 0)
-	postWorkbenchReview(t, engine, "auto", Review{AnalysisID: "auto-a", Target: "answer", Action: "confirmed", Verdict: "supported", Reason: "answer checked"})
-	postWorkbenchReview(t, engine, "auto", Review{AnalysisID: "auto-a", Target: "cause", CauseCategory: "retrieval", Action: "needs_more_evidence", Verdict: "unresolved", Reason: "need retrieval log"})
-	postWorkbenchReview(t, engine, "auto", Review{AnalysisID: "auto-a", Target: "cause", CauseCategory: "applicability", Action: "needs_more_evidence", Verdict: "unresolved", Reason: "need product scope"})
-	run := workbenchGET(t, engine, "/runs/auto")["run"].(map[string]any)
-	require.Equal(t, "partially_reviewed", run["review_state"])
-	require.Equal(t, []any{"cause"}, run["pending_review_targets"])
-	items := run["pending_items"].([]any)
-	require.Len(t, items, 2)
-	categories := []any{}
-	for _, item := range items {
-		task := item.(map[string]any)
-		require.Equal(t, "needs_evidence", task["route"], "automatic recording is not an active task")
-		categories = append(categories, task["cause_category"])
-	}
-	require.ElementsMatch(t, []any{"retrieval", "applicability"}, categories)
-	stats := workbenchGET(t, engine, "/overview")
-	require.EqualValues(t, 1, stats["pending_runs"])
-	require.Equal(t, map[string]any{"needs_evidence": float64(1)}, stats["queue_counts"], "multiple requests in one queue count the run once")
-
-	postWorkbenchReview(t, engine, "auto", Review{AnalysisID: "auto-a", Target: "cause", CauseCategory: "applicability", Action: "corrected", Verdict: "evidence_backed", Reason: "product scope supplied"})
-	run = workbenchGET(t, engine, "/runs/auto")["run"].(map[string]any)
-	items = run["pending_items"].([]any)
-	require.Len(t, items, 1)
-	require.Equal(t, "retrieval", items[0].(map[string]any)["cause_category"])
-	postWorkbenchReview(t, engine, "auto", Review{AnalysisID: "auto-a", Target: "cause", CauseCategory: "retrieval", Action: "corrected", Verdict: "evidence_backed", Reason: "retrieval log supplied"})
-	require.EqualValues(t, 0, workbenchGET(t, engine, "/runs?view=queue")["total"])
-}
-
 func TestIndependentTasksDoNotRequireHumanConclusions(t *testing.T) {
 	for _, route := range []string{"source_verification", "technical_followup"} {
 		t.Run(route, func(t *testing.T) {
@@ -130,7 +58,7 @@ func TestIndependentTasksDoNotRequireHumanConclusions(t *testing.T) {
 func TestPendingWorkIgnoresPreviousAnalysisReviews(t *testing.T) {
 	_, repo, engine := workbenchFixture(t)
 	seedWorkbench(t, repo, "case", "low", "human_review", "", 1)
-	postWorkbenchReview(t, engine, "case", Review{AnalysisID: "case-a", Target: "cause", CauseCategory: "retrieval", Action: "needs_more_evidence", Verdict: "unresolved", Reason: "old retrieval question"})
+	postWorkbenchReview(t, engine, "case", Review{AnalysisID: "case-a", Target: "answer", Action: "needs_more_evidence", Verdict: "unverifiable", Reason: "old retrieval question"})
 	require.NoError(t, repo.db.Create(&Analysis{ID: "case-new", TenantID: 1, RunID: "case", Version: 2, Status: "succeeded", Route: "auto_record", Report: Report{Risk: "low", Verdict: "supported", SourceCheck: "consistent"}, CreatedAt: time.Now()}).Error)
 	run := workbenchGET(t, engine, "/runs/case")["run"].(map[string]any)
 	require.Equal(t, "unreviewed", run["review_state"])
@@ -138,7 +66,7 @@ func TestPendingWorkIgnoresPreviousAnalysisReviews(t *testing.T) {
 	require.Equal(t, []any{}, run["pending_review_targets"])
 	require.EqualValues(t, 0, workbenchGET(t, engine, "/runs?view=queue")["total"])
 	require.EqualValues(t, 0, workbenchGET(t, engine, "/overview")["pending_runs"])
-	stale := Review{RunID: "case", AnalysisID: "case-a", Target: "cause", CauseCategory: "retrieval", Action: "corrected", Verdict: "evidence_backed", Reason: "old decision", ReviewerID: "reviewer"}
+	stale := Review{RunID: "case", AnalysisID: "case-a", Target: "answer", Action: "corrected", Verdict: "partial", Reason: "old decision", ReviewerID: "reviewer"}
 	require.ErrorIs(t, repo.AddReview(context.Background(), 1, &stale), ErrStale)
 }
 

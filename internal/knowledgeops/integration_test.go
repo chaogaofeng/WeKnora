@@ -153,7 +153,7 @@ func TestHTTPPermissionsHideCountsAndBodies(t *testing.T) {
 }
 func TestReviewLatestDecisionControlsQueue(t *testing.T) {
 	d := Detail{Run: Run{Analysis: &Analysis{ID: "a"}}, Reviews: []Review{{AnalysisID: "a", Target: "answer", Action: "needs_more_evidence"}, {AnalysisID: "a", Target: "answer", Action: "confirmed"}}}
-	require.Equal(t, "unreviewed", reviewState(d))
+	require.Equal(t, "needs_more_evidence", reviewState(d))
 }
 
 func TestHighRiskFailureRemainsBusinessReviewAndTechnicalFilter(t *testing.T) {

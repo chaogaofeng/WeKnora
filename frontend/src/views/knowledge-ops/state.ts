@@ -2,34 +2,22 @@ import type {
   OpsFilters,
   ReviewAction,
   ReviewInput,
-  ReviewTarget,
 } from '../../api/knowledge-ops'
 export interface ReviewDraft {
   verdict: string
   action: ReviewAction
   reason: string
-  cause_category?: string
 }
-export function createReviewDrafts(): Record<ReviewTarget, ReviewDraft> {
-  return {
-    answer: { verdict: 'unverifiable', action: 'confirmed', reason: '' },
-    cause: { verdict: 'unresolved', action: 'confirmed', reason: '' },
-  }
+export function createReviewDraft(): ReviewDraft {
+  return { verdict: 'unverifiable', action: 'confirmed', reason: '' }
 }
-export function reviewPayload(
-  target: ReviewTarget,
-  draft: ReviewDraft,
-  analysisID: string,
-): ReviewInput {
+export function reviewPayload(draft: ReviewDraft, analysisID: string): ReviewInput {
   return {
-    target,
+    target: 'answer',
     analysis_id: analysisID,
     verdict: draft.verdict,
     action: draft.action,
     reason: draft.reason.trim(),
-    ...(target === 'cause'
-      ? { cause_category: draft.cause_category || 'unknown' }
-      : {}),
   }
 }
 export function buildFilters(values: Record<string, string>): OpsFilters {
@@ -50,7 +38,6 @@ export const answerVerdicts = [
   'unverifiable',
   'not_applicable',
 ]
-export const causeVerdicts = ['suspected', 'evidence_backed', 'unresolved']
 export const routes = [
   'not_required',
   'auto_record',
@@ -61,17 +48,11 @@ export const routes = [
   'source_verification',
 ]
 export function applyReviewAction(
-  target: ReviewTarget,
   draft: ReviewDraft,
   action: ReviewAction,
   machineVerdict: string,
-  machineCategory = 'unknown',
 ): void {
   draft.action = action
-  if (action === 'needs_more_evidence')
-    draft.verdict = target === 'answer' ? 'unverifiable' : 'unresolved'
-  if (action === 'confirmed') {
-    draft.verdict = machineVerdict
-    if (target === 'cause') draft.cause_category = machineCategory
-  }
+  if (action === 'needs_more_evidence') draft.verdict = 'unverifiable'
+  if (action === 'confirmed') draft.verdict = machineVerdict
 }
