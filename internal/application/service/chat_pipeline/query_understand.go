@@ -30,6 +30,7 @@ type queryUnderstandOutput struct {
 	RewriteQuery     string            `json:"rewrite_query"`
 	Intent           types.QueryIntent `json:"intent"`
 	ImageDescription string            `json:"image_description"`
+	NeedsRetrieval   *bool             `json:"needs_retrieval,omitempty"`
 }
 
 // NewPluginQueryUnderstand creates a new query-understanding plugin instance
@@ -328,7 +329,7 @@ func (p *PluginQueryUnderstand) buildPrompts(
 		"language":     chatManage.Language,
 	}
 
-	return types.RenderPromptPlaceholders(systemPrompt, vals),
+	return types.RenderPromptPlaceholders(systemPrompt, vals) + followUpRetrievalPrompt,
 		types.RenderPromptPlaceholders(userPrompt, vals)
 }
 
@@ -398,7 +399,7 @@ func (p *PluginQueryUnderstand) parseOutput(chatManage *types.ChatManage, raw st
 		if rewrite := strings.TrimSpace(output.RewriteQuery); rewrite != "" {
 			chatManage.RewriteQuery = rewrite
 		}
-		chatManage.Intent = output.Intent
+		chatManage.Intent = followUpIntent(output, chatManage)
 		chatManage.ImageDescription = strings.TrimSpace(output.ImageDescription)
 		return strings.TrimSpace(output.RewriteQuery) != ""
 	}
@@ -439,6 +440,11 @@ func parseStructuredQueryOutputJSON(content string) (queryUnderstandOutput, bool
 	out := queryUnderstandOutput{
 		RewriteQuery: strings.TrimSpace(firstStringField(obj,
 			"rewrite_query", "rewritten_query", "query", "question")),
+	}
+	// Accept only a JSON boolean; a missing/malformed flag keeps the safe default.
+	var needsRetrieval *bool
+	if err := json.Unmarshal(obj["needs_retrieval"], &needsRetrieval); err == nil {
+		out.NeedsRetrieval = needsRetrieval
 	}
 
 	intentStr := strings.TrimSpace(firstStringField(obj, "intent"))

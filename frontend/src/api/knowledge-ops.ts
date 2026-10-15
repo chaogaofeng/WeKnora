@@ -35,7 +35,7 @@ export interface OpsReport {
   analysis_audit?: {
     attempts: number
     validation_issues?: { attempt: number; code: string; reason: string }[]
-    history?: { status: string; run_ids?: string[]; turn_ids?: string[] }
+    history?: { status: string; run_ids?: string[]; turn_ids?: string[]; context_gaps?: string[] }
   }
   applicability?: 'knowledge' | 'non_knowledge' | 'unknown'
   applicability_reason?: string
@@ -99,6 +99,8 @@ export interface OpsCaptureCoverage {
   provenance_status: 'known' | 'pending' | 'unknown' | 'not_required'
   content_gaps: string[]
   provenance_gaps: string[]
+  content_reason?: 'not_provided'
+  context_gaps?: string[]
 }
 export interface OpsPendingItem {
   route: string
@@ -169,9 +171,11 @@ export interface OpsRun {
   analysis?: OpsAnalysis
 }
 export interface OpsQueryEvent {
-  kind: 'rewrite' | 'search'
+  kind: 'rewrite' | 'search' | 'retrieval'
   query: string
   status: string
+  intent?: string
+  reason?: string
   tool?: string
   tool_call_id?: string
   round?: number
@@ -188,6 +192,7 @@ export interface OpsQueryEvent {
 export interface OpsQueryContext {
   version: number
   rewrite?: OpsQueryEvent
+  retrieval?: OpsQueryEvent
   searches?: OpsQueryEvent[]
   truncated?: boolean
 }

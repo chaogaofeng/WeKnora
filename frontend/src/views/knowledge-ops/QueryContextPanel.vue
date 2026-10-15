@@ -32,6 +32,13 @@
       <p v-if="rewrite?.truncated || rewrite?.redacted || run.query_context.truncated" class="muted">
         {{ k('queryContextLimited') }}
       </p>
+      <p v-if="run.history_context?.ids_known && run.history_context.turns > 0" class="query-context-meta">
+        {{ k('queryGenerationHistoryBound') }}
+      </p>
+      <p v-if="retrieval?.status === 'skipped' || retrieval?.status === 'required'" class="query-context-meta">
+        {{ k(retrieval.status === 'skipped' ? 'queryRetrievalSkipped' : 'queryRetrievalRequired') }}
+        <span v-if="retrieval.reason === 'context_only_follow_up'"> · {{ k('queryRetrievalContextOnly') }}</span>
+      </p>
       <details v-if="searchQueries.length" class="search-queries">
         <summary>{{ k('querySearchCalls') }} · {{ searchQueries.length }}</summary>
         <p class="muted">{{ k('querySearchNotice') }}</p>
@@ -46,7 +53,7 @@
           </li>
         </ol>
       </details>
-      <p v-else class="muted">{{ k('querySearchNotRecorded') }}</p>
+      <p v-else-if="retrieval?.status !== 'skipped'" class="muted">{{ k('querySearchNotRecorded') }}</p>
       <p class="query-note">{{ k('queryJudgmentNotice') }}</p>
     </template>
   </section>
@@ -59,6 +66,7 @@ import { useOpsText } from './locales'
 const props = defineProps<{ run: OpsRun }>()
 const { k } = useOpsText()
 const rewrite = computed(() => props.run.query_context?.rewrite)
+const retrieval = computed(() => props.run.query_context?.retrieval)
 const rewriteStatus = computed(() => rewrite.value?.status || 'unrecorded')
 const searchQueries = computed(() => props.run.query_context?.searches || [])
 const showRewriteText = computed(() => rewrite.value?.status === 'rewritten')

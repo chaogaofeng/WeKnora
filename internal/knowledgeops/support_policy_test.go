@@ -59,6 +59,23 @@ func TestSupportDistinguishesVersionGapsFromContextLoss(t *testing.T) {
 	}
 }
 
+func TestIntentionalSourceAbsenceDoesNotClaimCaptureFailureOrKnowledgeSupport(t *testing.T) {
+	run := Run{Status: "completed", QAType: "rag-qa", Channel: "web", CaptureStatus: "missing",
+		Gaps:            []string{"no_visible_source", "history_source_permissions_unbound"},
+		QueryContext:    &capture.QuerySnapshot{Version: 1, Retrieval: &capture.QueryEvent{Kind: "retrieval", Status: "skipped"}},
+		HistoryContext:  &capture.HistorySnapshot{HistoryInput: capture.HistoryInput{Turns: 1, IDsKnown: true, TurnIDs: []string{"old"}}},
+		AnalysisHistory: &AnalysisHistory{Status: "complete", Turns: []AnalysisHistoryTurn{{TurnID: "old", Answer: "past"}}},
+	}
+	report := Report{Verdict: "supported", Risk: "low", Applicability: "knowledge", SourceCheck: "not_checked"}
+	applySupportPolicy(run, &report)
+	require.Equal(t, "unverifiable", report.Verdict)
+	require.Equal(t, "no_source_body_provided", report.VerdictAdjustment)
+	require.NotContains(t, report.Unknowns, "生成时上下文采集不完整，整体支持性结论受限")
+	route, reason := Triage(run, report, DefaultSettings(1))
+	require.Equal(t, "needs_evidence", route)
+	require.Contains(t, reason, "本轮跳过检索")
+}
+
 func TestVersionedCaptureAndOriginalVerdictSurviveStorage(t *testing.T) {
 	svc, repo := enabledTestService(t)
 	ctx := capture.Begin(context.Background(), svc, capture.Start{TenantID: 1, MessageID: "versioned", QAType: "rag-qa", Channel: "web", Question: "Q", StartedAt: time.Now()})

@@ -43,7 +43,7 @@ func validationReason(err error) string {
 func analyzeWithCorrection(ctx context.Context, model chat.Chat, body string, run Run, evidence []Evidence, settings Settings, result *Analysis) (bool, error) {
 	audit := &AnalysisAudit{History: historyAudit(run.AnalysisHistory)}
 	defer func() { result.Report.AnalysisAudit = audit }()
-	messages := []chat.Message{{Role: "system", Content: analysisPrompt}, {Role: "user", Content: body}}
+	messages := []chat.Message{{Role: "system", Content: analysisPrompt + analysisRetrievalContextPrompt}, {Role: "user", Content: body}}
 	for attempt := 1; attempt <= 2; attempt++ {
 		audit.Attempts = attempt
 		response, err := model.Chat(ctx, messages, &chat.ChatOptions{Temperature: 0, MaxTokens: settings.MaxOutputTokens, ToolChoice: "none"})

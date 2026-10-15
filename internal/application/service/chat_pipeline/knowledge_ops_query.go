@@ -17,3 +17,16 @@ func observeKnowledgeOpsRewrite(ctx context.Context, cm *types.ChatManage, next 
 		return next()
 	}
 }
+
+// Observe the decision at the retrieval stage, not at rewrite time: a rewrite
+// alone does not establish whether downstream retrieval was entered or skipped.
+func observeKnowledgeOpsRetrieval(ctx context.Context, cm *types.ChatManage) {
+	event := capture.QueryEvent{Kind: "retrieval", Status: "required", Intent: string(cm.Intent), Reason: "intent_requires_retrieval"}
+	if !cm.NeedsRetrieval() {
+		event.Status, event.Reason = "skipped", "intent_no_search"
+		if cm.Intent == types.IntentFollowUp {
+			event.Reason = "context_only_follow_up"
+		}
+	}
+	capture.RecordQuery(ctx, event)
+}

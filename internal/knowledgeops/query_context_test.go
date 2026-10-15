@@ -14,6 +14,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestRetrievalDecisionPersistsSeparatelyFromActualSearches(t *testing.T) {
+	s, repo := enabledTestService(t)
+	ctx := capture.Begin(context.Background(), s, capture.Start{TenantID: 1, MessageID: "retrieval-decision", StartedAt: time.Now()})
+	var decision capture.QueryEvent
+	require.NoError(t, json.Unmarshal([]byte(`{"kind":"retrieval","status":"skipped","intent":"follow_up","reason":"context_only_follow_up"}`), &decision))
+	capture.RecordQuery(ctx, decision)
+	capture.Finish(ctx, "recap", nil)
+	var run Run
+	require.NoError(t, repo.db.Where("message_id = ?", "retrieval-decision").Take(&run).Error)
+	body, _ := json.Marshal(run.QueryContext)
+	var snapshot struct {
+		Retrieval map[string]any `json:"retrieval"`
+	}
+	require.NoError(t, json.Unmarshal(body, &snapshot))
+	require.Equal(t, "skipped", snapshot.Retrieval["status"])
+	require.Equal(t, "follow_up", snapshot.Retrieval["intent"])
+	require.Empty(t, run.QueryContext.Searches, "decision metadata must not pretend a search was executed")
+}
+
 func TestQueryContextPersistsWithoutReplacingQuestionOrBecomingEvidence(t *testing.T) {
 	s, repo := enabledTestService(t)
 	ctx := capture.Begin(context.Background(), s, capture.Start{TenantID: 1, MessageID: "query-context", Question: "条件？", StartedAt: time.Now()})

@@ -1,6 +1,10 @@
 package knowledgeops
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/Tencent/WeKnora/internal/knowledgeops/capture"
+)
 
 // No claim is not sufficient: an unanswered knowledge request or an ambiguous
 // follow-up still needs diagnosis. The model must explicitly assess the task
@@ -14,7 +18,7 @@ func needsNoKnowledgeCheck(run Run, report Report) bool {
 	}
 	for _, gap := range run.Gaps {
 		switch gap {
-		case "no_visible_source", "history_source_permissions_unbound":
+		case "no_visible_source", "history_source_permissions_unbound", capture.HistoryAttachmentContextOmitted, capture.HistoryImageContextOmitted:
 			// These do not establish missing evidence for a self-contained social reply.
 		default:
 			return false

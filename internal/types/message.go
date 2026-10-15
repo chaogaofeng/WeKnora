@@ -17,6 +17,7 @@ import (
 // Contains query-answer pairs and associated knowledge references
 // Used for tracking conversation context and history
 type History struct {
+	TurnID              string     `json:"-"` // Durable assistant message ID for this rendered history pair
 	Query               string     // User query text
 	Answer              string     // System response text
 	CreateAt            time.Time  // When this history entry was created

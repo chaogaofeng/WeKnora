@@ -636,6 +636,9 @@
                       <dd>
                         {{ k('analysisHistory_' + analysis.report.analysis_audit.history.status) }}
                         · {{ analysis.report.analysis_audit.history.turn_ids?.length || 0 }} {{ k('historyTurns') }}
+                        <p v-for="gap in analysis.report.analysis_audit.history.context_gaps" :key="gap">
+                          {{ label(gap) }}
+                        </p>
                       </dd>
                     </template>
                     <template v-if="analysis.report.analysis_audit.validation_issues?.length">

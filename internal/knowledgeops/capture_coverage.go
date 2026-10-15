@@ -1,15 +1,21 @@
 package knowledgeops
 
-import "slices"
+import (
+	"slices"
+
+	"github.com/Tencent/WeKnora/internal/knowledgeops/capture"
+)
 
 // CaptureCoverage separates exact answer-time content capture from source
 // provenance. It is derived from the immutable capture audit, never backfilled
 // from current knowledge or used to overwrite the original capture status.
 type CaptureCoverage struct {
 	ContentStatus    string   `json:"content_status"`
+	ContentReason    string   `json:"content_reason,omitempty"`
 	ProvenanceStatus string   `json:"provenance_status"`
 	ContentGaps      []string `json:"content_gaps"`
 	ProvenanceGaps   []string `json:"provenance_gaps"`
+	ContextGaps      []string `json:"context_gaps,omitempty"`
 }
 
 func captureCoverage(run Run, evidence []Evidence) CaptureCoverage {
@@ -25,6 +31,8 @@ func captureCoverage(run Run, evidence []Evidence) CaptureCoverage {
 		switch gap {
 		case "source_version_unknown", "wiki_linked_summary_versions_unknown", "source_lookup_incomplete":
 			v.ProvenanceGaps = append(v.ProvenanceGaps, gap)
+		case "history_source_permissions_unbound", capture.HistoryAttachmentContextOmitted, capture.HistoryImageContextOmitted:
+			v.ContextGaps = append(v.ContextGaps, gap)
 		default:
 			// New or unclassified gaps cannot silently promote content coverage.
 			v.ContentGaps = append(v.ContentGaps, gap)
@@ -36,7 +44,7 @@ func captureCoverage(run Run, evidence []Evidence) CaptureCoverage {
 			v.ContentStatus = "partial"
 		}
 	case "partial":
-		if run.Status == "completed" && len(v.ContentGaps) == 0 && len(v.ProvenanceGaps) > 0 {
+		if run.Status == "completed" && len(v.ContentGaps) == 0 && len(v.ProvenanceGaps)+len(v.ContextGaps) > 0 {
 			v.ContentStatus = "complete"
 		}
 	case "missing", "unknown":
@@ -58,8 +66,27 @@ func captureCoverage(run Run, evidence []Evidence) CaptureCoverage {
 	}
 	if len(v.ProvenanceGaps) > 0 {
 		v.ProvenanceStatus = "pending"
-	} else if visible && run.CaptureStatus == "complete" && v.ContentStatus == "complete" {
+	} else if visible && v.ContentStatus == "complete" {
 		v.ProvenanceStatus = "known"
 	}
+	// Only an explicitly observed skip with no capture failures establishes
+	// that the lack of source bodies was intentional. Old runs remain unknown.
+	if !visible && skippedSourceInput(run) {
+		v.ContentReason = "not_provided"
+	}
 	return v
+}
+
+func skippedSourceInput(run Run) bool {
+	if run.Status != "completed" || run.CaptureStatus != "missing" || run.QueryContext == nil || run.QueryContext.Truncated ||
+		run.QueryContext.Retrieval == nil || run.QueryContext.Retrieval.Status != "skipped" || len(run.QueryContext.Searches) > 0 ||
+		!slices.Contains(run.Gaps, "no_visible_source") {
+		return false
+	}
+	for _, gap := range run.Gaps {
+		if gap != "no_visible_source" && gap != "history_source_permissions_unbound" {
+			return false
+		}
+	}
+	return true
 }

@@ -12,6 +12,8 @@ type QueryEvent struct {
 	Kind           string `json:"kind"`
 	Query          string `json:"query"`
 	Status         string `json:"status"`
+	Intent         string `json:"intent,omitempty"`
+	Reason         string `json:"reason,omitempty"`
 	Tool           string `json:"tool,omitempty"`
 	ToolCallID     string `json:"tool_call_id,omitempty"`
 	Round          int    `json:"round,omitempty"`
@@ -29,6 +31,7 @@ type QueryEvent struct {
 type QuerySnapshot struct {
 	Version   int          `json:"version"`
 	Rewrite   *QueryEvent  `json:"rewrite,omitempty"`
+	Retrieval *QueryEvent  `json:"retrieval,omitempty"`
 	Searches  []QueryEvent `json:"searches,omitempty"`
 	Truncated bool         `json:"truncated,omitempty"`
 }
@@ -42,8 +45,24 @@ func RecordQuery(ctx context.Context, event QueryEvent) {
 	if FromContext(ctx) == nil {
 		return
 	}
-	if event.Kind != "rewrite" && event.Kind != "search" {
+	if event.Kind != "rewrite" && event.Kind != "search" && event.Kind != "retrieval" {
 		return
+	}
+	if event.Kind == "retrieval" {
+		if event.Status != "required" && event.Status != "skipped" {
+			return
+		}
+		// Decisions contain fixed codes only, never model explanations or text.
+		decision := QueryEvent{Kind: event.Kind, Status: event.Status}
+		switch event.Intent {
+		case "kb_search", "web_search", "greeting", "chitchat", "follow_up", "image_only", "doc_only", "summarize", "clarification":
+			decision.Intent = event.Intent
+		}
+		switch event.Reason {
+		case "intent_requires_retrieval", "intent_no_search", "context_only_follow_up":
+			decision.Reason = event.Reason
+		}
+		event = decision
 	}
 	event.Query, event.Redacted = sanitize(event.Query)
 	if text := []rune(event.Query); len(text) > 4000 {

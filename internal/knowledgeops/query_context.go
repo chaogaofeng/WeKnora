@@ -19,6 +19,11 @@ func (r *recorder) RecordQuery(_ context.Context, event capture.QueryEvent) {
 		r.run.QueryContext = &capture.QuerySnapshot{Version: 1}
 	}
 	snapshot := r.run.QueryContext
+	if event.Kind == "retrieval" {
+		snapshot.Retrieval = &event
+		boundQuerySnapshot(snapshot)
+		return
+	}
 	if event.Kind == "rewrite" {
 		snapshot.Rewrite = &event
 		boundQuerySnapshot(snapshot)

@@ -2,6 +2,7 @@ package chatpipeline
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -12,6 +13,23 @@ import (
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/stretchr/testify/require"
 )
+
+func TestSkippedRetrievalIsRecordedBeforeFollowingStages(t *testing.T) {
+	r := &queryOpsRecorder{}
+	ctx := capture.WithRecorder(context.Background(), r)
+	cm := &types.ChatManage{PipelineState: types.PipelineState{Intent: types.IntentFollowUp, RewriteQuery: "复述第三点"}}
+	require.Nil(t, (&PluginSearchParallel{}).OnEvent(ctx, types.CHUNK_SEARCH_PARALLEL, cm, func() *PluginError {
+		require.Len(t, r.queries, 1)
+		body, err := json.Marshal(r.queries[0])
+		require.NoError(t, err)
+		var event map[string]any
+		require.NoError(t, json.Unmarshal(body, &event))
+		require.Equal(t, "retrieval", event["kind"])
+		require.Equal(t, "skipped", event["status"])
+		require.Equal(t, "follow_up", event["intent"])
+		return nil
+	}))
+}
 
 type queryOpsRecorder struct {
 	opsRecorder

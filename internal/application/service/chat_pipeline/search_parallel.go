@@ -90,6 +90,7 @@ func (p *PluginSearchParallel) ActivationEvents() []types.EventType {
 func (p *PluginSearchParallel) OnEvent(ctx context.Context,
 	eventType types.EventType, chatManage *types.ChatManage, next func() *PluginError,
 ) *PluginError {
+	observeKnowledgeOpsRetrieval(ctx, chatManage)
 	// Intent-based skip: query-understand step determined KB retrieval is unnecessary
 	if !chatManage.NeedsRetrieval() {
 		pipelineInfo(ctx, "SearchParallel", "skip", map[string]interface{}{

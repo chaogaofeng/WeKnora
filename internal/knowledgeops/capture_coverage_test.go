@@ -4,8 +4,65 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/Tencent/WeKnora/internal/knowledgeops/capture"
 	"github.com/stretchr/testify/require"
 )
+
+func TestCoverageDistinguishesSkippedSourcesFromCaptureLoss(t *testing.T) {
+	var run Run
+	require.NoError(t, json.Unmarshal([]byte(`{"status":"completed","capture_status":"missing","gaps":["no_visible_source","history_source_permissions_unbound"],"query_context":{"version":1,"retrieval":{"kind":"retrieval","status":"skipped","intent":"follow_up"}}}`), &run))
+	for _, tc := range []struct {
+		name         string
+		loss, legacy bool
+		want         string
+	}{
+		{"explicit skip", false, false, "not_provided"},
+		{"capture failure", true, false, ""},
+		{"old metadata absent", false, true, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			current := run
+			if tc.loss {
+				current.Gaps = append(append([]string{}, run.Gaps...), "evidence_persist_failed")
+			}
+			if tc.legacy {
+				current.QueryContext = nil
+			}
+			coverage := captureCoverage(current, nil)
+			body, _ := json.Marshal(coverage)
+			var public struct {
+				ContentReason string `json:"content_reason"`
+			}
+			require.NoError(t, json.Unmarshal(body, &public))
+			require.Equal(t, tc.want, public.ContentReason)
+			require.Equal(t, "missing", coverage.ContentStatus, "absence of sources never counts as complete evidence")
+		})
+	}
+}
+
+func TestBoundHistoryDoesNotDowngradeCapturedKnowledgeBodies(t *testing.T) {
+	run := Run{Status: "completed", QAType: "rag-qa", Channel: "web", CaptureStatus: "partial", Gaps: []string{"history_source_permissions_unbound"},
+		HistoryContext:  &capture.HistorySnapshot{HistoryInput: capture.HistoryInput{Turns: 1, IDsKnown: true, TurnIDs: []string{"old"}}},
+		AnalysisHistory: &AnalysisHistory{Status: "complete", Turns: []AnalysisHistoryTurn{{TurnID: "old", Answer: "past"}}},
+	}
+	coverage := captureCoverage(run, []Evidence{{SentToModel: true, Kind: "chunk", Content: "body", Version: "1"}})
+	require.Equal(t, "complete", coverage.ContentStatus)
+	report := Report{Verdict: "supported", Risk: "low", Applicability: "knowledge", SourceCheck: "not_checked"}
+	applySupportPolicy(run, &report)
+	require.Equal(t, "supported", report.Verdict)
+	route, _ := Triage(run, report, DefaultSettings(1))
+	require.NotEqual(t, "needs_evidence", route, "authorized conversation context is not a missing source body")
+	require.Equal(t, "partial", run.CaptureStatus, "stored capture audit is immutable")
+	require.Equal(t, []string{"history_source_permissions_unbound"}, run.Gaps)
+	for _, gaps := range [][]string{nil, {"capture_budget_exhausted"}, {"history_source_permissions_unbound", "capture_budget_exhausted"}} {
+		limited := run
+		limited.Gaps = gaps
+		require.Equal(t, "partial", withResolvedHistoryCapture(limited).CaptureStatus, "only the explicitly resolved history gap can be removed")
+	}
+	run.AnalysisHistory = &AnalysisHistory{Status: "partial"}
+	applySupportPolicy(run, &report)
+	require.Equal(t, "partial", report.Verdict, "unavailable history must remain a limit on the overall judgment")
+}
 
 func TestCaptureCoverageSeparatesVersionsAcrossDetailListAndOverview(t *testing.T) {
 	_, repo, engine := workbenchFixture(t)

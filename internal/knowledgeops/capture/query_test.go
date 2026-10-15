@@ -31,6 +31,17 @@ func TestQueryCaptureSanitizesAndBoundsWithoutChangingEvidenceCoverage(t *testin
 	RecordQuery(WithRecorder(context.Background(), &memoryRecorder{}), QueryEvent{Kind: "search", Query: "older recorder"})
 }
 
+func TestRetrievalCaptureKeepsOnlyAllowlistedDecisionMetadata(t *testing.T) {
+	r := &queryMemoryRecorder{}
+	ctx := WithRecorder(context.Background(), r)
+	RecordQuery(ctx, QueryEvent{Kind: "retrieval", Status: "skipped", Intent: "follow_up", Reason: "context_only_follow_up", Query: "unrelated input", Tool: "private", ModelID: "private"})
+	require.Equal(t, []QueryEvent{{Kind: "retrieval", Status: "skipped", Intent: "follow_up", Reason: "context_only_follow_up"}}, r.events)
+	RecordQuery(ctx, QueryEvent{Kind: "retrieval", Status: "required", Intent: strings.Repeat("x", 40000), Reason: strings.Repeat("x", 40000)})
+	require.Equal(t, QueryEvent{Kind: "retrieval", Status: "required"}, r.events[1])
+	RecordQuery(ctx, QueryEvent{Kind: "retrieval", Status: "invented"})
+	require.Len(t, r.events, 2)
+}
+
 func TestToolQueryCaptureKeepsOnlySearchInputsAndRetainsRepeatedCalls(t *testing.T) {
 	r := &queryMemoryRecorder{}
 	ctx := WithRecorder(context.Background(), r)

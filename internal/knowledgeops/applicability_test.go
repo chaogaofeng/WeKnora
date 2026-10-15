@@ -13,19 +13,24 @@ import (
 const socialReport = `{"applicability":"non_knowledge","applicability_reason":"问题和回答均为礼貌性结束语，无知识任务或事实主张","verdict":"not_applicable","claims":[],"facts":[],"causes":[],"unknowns":[],"review_questions":[],"source_check":"not_checked","risk":"low","scope":"本轮问题与回答"}`
 
 func TestSocialReplyNeedsNeitherEvidenceNorReview(t *testing.T) {
-	run := Run{ID: "thanks", Status: "completed", QAType: "wiki-qa", Channel: "web", Question: "好的，谢谢你", Answer: "不客气！", CaptureStatus: "missing", Gaps: []string{"no_visible_source", "history_source_permissions_unbound"}}
-	a := NewAnalyzer(func(context.Context, string) (chat.Chat, error) { return &fakeChat{payload: socialReport}, nil }, nil)
-	analysis, err := a.Analyze(context.Background(), run, nil, DefaultSettings(1))
-	require.NoError(t, err)
-	require.Equal(t, "not_required", analysis.Route)
-	require.Empty(t, analysis.Report.Unknowns)
-	run.Analysis = &analysis
-	d := Detail{Run: run}
-	populateCurrentWork(&d)
-	require.Empty(t, queueRoutes(d))
-	require.Equal(t, "not_required", d.Run.ReviewState)
-	require.Equal(t, "not_required", captureCoverage(d.Run, nil).ContentStatus)
-	require.Equal(t, "missing", d.Run.CaptureStatus, "the capture audit must not be rewritten")
+	for _, gap := range []string{"history_source_permissions_unbound", "history_attachment_context_omitted", "history_image_context_omitted"} {
+		t.Run(gap, func(t *testing.T) {
+			run := Run{ID: "thanks", Status: "completed", QAType: "wiki-qa", Channel: "web", Question: "好的，谢谢你", Answer: "不客气！", CaptureStatus: "missing", Gaps: []string{"no_visible_source", "history_source_permissions_unbound"}}
+			run.Gaps = append(run.Gaps, gap)
+			a := NewAnalyzer(func(context.Context, string) (chat.Chat, error) { return &fakeChat{payload: socialReport}, nil }, nil)
+			analysis, err := a.Analyze(context.Background(), run, nil, DefaultSettings(1))
+			require.NoError(t, err)
+			require.Equal(t, "not_required", analysis.Route)
+			require.Empty(t, analysis.Report.Unknowns)
+			run.Analysis = &analysis
+			d := Detail{Run: run}
+			populateCurrentWork(&d)
+			require.Empty(t, queueRoutes(d))
+			require.Equal(t, "not_required", d.Run.ReviewState)
+			require.Equal(t, "not_required", captureCoverage(d.Run, nil).ContentStatus)
+			require.Equal(t, "missing", d.Run.CaptureStatus, "the capture audit must not be rewritten")
+		})
+	}
 }
 
 func TestNonKnowledgeCannotHideRealProblems(t *testing.T) {

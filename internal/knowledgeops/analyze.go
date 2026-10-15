@@ -160,6 +160,7 @@ func validateReport(r Report, evidence []Evidence) error {
 	return nil
 }
 func Triage(run Run, r Report, s Settings) (string, string) {
+	run = withResolvedHistoryCapture(run)
 	if highRisk(run, r) {
 		return "human_review", "高风险业务结论，须人工复核"
 	}
@@ -185,6 +186,9 @@ func Triage(run Run, r Report, s Settings) (string, string) {
 	if run.CaptureStatus != "complete" || r.Verdict == "unverifiable" {
 		if provenanceOnlyCapture(run) && r.Verdict == "supported" {
 			return "source_verification", "来源版本信息未齐全；回答有已采集正文支持"
+		}
+		if skippedSourceInput(run) {
+			return "needs_evidence", "本轮跳过检索，缺少用于核验知识性论断的来源正文"
 		}
 		return "needs_evidence", "采集或论断证据不足"
 	}

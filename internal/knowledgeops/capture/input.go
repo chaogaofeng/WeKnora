@@ -117,14 +117,14 @@ func recordModelInput(ctx context.Context, messages []chat.Message, encode func(
 			if part.Type == "text" {
 				content += part.Text
 			} else {
-				Gap(ctx, "image_context_omitted")
+				Gap(ctx, imageContextGap(m))
 			}
 		}
 		if m.Role == "system" {
 			content = strings.Join(systemEvidence.FindAllString(content, -1), "\n")
 		}
 		if len(m.Images) > 0 {
-			Gap(ctx, "image_context_omitted")
+			Gap(ctx, imageContextGap(m))
 		}
 		if strings.Contains(content, "<user_memory>") {
 			Gap(ctx, "memory_source_permissions_unbound")
@@ -132,9 +132,7 @@ func recordModelInput(ctx context.Context, messages []chat.Message, encode func(
 		if m.Kind == chat.MessageKindCompactionSummary {
 			Gap(ctx, "compacted_context_partial")
 		}
-		if m.TurnID != "" {
-			Gap(ctx, "history_source_permissions_unbound")
-		}
+		recordHistoryContextGaps(ctx, m, content)
 		if content == "" {
 			continue
 		}

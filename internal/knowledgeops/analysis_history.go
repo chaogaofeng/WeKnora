@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Tencent/WeKnora/internal/knowledgeops/capture"
 	"gorm.io/gorm"
 )
 
@@ -17,8 +18,9 @@ const analysisHistoryCharLimit = 24000
 // IDs must come from the captured model input; recent session messages alone
 // do not establish what the answering model actually saw.
 type AnalysisHistory struct {
-	Status string                `json:"status"`
-	Turns  []AnalysisHistoryTurn `json:"turns"`
+	Status      string                `json:"status"`
+	Turns       []AnalysisHistoryTurn `json:"turns"`
+	ContextGaps []string              `json:"context_gaps,omitempty"`
 }
 type AnalysisHistoryTurn struct {
 	TurnID   string `json:"turn_id"`
@@ -32,9 +34,10 @@ type ConversationCheck struct {
 	TurnIDs []string `json:"turn_ids"`
 }
 type AnalysisHistoryAudit struct {
-	Status  string   `json:"status"`
-	RunIDs  []string `json:"run_ids"`
-	TurnIDs []string `json:"turn_ids"`
+	Status      string   `json:"status"`
+	RunIDs      []string `json:"run_ids"`
+	TurnIDs     []string `json:"turn_ids"`
+	ContextGaps []string `json:"context_gaps,omitempty"`
 }
 
 func (s *Service) analysisHistoryRun(ctx context.Context, current Run, turnID string) (Run, error) {
@@ -68,6 +71,11 @@ func (s *Service) analysisHistoryRun(ctx context.Context, current Run, turnID st
 func (s *Service) loadAnalysisHistory(ctx context.Context, run Run) (*AnalysisHistory, error) {
 	h := run.HistoryContext
 	out := &AnalysisHistory{Status: "unavailable", Turns: []AnalysisHistoryTurn{}}
+	for _, gap := range run.Gaps {
+		if gap == capture.HistoryAttachmentContextOmitted || gap == capture.HistoryImageContextOmitted {
+			out.ContextGaps = append(out.ContextGaps, gap)
+		}
+	}
 	if h == nil {
 		return out, nil
 	}
@@ -101,8 +109,28 @@ func (s *Service) loadAnalysisHistory(ctx context.Context, run Run) (*AnalysisHi
 			out.Status = "partial"
 			continue
 		}
+		// Only older captures need this conservative fallback. A new capture
+		// checks the actual rendered history: an old image without a caption,
+		// for example, may not have been included in this turn's input at all.
+		if !h.SupplementsChecked {
+			for _, gap := range previous.Gaps {
+				var contextGap string
+				switch gap {
+				case "attachment_source_permissions_unbound":
+					contextGap = capture.HistoryAttachmentContextOmitted
+				case "image_context_omitted":
+					contextGap = capture.HistoryImageContextOmitted
+				}
+				if contextGap != "" && !slices.Contains(out.ContextGaps, contextGap) {
+					out.ContextGaps = append(out.ContextGaps, contextGap)
+				}
+			}
+		}
 		remaining -= chars
 		out.Turns = append(out.Turns, AnalysisHistoryTurn{TurnID: id, RunID: previous.ID, Question: previous.Question, Answer: previous.Answer})
+	}
+	if len(out.ContextGaps) > 0 {
+		out.Status = "partial"
 	}
 	return out, nil
 }
@@ -111,7 +139,7 @@ func historyAudit(history *AnalysisHistory) *AnalysisHistoryAudit {
 	if history == nil {
 		return nil
 	}
-	audit := &AnalysisHistoryAudit{Status: history.Status}
+	audit := &AnalysisHistoryAudit{Status: history.Status, ContextGaps: slices.Clone(history.ContextGaps)}
 	for _, turn := range history.Turns {
 		audit.RunIDs = append(audit.RunIDs, turn.RunID)
 		audit.TurnIDs = append(audit.TurnIDs, turn.TurnID)

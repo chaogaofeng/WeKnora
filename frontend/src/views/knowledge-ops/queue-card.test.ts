@@ -6,11 +6,13 @@ import vue from '@vitejs/plugin-vue'
 import { createSSRApp, h, type Component } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { createI18n } from 'vue-i18n'
-import { Button, Checkbox, Icon, Tag, Tooltip } from 'tdesign-vue-next'
+import { Button, Checkbox, Icon, Popup, Tag, Tooltip } from 'tdesign-vue-next'
 import type { OpsRun } from '@/api/knowledge-ops'
 
 let server: ViteDevServer
 let QueuePanel: Component
+let CaptureCoverage: Component
+let QueryContextPanel: Component
 before(async () => {
   server = await createServer({
     configFile: false,
@@ -21,6 +23,8 @@ before(async () => {
     appType: 'custom',
   })
   QueuePanel = (await server.ssrLoadModule('/src/views/knowledge-ops/QueuePanel.vue')).default
+  CaptureCoverage = (await server.ssrLoadModule('/src/views/knowledge-ops/CaptureCoverage.vue')).default
+  QueryContextPanel = (await server.ssrLoadModule('/src/views/knowledge-ops/QueryContextPanel.vue')).default
 })
 after(async () => { await server?.close() })
 
@@ -50,11 +54,44 @@ async function render(runs: OpsRun[] = [], props: Record<string, unknown> = {}) 
     runs, groups: [], grouped: false, selectedGroup: '', ...props,
   }) })
   app.use(createI18n({ legacy: false, locale: 'zh-CN', messages: { 'zh-CN': {} } }))
-  for (const [name, component] of Object.entries({ Button, Checkbox, Icon, Tag, Tooltip })) {
+  for (const [name, component] of Object.entries({ Button, Checkbox, Icon, Popup, Tag, Tooltip })) {
     app.component(`t-${name.toLowerCase()}`, component)
   }
   return renderToString(app)
 }
+
+async function renderContext(component: Component, props: Record<string, unknown>) {
+  const app = createSSRApp({ render: () => h(component, props) })
+  app.use(createI18n({ legacy: false, locale: 'zh-CN', messages: { 'zh-CN': {} } }))
+  for (const [name, value] of Object.entries({ Button, Tag, Tooltip })) app.component(`t-${name.toLowerCase()}`, value)
+  return renderToString(app)
+}
+
+test('intentional source absence is distinguished from lost capture without claiming support', async () => {
+  const absent = await renderContext(CaptureCoverage, { showSourceVersions: false, coverage: {
+    content_status: 'missing', content_reason: 'not_provided', content_gaps: ['no_visible_source'], provenance_gaps: [],
+  } })
+  assert.match(absent, /本轮无来源正文/)
+  assert.match(absent, /本轮跳过检索/)
+  assert.doesNotMatch(absent, /正文完整|得到支持/)
+  const unknown = await renderContext(CaptureCoverage, { showSourceVersions: false, coverage: {
+    content_status: 'missing', content_gaps: ['no_visible_source'], provenance_gaps: [],
+  } })
+  assert.match(unknown, /正文缺失/)
+  assert.doesNotMatch(unknown, /本轮跳过检索/)
+})
+
+test('retrieval decisions distinguish an explicit skip from an unrecorded search', async () => {
+  const base = { question: '再复述第三点', query_context: { version: 1, rewrite: { status: 'rewritten', query: '复述销售方向', history_turns: 1 } } }
+  const skipped = await renderContext(QueryContextPanel, { run: { ...base, query_context: { ...base.query_context,
+    retrieval: { kind: 'retrieval', status: 'skipped', reason: 'context_only_follow_up', intent: 'follow_up' },
+  } } })
+  assert.match(skipped, /本轮跳过检索/)
+  assert.match(skipped, /仅处理已有会话内容/)
+  assert.doesNotMatch(skipped, /不能仅据此判断未发生检索/)
+  const legacy = await renderContext(QueryContextPanel, { run: base })
+  assert.match(legacy, /不能仅据此判断未发生检索/)
+})
 
 // A closed disclosure's contents are retained in HTML, but are not initially visible.
 const currentContent = (html: string) => html.replace(/<details\b[^>]*>[\s\S]*?<\/details>/g, '')
