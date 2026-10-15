@@ -290,6 +290,9 @@ func (s *Service) loadDetail(ctx context.Context, tenant uint64, id string, full
 	if err != nil {
 		return Detail{}, err
 	}
+	if err := s.checkAnalysisHistoryAccess(ctx, d.Run, d.Analyses); err != nil {
+		return Detail{}, err
+	}
 	for i := range d.Analyses {
 		assessment := assessCauses(d.Analyses[i].Report)
 		d.Analyses[i].CauseAssessment = &assessment
@@ -348,6 +351,9 @@ func (s *Service) RunOnce(ctx context.Context) error {
 	if err == nil && s.analyzer == nil {
 		err = fmt.Errorf("analysis service unavailable")
 	}
+	if err == nil {
+		run.AnalysisHistory, err = s.loadAnalysisHistory(execCtx, run)
+	}
 	var sourceAudit *SourceAudit
 	if err == nil && s.analyzer.sources != nil {
 		sourceCtx, cancel := context.WithTimeout(execCtx, sourceLookupTimeout)
@@ -396,7 +402,7 @@ func (s *Service) RunOnce(ctx context.Context) error {
 		a.Route = "technical_followup"
 		a.RouteReason = "诊断执行失败，未形成有效结论"
 		a.Error = analysisErrorCode(err)
-		a.Report = Report{Verdict: "unverifiable", SourceCheck: "unresolved", Risk: "unknown", Scope: "诊断未完成"}
+		a.Report = Report{AnalysisAudit: a.Report.AnalysisAudit, Verdict: "unverifiable", SourceCheck: "unresolved", Risk: "unknown", Scope: "诊断未完成"}
 		if highRisk(run, a.Report) {
 			a.Route = "human_review"
 			a.RouteReason = "高风险业务结论须人工复核；诊断执行失败同时需技术排查"

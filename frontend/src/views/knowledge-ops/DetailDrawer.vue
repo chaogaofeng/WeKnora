@@ -126,6 +126,24 @@
           <p v-if="analysis.error" class="error" role="alert">
             {{ label(analysis.error) }}
           </p>
+          <template v-if="analysis.error">
+            <p
+              v-for="issue in analysis.report.analysis_audit?.validation_issues || []"
+              :key="issue.attempt"
+              class="notice"
+            >
+              {{ k('validationAttempt') }} {{ issue.attempt }} · {{ k(issue.reason) }}
+            </p>
+          </template>
+          <div v-if="analysis.report.conversation_check && analysis.report.conversation_check.status !== 'not_applicable'">
+            <h4>{{ k('conversationCheck') }}</h4>
+            <StatusBadge
+              :value="analysis.report.conversation_check.status"
+              :text="k('conversationCheck_' + analysis.report.conversation_check.status)"
+            />
+            <p>{{ analysis.report.conversation_check.reason }}</p>
+            <p class="muted">{{ k('conversationCheckNotice') }}</p>
+          </div>
           <p v-if="analysis.report.verdict_adjustment" class="notice">
             {{ k('adjustmentReason') }}:
             {{ label(analysis.report.verdict_adjustment) }}
@@ -610,6 +628,25 @@
                   </dd>
                   <dt>{{ k('duration') }}</dt>
                   <dd>{{ (analysis.duration_ms / 1000).toFixed(1) }} s</dd>
+                  <template v-if="analysis.report.analysis_audit">
+                    <dt>{{ k('analysisAttempts') }}</dt>
+                    <dd>{{ analysis.report.analysis_audit.attempts }}</dd>
+                    <template v-if="analysis.report.analysis_audit.history">
+                      <dt>{{ k('analysisHistory') }}</dt>
+                      <dd>
+                        {{ k('analysisHistory_' + analysis.report.analysis_audit.history.status) }}
+                        · {{ analysis.report.analysis_audit.history.turn_ids?.length || 0 }} {{ k('historyTurns') }}
+                      </dd>
+                    </template>
+                    <template v-if="analysis.report.analysis_audit.validation_issues?.length">
+                      <dt>{{ k('validationRecord') }}</dt>
+                      <dd>
+                        <p v-for="issue in analysis.report.analysis_audit.validation_issues" :key="issue.attempt">
+                          {{ k('validationAttempt') }} {{ issue.attempt }} · {{ k(issue.reason) }}
+                        </p>
+                      </dd>
+                    </template>
+                  </template>
                   <dt>{{ k('scope') }}</dt>
                   <dd>{{ analysis.report.scope || k('unknown') }}</dd>
                   <template v-if="analysis.report.source_audit">

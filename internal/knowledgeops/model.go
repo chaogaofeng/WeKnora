@@ -27,6 +27,7 @@ func DefaultSettings(tenant uint64) Settings {
 }
 
 type Run struct {
+	AnalysisHistory       *AnalysisHistory         `json:"-" gorm:"-"`
 	QueryContext          *capture.QuerySnapshot   `json:"query_context,omitempty" gorm:"serializer:json;type:text"`
 	Conversation          *Conversation            `json:"conversation,omitempty" gorm:"-"`
 	HistoryContext        *capture.HistorySnapshot `json:"history_context,omitempty" gorm:"serializer:json;type:text"`
@@ -109,9 +110,11 @@ type SourceAudit struct {
 }
 
 type Report struct {
-	Applicability       string       `json:"applicability,omitempty"`
-	ApplicabilityReason string       `json:"applicability_reason,omitempty"`
-	SourceAudit         *SourceAudit `json:"source_audit,omitempty"`
+	ConversationCheck   *ConversationCheck `json:"conversation_check,omitempty"`
+	AnalysisAudit       *AnalysisAudit     `json:"analysis_audit,omitempty"`
+	Applicability       string             `json:"applicability,omitempty"`
+	ApplicabilityReason string             `json:"applicability_reason,omitempty"`
+	SourceAudit         *SourceAudit       `json:"source_audit,omitempty"`
 	// These audit fields are populated by policy, never trusted from model output.
 	ModelVerdict      string   `json:"model_verdict,omitempty"`
 	VerdictAdjustment string   `json:"verdict_adjustment,omitempty"`

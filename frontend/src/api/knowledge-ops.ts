@@ -27,6 +27,16 @@ export interface OpsCause {
   status: string
 }
 export interface OpsReport {
+  conversation_check?: {
+    status: 'consistent' | 'inconsistent' | 'unverifiable' | 'not_applicable'
+    reason: string
+    turn_ids: string[]
+  }
+  analysis_audit?: {
+    attempts: number
+    validation_issues?: { attempt: number; code: string; reason: string }[]
+    history?: { status: string; run_ids?: string[]; turn_ids?: string[] }
+  }
   applicability?: 'knowledge' | 'non_knowledge' | 'unknown'
   applicability_reason?: string
   source_audit?: {

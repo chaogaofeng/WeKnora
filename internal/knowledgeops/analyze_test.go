@@ -50,7 +50,7 @@ func TestAnalysisRejectsPostHocSupportAndMissingCitations(t *testing.T) {
 	a := NewAnalyzer(func(context.Context, string) (chat.Chat, error) { return m, nil }, nil)
 	_, err := a.Analyze(context.Background(), Run{Question: "Q", Answer: "A", Status: "completed", CaptureStatus: "complete"}, []Evidence{{ID: "later", Content: "A", PostHoc: true}}, DefaultSettings(1))
 	require.Error(t, err)
-	require.Equal(t, 1, m.calls)
+	require.Equal(t, 2, m.calls)
 }
 func TestInvalidModelJSONDoesNotBecomeSupported(t *testing.T) {
 	m := &fakeChat{payload: `{"verdict":"supported"}`}

@@ -20,7 +20,8 @@ func decodeAnalysisReport(content string) (Report, error) {
 	// Ignore server-owned audit regardless of its model-supplied shape.
 	wire := struct {
 		*Report
-		SourceAudit json.RawMessage `json:"source_audit"`
+		SourceAudit   json.RawMessage `json:"source_audit"`
+		AnalysisAudit json.RawMessage `json:"analysis_audit"`
 	}{Report: &report}
 	if err := decoder.Decode(&wire); err != nil {
 		return report, fmt.Errorf("invalid analysis JSON: %w", err)
