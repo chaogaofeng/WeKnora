@@ -61,10 +61,20 @@
           {{ k('standardQuestion') }}
           <t-textarea v-model="draft.question" :aria-labelledby="`${fieldID}-question`" :autosize="{ minRows: 2, maxRows: 5 }" :maxlength="16000" :disabled="!allowed || publishing" />
         </label>
-        <label :id="`${fieldID}-answer`">
-          {{ k('standardAnswer') }}
-          <t-textarea v-model="draft.answer" :aria-labelledby="`${fieldID}-answer`" :autosize="{ minRows: 5, maxRows: 14 }" :maxlength="24000" :disabled="!allowed || publishing" />
-        </label>
+        <div class="answer-draft">
+          <div class="answer-heading">
+            <label :id="`${fieldID}-answer`">{{ k('standardAnswer') }}</label>
+            <t-button variant="text" size="small" :disabled="!allowed || publishing" :aria-controls="`${fieldID}-answer-content`" @click="answerEditing ? previewAnswer() : editAnswer()">
+              {{ k(answerEditing ? 'previewAdoptionAnswer' : 'editAdoptionMarkdown') }}
+            </t-button>
+          </div>
+          <t-textarea v-if="answerEditing" :id="`${fieldID}-answer-content`" v-model="draft.answer" :aria-labelledby="`${fieldID}-answer`" :autosize="{ minRows: 5, maxRows: 14 }" :maxlength="24000" :disabled="!allowed || publishing" />
+          <div v-else :id="`${fieldID}-answer-content`" class="draft-preview" role="region" :aria-labelledby="`${fieldID}-answer`" tabindex="0">
+            <AnswerContent v-if="draft.answer.trim()" :content="draft.answer" />
+            <p v-else class="muted">{{ k('emptyAdoptionAnswer') }}</p>
+          </div>
+          <p class="muted">{{ k(answerEditing ? 'previewBeforePublication' : 'adoptionAnswerPrepared') }}</p>
+        </div>
         <p class="muted retrieval-hint">{{ k('adoptionRetrievalHint') }}</p>
         <div class="panel-actions">
           <t-button type="submit" :loading="publishing" :disabled="!canPublish">{{ k('publishToKnowledge') }}</t-button>
@@ -86,6 +96,7 @@ import { computed, onScopeDispose, reactive, ref, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { adoptOpsAnswer, getOpsAdoptionTargets, getOpsDetail, opsErrorCode, retryOpsAdoption, type OpsAdoption, type OpsAdoptionTarget, type OpsReview, type OpsRun } from '@/api/knowledge-ops'
 import { compareOpsTimestamps, latestAnswerReview } from './state'
+import { prepareAdoptionAnswer } from './adoption-answer'
 import AnswerContent from './AnswerContent.vue'
 import StatusBadge from './StatusBadge.vue'
 import { useOpsText } from './locales'
@@ -100,6 +111,7 @@ const emit = defineEmits<{ changed: [] }>()
 const { k, date } = useOpsText()
 const auth = useAuthStore()
 const expanded = ref(false)
+const answerEditing = ref(false)
 const targets = ref<OpsAdoptionTarget[]>([])
 const loadingTargets = ref(false)
 const targetError = ref('')
@@ -120,7 +132,7 @@ const publication = computed(() => {
 })
 const allowed = computed(() => !props.disabled && !stale.value && auth.hasRole('admin') && props.review?.action === 'accepted' && props.review.verdict === 'usable' && props.review.analysis_id === props.analysisID)
 const approvalMatches = computed(() => !!props.review && publication.value?.review_id === props.review.id)
-const canPublish = computed(() => allowed.value && expanded.value && !publishing.value && !uncertain.value && !publication.value && !targetError.value && !loadingTargets.value && targets.value.some((target) => target.id === draft.kb_id) && !!draft.question.trim() && !!draft.answer.trim())
+const canPublish = computed(() => allowed.value && expanded.value && !answerEditing.value && !publishing.value && !uncertain.value && !publication.value && !targetError.value && !loadingTargets.value && targets.value.some((target) => target.id === draft.kb_id) && !!draft.question.trim() && !!draft.answer.trim() && prepareAdoptionAnswer(draft.answer) === draft.answer.trim())
 const publicationError = computed(() => {
   const code = publication.value?.error || ''
   return k(['faq_publish_failed', 'faq_index_failed', 'faq_lookup_failed', 'faq_question_conflict', 'access_revoked', 'approval_changed'].includes(code) ? code : 'adoptionFailed')
@@ -159,6 +171,14 @@ async function openDraft() {
   if (!allowed.value || publication.value) return
   expanded.value = true
   await loadTargets()
+}
+function editAnswer() {
+  if (allowed.value && !publishing.value) answerEditing.value = true
+}
+function previewAnswer() {
+  if (!allowed.value || publishing.value) return
+  draft.answer = prepareAdoptionAnswer(draft.answer)
+  answerEditing.value = false
 }
 async function refreshPublication() {
   if (refreshing.value || publishing.value) return
@@ -240,6 +260,7 @@ watch(
     scopeID++
     targetRequest++
     expanded.value = false
+    answerEditing.value = false
     targets.value = []
     targetError.value = ''
     publishError.value = ''
@@ -250,7 +271,7 @@ watch(
     stale.value = false
     localPublication.value = undefined
     const rewrite = props.run.query_context?.rewrite
-    Object.assign(draft, { kb_id: '', question: rewrite?.status === 'rewritten' && rewrite.query.trim() ? rewrite.query : props.run.question, answer: props.run.answer })
+    Object.assign(draft, { kb_id: '', question: rewrite?.status === 'rewritten' && rewrite.query.trim() ? rewrite.query : props.run.question, answer: prepareAdoptionAnswer(props.run.answer) })
     if ((props.adoptions || []).some((item) => item.analysis_id === props.analysisID)) void loadTargets()
   },
   { immediate: true, flush: 'sync' },
@@ -270,6 +291,11 @@ h3 { margin: 0; font-size: var(--app-text-lg); font-weight: 600; }
 p { margin: var(--app-space-2) 0; }
 .muted { color: var(--td-text-color-secondary); font-size: var(--app-text-sm); }
 .adoption-form label { display: flex; flex-direction: column; gap: var(--app-space-2); margin: var(--app-space-4) 0; font-size: var(--app-text-sm); }
+.answer-draft { margin: var(--app-space-4) 0; }
+.answer-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--app-space-2); margin-bottom: var(--app-space-2); }
+.answer-heading label { margin: 0; }
+.draft-preview { max-height: 30rem; overflow: auto; padding: var(--app-space-4); border: 1px solid var(--td-component-stroke); border-radius: var(--app-radius-md); background: var(--td-bg-color-container); }
+.draft-preview:focus-visible { outline: 2px solid var(--td-brand-color); outline-offset: 2px; }
 .error { color: var(--td-error-color); }
 .success { color: var(--td-success-color); }
 .publication-summary { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--app-space-2) var(--app-space-4); font-size: var(--app-text-sm); }

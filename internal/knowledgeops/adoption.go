@@ -88,6 +88,9 @@ func (s *Service) Adopt(ctx context.Context, tenant uint64, runID string, input 
 	if input.AnalysisID == "" || input.ReviewID == "" || input.KBID == "" || input.Question == "" || input.Answer == "" || len([]rune(input.Question)) > 16000 || len([]rune(input.Answer)) > 24000 {
 		return Adoption{}, ErrInvalid
 	}
+	if containsAdoptionCitation(input.Answer) {
+		return Adoption{}, ErrInvalid
+	}
 	d, err := s.loadDetail(ctx, tenant, runID, false)
 	if err != nil {
 		return Adoption{}, err

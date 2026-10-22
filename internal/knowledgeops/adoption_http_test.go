@@ -60,3 +60,15 @@ func TestAdoptionHTTPSeparatesPublicationFailureAndReviewSuccess(t *testing.T) {
 	require.Equal(t, http.StatusOK, status)
 	require.Equal(t, []any{map[string]any{"id": "faq", "name": "FAQ"}}, response["data"].(map[string]any)["items"])
 }
+
+func TestAdoptionHTTPRejectsUncleanedAnswerCitations(t *testing.T) {
+	svc, _, ctx, run, analysis, review := adoptionFixture(t)
+	input := adoptionInput(analysis, review)
+	input.Answer = `Approved answer <kb doc="Guide" chunk_id="chunk" />`
+	status, response := adoptionRequest(t, adoptionRouter(svc, ctx), http.MethodPost, "/knowledge-ops/runs/"+run.ID+"/adoptions", input)
+	require.Equal(t, http.StatusBadRequest, status)
+	require.Equal(t, "invalid_input", response["error"])
+	var count int64
+	require.NoError(t, svc.repo.db.Model(&Adoption{}).Count(&count).Error)
+	require.Zero(t, count)
+}

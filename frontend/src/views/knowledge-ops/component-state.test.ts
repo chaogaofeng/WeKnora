@@ -6,6 +6,7 @@ import { setImmediate } from 'node:timers/promises'
 import ts from 'typescript'
 import * as vue from 'vue'
 import * as reviewState from './state.ts'
+import * as adoptionAnswer from './adoption-answer.ts'
 
 // Run the actual SFC setup code with Vue reactivity. Only HTTP and app context
 // are substituted so delayed responses can be delivered in a deterministic order.
@@ -108,6 +109,9 @@ function setup(
     'canPublish',
     'publishing',
     'refreshPublication',
+    'answerEditing',
+    'editAnswer',
+    'previewAnswer',
   ]
   const expose = names
     .map(
@@ -119,6 +123,7 @@ function setup(
   const context = {
     ...vue,
     ...reviewState,
+    ...adoptionAnswer,
     TextEncoder,
     defineProps: () => props,
     defineEmits:
@@ -1127,6 +1132,46 @@ function adoptionHarness(overrides: Record<string, unknown> = {}, dependencies: 
   })
   return { ...h, props }
 }
+
+test('adoption prefills the final answer body without changing the captured original', async () => {
+  const original = '### 最终回答\n\n完整正文<kb doc="材料.md" chunk_id="c"/>。'
+  const h = adoptionHarness({ run: { id: 'A', question: 'Question', answer: original } })
+  await h.api.openDraft()
+  assert.equal(h.api.draft.answer, '### 最终回答\n\n完整正文。')
+  assert.equal(h.props.run.answer, original)
+  assert.equal(h.api.answerEditing.value, false)
+  h.stop()
+})
+
+test('editing an answer requires preview and publication uses exactly the cleaned preview draft', async () => {
+  let sentAnswer = ''
+  const h = adoptionHarness({}, {
+    adoptOpsAnswer: async (_id: string, input: any) => { sentAnswer = input.answer; return { id: 'p', run_id: 'A', ...input, status: 'succeeded' } },
+  })
+  await h.api.openDraft()
+  h.api.draft.kb_id = 'faq'
+  h.api.editAnswer()
+  h.api.draft.answer = '**人工整理后的答案**<kb doc="材料.md" chunk_id="c"/>。'
+  assert.equal(h.api.canPublish.value, false)
+  await h.api.publish()
+  assert.equal(sentAnswer, '')
+  h.api.previewAnswer()
+  assert.equal(h.api.answerEditing.value, false)
+  assert.equal(h.api.draft.answer, '**人工整理后的答案**。')
+  assert.equal(h.api.canPublish.value, true)
+  await h.api.publish()
+  assert.equal(sentAnswer, '**人工整理后的答案**。')
+  h.stop()
+})
+
+test('a citation-only captured answer stays empty and cannot be published', async () => {
+  const h = adoptionHarness({ run: { id: 'A', question: 'Q', answer: '<kb doc="材料.md" chunk_id="c"/>' } })
+  await h.api.openDraft()
+  h.api.draft.kb_id = 'faq'
+  assert.equal(h.api.draft.answer, '')
+  assert.equal(h.api.canPublish.value, false)
+  h.stop()
+})
 
 test('refreshing the same adoption scope preserves edited content, destination and error feedback', async () => {
   const h = adoptionHarness()
