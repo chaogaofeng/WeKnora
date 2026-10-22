@@ -1,4 +1,4 @@
-// Package knowledgeops implements read-only observation and diagnosis of new QA runs.
+// Package knowledgeops implements observation, diagnosis and explicit human FAQ adoption of new QA runs.
 package knowledgeops
 
 import (
@@ -38,6 +38,7 @@ type Run struct {
 	SourceFollowupPending bool                     `json:"source_followup_pending" gorm:"-"`
 	Coverage              CaptureCoverage          `json:"coverage" gorm:"-"`
 	ReviewState           string                   `json:"review_state" gorm:"-"`
+	AnswerOutcome         string                   `json:"answer_outcome" gorm:"-"`
 	ID                    string                   `json:"id" gorm:"primaryKey"`
 	TenantID              uint64                   `json:"-"`
 	ActorID               string                   `json:"actor_id"`
@@ -187,6 +188,7 @@ type Task struct {
 func (Task) TableName() string { return "knowledge_ops_tasks" }
 
 type Detail struct {
+	Adoptions    []Adoption `json:"adoptions"`
 	PendingTasks int        `json:"pending_tasks"`
 	Run          Run        `json:"run"`
 	Evidence     []Evidence `json:"evidence"`

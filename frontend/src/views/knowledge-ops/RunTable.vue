@@ -55,7 +55,7 @@
       </template>
       <template #review="{ row: run }">
         <div class="review-state-cell">
-          <StatusBadge :value="run.review_state" />
+          <StatusBadge :value="run.answer_outcome || run.review_state" />
           <small
             v-if="showSourceVersions !== false && run.source_followup_pending"
             class="source-followup"

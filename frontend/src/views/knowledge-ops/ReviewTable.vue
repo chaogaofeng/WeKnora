@@ -91,7 +91,7 @@ const columns = computed(() => [
   { colKey: 'action', title: k('reviewAction'), width: 130 },
   {
     colKey: 'verdict',
-    title: `${k('verdict')} / ${k('causeCategory')}`,
+    title: k('humanQualityDecision'),
     width: 170,
   },
   { colKey: 'reason', title: k('reviewReason'), width: 260 },

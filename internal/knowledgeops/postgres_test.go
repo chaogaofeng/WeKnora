@@ -47,9 +47,11 @@ func TestPostgresMigrationAndConcurrentReviewVersionGate(t *testing.T) {
 	require.NoError(t, db.Raw("SELECT current_schema()").Scan(&activeSchema).Error)
 	require.Equal(t, schema, activeSchema, "never run integration migrations against application tables")
 	apply := func(suffix string) {
-		names := []string{"000115_knowledge_ops", "000116_knowledge_ops_history"}
+		names := []string{"000115_knowledge_ops", "000116_knowledge_ops_history", "000117_knowledge_ops_queries", "000118_knowledge_ops_adoptions"}
 		if suffix == "down" {
-			names[0], names[1] = names[1], names[0]
+			for i, j := 0, len(names)-1; i < j; i, j = i+1, j-1 {
+				names[i], names[j] = names[j], names[i]
+			}
 		}
 		for _, name := range names {
 			b, err := os.ReadFile(filepath.Join("..", "..", "migrations", "versioned", name+"."+suffix+".sql"))
@@ -62,6 +64,7 @@ func TestPostgresMigrationAndConcurrentReviewVersionGate(t *testing.T) {
 		}
 	}
 	apply("up")
+	require.True(t, db.Migrator().HasTable(&Adoption{}))
 	repo := NewRepository(db)
 	ctx := context.Background()
 	settings := DefaultSettings(1)
@@ -106,6 +109,8 @@ func TestPostgresMigrationAndConcurrentReviewVersionGate(t *testing.T) {
 	require.Zero(t, reviews)
 	apply("down")
 	require.False(t, db.Migrator().HasTable(&Run{}))
+	require.False(t, db.Migrator().HasTable(&Adoption{}))
 	apply("up")
 	require.True(t, db.Migrator().HasTable(&Run{}))
+	require.True(t, db.Migrator().HasTable(&Adoption{}))
 }

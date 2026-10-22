@@ -227,7 +227,7 @@ const recordFields: Field[] = [
   {
     key: 'action',
     title: 'reviewAction',
-    values: ['confirmed', 'corrected', 'needs_more_evidence'],
+    values: ['accepted', 'revision_required', 'needs_more_evidence', 'excluded', 'confirmed', 'corrected'],
   },
   { key: 'reviewer_id', title: 'reviewer', values: [] },
 ]

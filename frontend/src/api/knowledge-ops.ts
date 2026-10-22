@@ -168,6 +168,7 @@ export interface OpsRun {
   finished_at: string | null
   updated_at: string
   review_state: string
+  answer_outcome?: 'usable' | 'revision_required' | 'excluded' | 'needs_evidence' | ''
   analysis?: OpsAnalysis
 }
 export interface OpsQueryEvent {
@@ -217,15 +218,17 @@ export interface OpsEvidence {
   acquired_at: string
 }
 export type ReviewTarget = 'answer' | 'cause'
-export type ReviewAction = 'confirmed' | 'corrected' | 'needs_more_evidence'
+export type AnswerReviewAction = 'accepted' | 'revision_required' | 'excluded' | 'needs_more_evidence'
+export type ReviewAction = AnswerReviewAction | 'confirmed' | 'corrected'
 export interface ReviewInput {
   analysis_id: string
   target: 'answer'
   verdict: string
-  action: ReviewAction
+  action: AnswerReviewAction
   reason: string
 }
-export interface OpsReview extends Omit<ReviewInput, 'target'> {
+export interface OpsReview extends Omit<ReviewInput, 'target' | 'action'> {
+  action: ReviewAction
   target: ReviewTarget
   cause_category?: string
   question: string
@@ -237,12 +240,35 @@ export interface OpsReview extends Omit<ReviewInput, 'target'> {
   reviewer_id: string
   created_at: string
 }
+export interface OpsAdoptionTarget {
+  id: string
+  name: string
+}
+export interface OpsAdoptionInput {
+  analysis_id: string
+  review_id: string
+  kb_id: string
+  question: string
+  answer: string
+}
+export interface OpsAdoption extends OpsAdoptionInput {
+  id: string
+  run_id: string
+  status: 'publishing' | 'succeeded' | 'failed'
+  entry_id: number
+  knowledge_id?: string
+  reused?: boolean
+  error: string
+  created_at: string
+  updated_at: string
+}
 export interface OpsDetail {
   pending_tasks: number
   run: OpsRun
   evidence: OpsEvidence[]
   analyses: OpsAnalysis[]
   reviews: OpsReview[]
+  adoptions?: OpsAdoption[]
 }
 export interface OpsPage<T> {
   items: T[]
@@ -373,3 +399,10 @@ export const getOpsConversation = (id: string) =>
       `${base}/runs/${encodeURIComponent(id)}/conversation`,
     ),
   )
+
+export const getOpsAdoptionTargets = () =>
+  unwrap(get<Envelope<{ items: OpsAdoptionTarget[] }>>(`${base}/adoption-targets`))
+export const adoptOpsAnswer = (id: string, value: OpsAdoptionInput) =>
+  unwrap(post<Envelope<OpsAdoption>>(`${base}/runs/${encodeURIComponent(id)}/adoptions`, value))
+export const retryOpsAdoption = (id: string, adoptionID: string) =>
+  unwrap(post<Envelope<OpsAdoption>>(`${base}/runs/${encodeURIComponent(id)}/adoptions/${encodeURIComponent(adoptionID)}/retry`, {}))

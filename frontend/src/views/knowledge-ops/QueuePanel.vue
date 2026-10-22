@@ -74,8 +74,8 @@
           <div class="work-heading">
             <h4>{{ row.reviewTitle }}</h4>
             <StatusBadge
-              v-if="['needs_more_evidence', 'reviewed'].includes(row.run.review_state)"
-              :value="row.run.review_state"
+              v-if="row.run.answer_outcome || ['needs_more_evidence', 'reviewed'].includes(row.run.review_state)"
+              :value="row.run.answer_outcome || row.run.review_state"
             />
           </div>
           <ul v-if="row.pendingItems.length" class="pending-items">

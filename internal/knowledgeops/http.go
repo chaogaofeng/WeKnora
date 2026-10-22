@@ -29,6 +29,7 @@ func (s *Service) RegisterHTTP(g *gin.RouterGroup) {
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()
 	})
+	s.registerAdoptionHTTP(g)
 	g.GET("/settings", s.getSettings)
 	g.PUT("/settings", s.putSettings)
 	g.GET("/overview", s.overview)

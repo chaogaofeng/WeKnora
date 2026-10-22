@@ -27,6 +27,7 @@ const tone = computed(() => {
       'needs_evidence',
       'source_verification',
       'needs_more_evidence',
+      'revision_required',
       'unresolved',
       'unsupported',
       'human_review',
@@ -41,11 +42,13 @@ const tone = computed(() => {
       'succeeded',
       'reviewed',
       'confirmed',
+      'usable',
+      'accepted',
     ].includes(props.value || '')
   )
     return 'success'
   if (
-    ['quality_sample', 'running', 'pending', 'partially_reviewed'].includes(
+    ['quality_sample', 'running', 'pending', 'partially_reviewed', 'publishing'].includes(
       props.value || '',
     )
   )

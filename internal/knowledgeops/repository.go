@@ -134,18 +134,20 @@ func (r *Repository) AddReview(ctx context.Context, tenant uint64, v *Review) er
 	if v.Target != "answer" || v.ReviewerID == "" || len(v.Reason) > 4000 {
 		return ErrInvalid
 	}
-	if v.Action != "confirmed" && v.Action != "corrected" && v.Action != "needs_more_evidence" {
+	switch v.Action {
+	case "accepted", "revision_required", "excluded", "needs_more_evidence":
+		if v.Verdict != answerReviewVerdict(v.Action) {
+			return ErrInvalid
+		}
+	case "confirmed", "corrected":
+		allowed := map[string]bool{"supported": true, "partial": true, "contradicted": true, "unsupported": true, "unverifiable": true, "not_applicable": true}
+		if !allowed[v.Verdict] {
+			return ErrInvalid
+		}
+	default:
 		return ErrInvalid
 	}
-	if v.Action != "confirmed" && v.Reason == "" {
-		return ErrInvalid
-	}
-	allowed := map[string]bool{"supported": true, "partial": true, "contradicted": true, "unsupported": true, "unverifiable": true, "not_applicable": true}
-	if v.Action == "needs_more_evidence" && v.Verdict != "unverifiable" {
-		return ErrInvalid
-	}
-
-	if !allowed[v.Verdict] {
+	if (v.Action == "corrected" || v.Action == "revision_required" || v.Action == "needs_more_evidence") && v.Reason == "" {
 		return ErrInvalid
 	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {

@@ -23,7 +23,7 @@
           <t-button
             :loading="retrying"
             :disabled="
-              !enabled || !detail?.run.finished_at || !!detail?.pending_tasks
+              !enabled || !auth.hasRole('admin') || !detail?.run.finished_at || !!detail?.pending_tasks
             "
             @click="rerun"
             >{{ k('rerun') }}</t-button
@@ -52,8 +52,8 @@
             ><span>{{ detail.run.channel || k('unknown') }}</span>
             <span>{{ date(detail.run.started_at) }}</span
             ><StatusBadge
-              :value="detail.run.review_state"
-              :text="`${k('currentHumanReview')} · ${label(detail.run.review_state)}`"
+              :value="detail.run.answer_outcome || detail.run.review_state"
+              :text="`${k('currentHumanReview')} · ${label(detail.run.answer_outcome || detail.run.review_state)}`"
             />
             <t-tooltip
               v-if="
@@ -438,7 +438,7 @@
           <p v-if="analysis.status === 'failed'" class="notice">
             {{ k('failedReviewNotice') }}
           </p>
-          <p v-if="!canReview" class="notice">{{ k('reviewUnavailable') }}</p>
+          <p v-if="!canReview" class="notice">{{ k(auth.hasRole('admin') ? 'reviewUnavailable' : 'reviewReadOnly') }}</p>
           <p class="muted">{{ k('reviewNotice') }}</p>
           <p v-if="pendingReviewTargets.length" class="muted">
             {{ k('remainingReviews') }}：
@@ -474,7 +474,7 @@
           </p>
           <div v-if="answerReviewComplete && !showReviewEditor" class="review-complete">
             <div class="section-heading">
-              <strong><StatusBadge value="reviewed" /> · {{ labelVerdict(answerReview!.verdict) }}</strong>
+              <strong><StatusBadge :value="answerReview!.verdict" :text="`${k(['confirmed', 'corrected'].includes(answerReview!.action) ? 'legacySupportReview' : 'humanQualityDecision')} · ${labelVerdict(answerReview!.verdict)}`" /></strong>
               <t-button v-if="canReview" variant="text" theme="primary" @click="showReviewEditor = true">
                 {{ k('reviewAgain') }}
               </t-button>
@@ -486,13 +486,23 @@
             v-else
             :key="`${analysis.id}:answer:${savedReviews.answer}`"
             :analysisID="analysis.id"
-            :initial-verdict="analysis.report.verdict || 'unverifiable'"
             :disabled="!canReview"
             :busy="reviewing.answer"
             :error="reviewErrors.answer"
             @submit="saveReview"
           />
         </section>
+
+        <AdoptionPanel
+          v-if="analysis && (adoptionReview || detail.adoptions?.some((item) => item.analysis_id === analysis?.id))"
+          :key="`${detail.run.id}:${analysis.id}`"
+          :run="detail.run"
+          :analysisID="analysis.id"
+          :review="adoptionReview"
+          :adoptions="detail.adoptions"
+          :disabled="!canReview || !!detail.pending_tasks"
+          @changed="adoptionChanged"
+        />
 
         <section>
           <div class="section-heading">
@@ -716,6 +726,8 @@ import {
 } from '@/api/knowledge-ops'
 import EmptyState from '@/components/EmptyState.vue'
 import ReviewForm from './ReviewForm.vue'
+import AdoptionPanel from './AdoptionPanel.vue'
+import { latestAnswerReview } from './state'
 import { useOpsText } from './locales'
 const props = defineProps<{
   runID: string
@@ -765,10 +777,10 @@ const analysis = computed(() =>
   detail.value?.analyses.find((item) => item.id === selectedID.value),
 )
 const answerReview = computed(() =>
-  detail.value?.reviews.find((review) => review.analysis_id === analysis.value?.id && review.target === 'answer'),
+  latestAnswerReview(detail.value?.reviews || [], analysis.value?.id || ''),
 )
 const answerReviewComplete = computed(() =>
-  !!answerReview.value && ['confirmed', 'corrected'].includes(answerReview.value.action),
+  !!answerReview.value && ['accepted', 'revision_required', 'excluded', 'confirmed', 'corrected'].includes(answerReview.value.action),
 )
 // Current work is derived from the latest diagnosis; historical reports retain
 // the original machine judgment and must not inherit today's pending requests.
@@ -810,7 +822,12 @@ const unlinkedCauses = computed(
 )
 const isCurrent = computed(() => selectedID.value === latestID.value)
 const canReview = computed(
-  () => isCurrent.value && !!detail.value?.run.finished_at && !!analysis.value,
+  () => auth.hasRole('admin') && isCurrent.value && !!detail.value?.run.finished_at && !!analysis.value && !detail.value?.pending_tasks,
+)
+const adoptionReview = computed(() =>
+  isCurrent.value && answerReview.value?.action === 'accepted' && answerReview.value.verdict === 'usable'
+    ? answerReview.value
+    : undefined,
 )
 const analysisOptions = computed(() =>
   (detail.value?.analyses || []).map((item) => ({
@@ -1019,7 +1036,7 @@ async function load() {
   }
 }
 async function rerun() {
-  if (!props.runID || retrying.value) return
+  if (!props.runID || retrying.value || !auth.hasRole('admin')) return
   const runID = props.runID
   const current = operationScope()
   retrying.value = true
@@ -1037,11 +1054,16 @@ async function rerun() {
     if (current()) retrying.value = false
   }
 }
+async function adoptionChanged() {
+  const current = operationScope()
+  await load()
+  if (current()) emit('changed')
+}
 async function saveReview(value: ReviewInput) {
   const target = value.target
   const runID = props.runID
   const current = operationScope()
-  if (!runID || reviewing[target]) return
+  if (!runID || reviewing[target] || !canReview.value || value.analysis_id !== analysis.value?.id) return
   reviewing[target] = true
   reviewErrors[target] = ''
   try {

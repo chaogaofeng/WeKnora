@@ -38,14 +38,14 @@ func currentReviewProgress(d Detail) reviewProgress {
 	progress := reviewProgress{state: "unreviewed"}
 	// Only the newest answer review for this diagnosis controls completion.
 	// Legacy cause reviews remain in audit history, but are no longer tasks.
-	for _, review := range d.Reviews {
-		if review.AnalysisID != a.ID || review.Target != "answer" {
-			continue
-		}
+	if review := currentAnswerReview(d); review != nil {
 		if review.Action == "needs_more_evidence" {
 			progress.state = "needs_more_evidence"
-			progress.evidenceRequests = append(progress.evidenceRequests, review)
+			progress.evidenceRequests = append(progress.evidenceRequests, *review)
 		} else if review.Action == "confirmed" || review.Action == "corrected" {
+			progress.answerDone = true
+			progress.state = "reviewed"
+		} else if currentAnswerOutcome(d) != "" {
 			progress.answerDone = true
 			progress.state = "reviewed"
 		}
@@ -144,6 +144,7 @@ func sourceCheckDisplay(d Detail) string {
 func populateCurrentWork(d *Detail) {
 	work := deriveCurrentWork(*d)
 	d.Run.ReviewState = work.ReviewState
+	d.Run.AnswerOutcome = currentAnswerOutcome(*d)
 	d.Run.PendingReviewTargets = work.PendingReviewTargets
 	d.Run.PendingItems = work.Items
 	d.Run.EffectiveRisk = effectiveRisk(d.Run)

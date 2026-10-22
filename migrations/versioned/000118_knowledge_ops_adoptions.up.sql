@@ -1,0 +1,26 @@
+CREATE TABLE knowledge_ops_adoptions (
+    id TEXT PRIMARY KEY,
+    tenant_id BIGINT NOT NULL,
+    run_id TEXT NOT NULL REFERENCES knowledge_ops_runs(id) ON DELETE CASCADE,
+    analysis_id TEXT NOT NULL REFERENCES knowledge_ops_analyses(id) ON DELETE CASCADE,
+    review_id TEXT NOT NULL REFERENCES knowledge_ops_reviews(id) ON DELETE CASCADE,
+    session_id TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    source_actor_id TEXT NOT NULL DEFAULT '',
+    actor_id TEXT NOT NULL,
+    kb_id TEXT NOT NULL,
+    target_tenant_id BIGINT NOT NULL,
+    question TEXT NOT NULL,
+    answer TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('publishing','succeeded','failed')),
+    entry_id BIGINT NOT NULL DEFAULT 0,
+    knowledge_id TEXT NOT NULL DEFAULT '',
+    reused BOOLEAN NOT NULL DEFAULT FALSE,
+    error TEXT NOT NULL DEFAULT '',
+    lease_token TEXT NOT NULL DEFAULT '',
+    lease_until TIMESTAMP NULL,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
+    UNIQUE(tenant_id,run_id,analysis_id)
+);
+CREATE INDEX idx_knowledge_ops_adoptions_run ON knowledge_ops_adoptions(tenant_id,run_id,created_at);

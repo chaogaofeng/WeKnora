@@ -18,6 +18,7 @@ import (
 
 type AccessChecker func(context.Context, Run, []Evidence) error
 type Service struct {
+	adoption         *AdoptionAdapter
 	repo             *Repository
 	analyzer         *Analyzer
 	access           AccessChecker
@@ -259,7 +260,7 @@ func (r *recorder) Finish(ctx context.Context, end capture.Completion) {
 	}
 }
 func (s *Service) Detail(ctx context.Context, tenant uint64, id string) (Detail, error) {
-	return s.loadDetail(ctx, tenant, id, true)
+	return s.detailWithAdoptions(ctx, tenant, id)
 }
 func (s *Service) loadDetail(ctx context.Context, tenant uint64, id string, full bool) (Detail, error) {
 	d := Detail{}

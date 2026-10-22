@@ -95,6 +95,19 @@ function setup(
     'rewriteStatus',
     'searchQueries',
     'showRewriteText',
+    'adoptionReview',
+    'canReview',
+    'openDraft',
+    'expanded',
+    'targets',
+    'targetError',
+    'publishError',
+    'publish',
+    'retryPublication',
+    'publication',
+    'canPublish',
+    'publishing',
+    'refreshPublication',
   ]
   const expose = names
     .map(
@@ -102,7 +115,7 @@ function setup(
     )
     .join(',')
   const events: unknown[][] = []
-  const auth = vue.reactive({ effectiveTenantId: 1, currentUserId: 'user-1' })
+  const auth = vue.reactive({ effectiveTenantId: 1, currentUserId: 'user-1', hasRole: (): boolean => true })
   const context = {
     ...vue,
     ...reviewState,
@@ -869,31 +882,32 @@ test('retry completion and failure stay with the run that was retried', async ()
   }
 })
 
-test('confirming a review permits an empty note without changing the machine assessment', () => {
+test('accepting an answer permits an empty note and never adopts the machine support verdict', () => {
   for (const verdict of ['supported', 'partial', 'unverifiable']) {
     const h = setup('ReviewForm.vue', {
-      analysisID: 'v1', initialVerdict: verdict,
+      analysisID: 'v1',
       disabled: false, busy: false,
     })
+    h.api.draft.verdict = verdict
     h.api.draft.reason = ' \n '
     h.api.submit()
     assert.equal(h.events.length, 1)
     const payload = h.events[0][1] as Record<string, string>
-    assert.equal(payload.action, 'confirmed')
-    assert.equal(payload.verdict, verdict)
+    assert.equal(payload.action, 'accepted')
+    assert.equal(payload.verdict, 'usable')
     assert.equal(payload.reason, '')
     assert.equal(payload.analysis_id, 'v1')
     h.stop()
   }
 })
 
-test('corrections and evidence requests still require explanations, with errors cleared on action change', () => {
+test('revision and evidence requests require explanations, while acceptance and exclusion allow optional notes', () => {
   for (const verdict of ['supported', 'partial', 'unverifiable']) {
     const h = setup('ReviewForm.vue', {
-      analysisID: 'v1', initialVerdict: verdict,
+      analysisID: 'v1',
       disabled: false, busy: false,
     })
-    for (const action of ['corrected', 'needs_more_evidence']) {
+    for (const action of ['revision_required', 'needs_more_evidence']) {
       h.api.draft.action = action
       h.api.actionChanged()
       h.api.draft.reason = ' \n '
@@ -901,7 +915,7 @@ test('corrections and evidence requests still require explanations, with errors 
       assert.equal(h.events.length, 0)
       assert.equal(h.api.localError.value, 'reasonRequired')
     }
-    h.api.draft.action = 'confirmed'
+    h.api.draft.action = 'excluded'
     h.api.actionChanged()
     assert.equal(h.api.localError.value, '')
     h.api.draft.reason = '证'.repeat(1334)
@@ -1071,4 +1085,256 @@ test('query context distinguishes unknown, disabled and failed without replacing
     ]
     assert.equal(harness.api.searchQueries.value.length, 2)
   } finally { harness.stop() }
+})
+
+
+test('FAQ adoption requires the latest current accepted review, never legacy confirmation or a superseded acceptance', async () => {
+  const analysis = { id: 'latest', version: 2, report: { verdict: 'supported' } }
+  let reviews = [{ id: 'r1', analysis_id: 'latest', target: 'answer', action: 'confirmed', verdict: 'supported', created_at: '2026-10-01T00:00:00Z' }]
+  const props = vue.reactive({ runID: 'A', enabled: true })
+  const h = setup('DetailDrawer.vue', props, {
+    getOpsDetail: async () => ({ ...detail('A'), run: { id: 'A', analysis, finished_at: '2026-10-01' }, analyses: [analysis, { id: 'old', version: 1, report: {} }], reviews }),
+  })
+  await setImmediate()
+  assert.equal(h.api.adoptionReview?.value, undefined)
+  reviews = [{ ...reviews[0], id: 'r2', action: 'accepted', verdict: 'usable' }]
+  await h.api.load()
+  assert.equal(h.api.adoptionReview?.value?.id, 'r2')
+  reviews = [{ ...reviews[0], id: 'r3', action: 'revision_required', verdict: 'revision_required', created_at: '2026-10-02T00:00:00Z' }, reviews[0]]
+  await h.api.load()
+  assert.equal(h.api.adoptionReview.value, undefined)
+  reviews = [reviews[0]]
+  await h.api.load()
+  h.api.selectedID.value = 'old'
+  assert.equal(h.api.adoptionReview.value, undefined)
+  h.auth.hasRole = () => false
+  assert.equal(h.api.canReview.value, false)
+  h.stop()
+})
+
+function adoptionHarness(overrides: Record<string, unknown> = {}, dependencies: Record<string, unknown> = {}) {
+  const props = vue.reactive({
+    run: { id: 'A', question: 'What about this?', answer: 'Recorded answer', query_context: { rewrite: { status: 'rewritten', query: 'What is the standard procedure?' } } },
+    analysisID: 'v2',
+    review: { id: 'accepted-review', analysis_id: 'v2', target: 'answer', action: 'accepted', verdict: 'usable' },
+    adoptions: [],
+    disabled: false,
+    ...overrides,
+  })
+  const h = setup('AdoptionPanel.vue', props, {
+    getOpsAdoptionTargets: async () => ({ items: [{ id: 'faq', name: 'Support FAQ' }] }),
+    ...dependencies,
+  })
+  return { ...h, props }
+}
+
+test('refreshing the same adoption scope preserves edited content, destination and error feedback', async () => {
+  const h = adoptionHarness()
+  await h.api.openDraft()
+  h.api.draft.kb_id = 'faq'
+  h.api.draft.question = 'Edited standalone question'
+  h.api.draft.answer = 'Reviewed standard answer'
+  h.api.publishError.value = 'knowledge_ops_failed'
+  // A successful detail refresh replaces objects but does not change identity.
+  h.props.run = { ...h.props.run }
+  h.props.review = { ...h.props.review }
+  await vue.nextTick()
+  assert.equal(h.api.expanded.value, true)
+  assert.equal(h.api.draft.kb_id, 'faq')
+  assert.equal(h.api.draft.question, 'Edited standalone question')
+  assert.equal(h.api.draft.answer, 'Reviewed standard answer')
+  assert.equal(h.api.publishError.value, 'knowledge_ops_failed')
+  h.stop()
+})
+
+test('a failed publish with no persisted intent keeps the draft after parent reconciliation', async () => {
+  const h = adoptionHarness({}, {
+    adoptOpsAnswer: async () => { throw new Error('request failed') },
+    getOpsDetail: async () => ({ ...detail('A'), run: { id: 'A', analysis: { id: 'v2' } }, analyses: [], reviews: [h.props.review], adoptions: [] }),
+  })
+  await h.api.openDraft()
+  h.api.draft.kb_id = 'faq'
+  h.api.draft.question = 'Edited question'
+  h.api.draft.answer = 'Edited answer'
+  await h.api.publish()
+  assert.equal(h.events[0][0], 'changed')
+  h.props.run = { ...h.props.run }
+  h.props.review = { ...h.props.review }
+  await vue.nextTick()
+  assert.equal(h.api.expanded.value, true)
+  assert.equal(h.api.draft.question, 'Edited question')
+  assert.equal(h.api.draft.answer, 'Edited answer')
+  assert.equal(h.api.publishError.value, 'knowledge_ops_failed')
+  assert.equal(h.api.canPublish.value, true)
+  h.stop()
+})
+
+test('publication reconciliation uses full timestamp precision and keeps a newer local result', async () => {
+  const local = { id: 'p1', run_id: 'A', analysis_id: 'v2', review_id: 'accepted-review', status: 'publishing', updated_at: '2026-10-21T12:00:00.123100Z' }
+  const h = adoptionHarness({}, { adoptOpsAnswer: async () => local })
+  await h.api.openDraft()
+  h.api.draft.kb_id = 'faq'
+  await h.api.publish()
+  h.props.adoptions = [{ ...local, status: 'succeeded', updated_at: '2026-10-21T12:00:00.123900Z' }] as any
+  assert.equal(h.api.publication.value.status, 'succeeded', 'newer server snapshot replaces local publishing')
+  h.props.adoptions = [{ ...local, status: 'failed', updated_at: '2026-10-21T12:00:00.123000Z' }] as any
+  assert.equal(h.api.publication.value.status, 'publishing', 'a delayed older response cannot overwrite the local result')
+  h.stop()
+})
+
+test('adoption opens an editable rewrite draft and requires explicit complete publication input', async () => {
+  const publications: unknown[] = []
+  const h = adoptionHarness({}, {
+    adoptOpsAnswer: async (_id: string, input: unknown) => { publications.push(input); return { id: 'p1', run_id: 'A', status: 'succeeded', ...(input as object) } },
+  })
+  assert.equal(h.api.expanded.value, false)
+  assert.equal(publications.length, 0)
+  await h.api.openDraft()
+  assert.equal(h.api.draft.question, 'What is the standard procedure?')
+  assert.equal(h.api.draft.answer, 'Recorded answer')
+  await h.api.publish()
+  assert.equal(publications.length, 0, 'Selecting an FAQ library is explicit')
+  h.api.draft.kb_id = 'faq'
+  h.api.draft.question = ' Standard question '
+  h.api.draft.answer = ' Standard answer '
+  await h.api.publish()
+  assert.deepEqual(JSON.parse(JSON.stringify(publications)), [{ analysis_id: 'v2', review_id: 'accepted-review', kb_id: 'faq', question: 'Standard question', answer: 'Standard answer' }])
+  assert.equal(h.api.publication.value.status, 'succeeded')
+  h.stop()
+})
+
+test('unrecorded rewrites fall back to the original question and read-only users cannot publish', async () => {
+  const h = adoptionHarness({ run: { id: 'A', question: 'Original', answer: 'Answer', query_context: { rewrite: { status: 'failed', query: 'Invalid rewrite' } } } })
+  await h.api.openDraft()
+  assert.equal(h.api.draft.question, 'Original')
+  h.api.draft.kb_id = 'faq'
+  h.auth.hasRole = () => false
+  assert.equal(h.api.canPublish.value, false)
+  await h.api.publish()
+  h.stop()
+})
+
+test('late target responses never enter another run draft and an empty target list cannot publish', async () => {
+  const old = deferred<unknown>()
+  const h = adoptionHarness({}, { getOpsAdoptionTargets: () => old.promise })
+  const pending = h.api.openDraft()
+  h.props.run = { ...h.props.run, id: 'B', question: 'Next run' }
+  await vue.nextTick()
+  old.resolve({ items: [{ id: 'old-faq', name: 'Previous workspace FAQ' }] })
+  await pending
+  assert.equal(h.api.targets.value.length, 0)
+  assert.equal(h.api.draft.question, 'What is the standard procedure?')
+  assert.equal(h.api.expanded.value, false)
+  assert.equal(h.api.canPublish.value, false)
+  h.stop()
+})
+
+test('publishing locks duplicate actions; failed publication retains its snapshot and retries the same adoption', async () => {
+  const pending = deferred<unknown>()
+  const creates: string[] = []
+  const retries: string[] = []
+  const h = adoptionHarness({}, {
+    adoptOpsAnswer: (id: string) => { creates.push(id); return pending.promise },
+    retryOpsAdoption: async (id: string, adoptionID: string) => { retries.push(`${id}/${adoptionID}`); return { ...h.api.publication.value, status: 'succeeded' } },
+  })
+  await h.api.openDraft()
+  h.api.draft.kb_id = 'faq'
+  const publishing = h.api.publish()
+  await h.api.publish()
+  assert.equal(creates.length, 1)
+  assert.equal(h.api.canPublish.value, false)
+  pending.resolve({ id: 'p1', run_id: 'A', analysis_id: 'v2', review_id: 'accepted-review', status: 'failed', kb_id: 'faq', question: 'What is the standard procedure?', answer: 'Recorded answer', error: 'faq_publish_failed' })
+  await publishing
+  assert.equal(h.api.draft.answer, 'Recorded answer')
+  assert.equal(h.api.publication.value.status, 'failed')
+  await h.api.retryPublication()
+  assert.deepEqual(retries, ['A/p1'])
+  assert.equal(creates.length, 1)
+  assert.equal(h.api.publication.value.status, 'succeeded')
+  h.stop()
+})
+
+test('uncertain publication refreshes persisted adoption before allowing a duplicate create', async () => {
+  let creates = 0
+  const persisted = { id: 'p1', run_id: 'A', analysis_id: 'v2', review_id: 'accepted-review', status: 'succeeded', kb_id: 'faq', question: 'Question', answer: 'Answer' }
+  const h = adoptionHarness({}, {
+    adoptOpsAnswer: async () => { creates++; throw new Error('connection closed') },
+    getOpsDetail: async () => ({ ...detail('A'), run: { id: 'A', analysis: { id: 'v2' } }, analyses: [], reviews: [h.props.review], adoptions: [persisted] }),
+  })
+  await h.api.openDraft()
+  h.api.draft.kb_id = 'faq'
+  await h.api.publish()
+  assert.equal(h.api.publication.value.id, 'p1')
+  assert.equal(h.api.canPublish.value, false)
+  await h.api.publish()
+  assert.equal(creates, 1)
+  h.stop()
+})
+
+test('persisted publishing snapshots can be safely resumed with the existing adoption id', async () => {
+  const calls: string[] = []
+  const persisted = { id: 'interrupted', run_id: 'A', analysis_id: 'v2', review_id: 'accepted-review', status: 'publishing', kb_id: 'faq', question: 'Question', answer: 'Answer' }
+  const h = adoptionHarness({ adoptions: [persisted] }, {
+    retryOpsAdoption: async (id: string, adoptionID: string) => { calls.push(`${id}/${adoptionID}`); return { ...persisted, status: 'succeeded' } },
+  })
+  await h.api.retryPublication()
+  assert.deepEqual(calls, ['A/interrupted'])
+  assert.equal(h.api.publication.value.status, 'succeeded')
+  h.stop()
+})
+
+test('publication responses and failures stay with the run that was published', async () => {
+  for (const fails of [false, true]) {
+    const pending = deferred<unknown>()
+    const h = adoptionHarness({}, { adoptOpsAnswer: () => pending.promise })
+    await h.api.openDraft()
+    h.api.draft.kb_id = 'faq'
+    const publishing = h.api.publish()
+    h.props.run = { ...h.props.run, id: 'B' }
+    await vue.nextTick()
+    if (fails) pending.reject(new Error('lost connection'))
+    else pending.resolve({ id: 'old', run_id: 'A', analysis_id: 'v2', review_id: 'accepted-review', status: 'succeeded' })
+    await publishing
+    assert.equal(h.api.publication.value, undefined)
+    assert.equal(h.api.publishError.value, '')
+    assert.equal(h.events.length, 0)
+    h.stop()
+  }
+})
+
+test('unavailable and forbidden FAQ targets leave the edited draft intact and block publication', async () => {
+  for (const forbidden of [false, true]) {
+    const h = adoptionHarness({}, {
+      getOpsAdoptionTargets: async () => { if (forbidden) throw new Error('forbidden'); return { items: [] } },
+      opsErrorCode: () => 'forbidden',
+    })
+    h.api.draft.answer = 'Edited answer retained'
+    await h.api.openDraft()
+    h.api.draft.kb_id = 'unavailable-target'
+    assert.equal(h.api.targets.value.length, 0)
+    assert.equal(h.api.canPublish.value, false)
+    assert.equal(h.api.draft.answer, 'Edited answer retained')
+    assert.equal(h.api.targetError.value, forbidden ? 'adoptionForbidden' : '')
+    h.stop()
+  }
+})
+
+test('a changed analysis, review or workspace discards pending publication responses', async () => {
+  for (const change of ['analysis', 'review', 'tenant']) {
+    const pending = deferred<unknown>()
+    const h = adoptionHarness({}, { adoptOpsAnswer: () => pending.promise })
+    await h.api.openDraft()
+    h.api.draft.kb_id = 'faq'
+    const publishing = h.api.publish()
+    if (change === 'analysis') h.props.analysisID = 'v3'
+    else if (change === 'review') h.props.review = { ...h.props.review, id: 'new-review' }
+    else h.auth.effectiveTenantId = 2
+    await vue.nextTick()
+    pending.resolve({ id: 'p1', run_id: 'A', analysis_id: 'v2', review_id: 'accepted-review', status: 'succeeded' })
+    await publishing
+    assert.equal(h.api.publication.value, undefined, change)
+    assert.equal(h.api.publishing.value, false, change)
+    assert.equal(h.events.length, 0, change)
+    h.stop()
+  }
 })

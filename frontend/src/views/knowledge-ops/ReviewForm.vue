@@ -10,77 +10,65 @@
           aria-labelledby="review-action-answer"
           :options="actions.map((value) => ({
             value,
-            label: value === 'confirmed' ? k('confirmCurrentVerdict') : label(value),
+            label: k(`reviewDecision_${value}`),
           }))"
           :disabled="disabled || busy"
           @change="actionChanged"
         />
       </label>
-      <label id="review-verdict-answer">
-        {{ k('verdict') }}
-        <t-select
-          v-model="draft.verdict"
-          aria-labelledby="review-verdict-answer"
-          :options="answerVerdicts.map((value) => ({ value, label: labelVerdict(value) }))"
-          :disabled="disabled || busy || draft.action !== 'corrected'"
-        />
-      </label>
     </div>
-    <p v-if="draft.action === 'confirmed'" class="review-hint">
-      {{ k('confirmCurrentVerdictHint') }}
-    </p>
+    <p class="review-hint">{{ k('answerQualityHint') }}</p>
     <label>
-      {{ k(draft.action === 'confirmed' ? 'reviewNoteOptional' : 'reviewReasonRequired') }}
+      {{ k(reviewNeedsReason(draft.action) ? 'reviewReasonRequired' : 'reviewNoteOptional') }}
       <t-textarea
         v-model="draft.reason"
         :autosize="{ minRows: 3, maxRows: 7 }"
         :maxlength="4000"
-        :placeholder="k(draft.action === 'confirmed' ? 'reviewNoteOptionalHint' : 'reviewReasonHint')"
-        :aria-label="k(draft.action === 'confirmed' ? 'reviewNoteOptional' : 'reviewReasonRequired')"
-        :aria-required="draft.action !== 'confirmed'"
+        :placeholder="k(reviewNeedsReason(draft.action) ? 'reviewReasonHint' : 'reviewNoteOptionalHint')"
+        :aria-label="k(reviewNeedsReason(draft.action) ? 'reviewReasonRequired' : 'reviewNoteOptional')"
+        :aria-required="reviewNeedsReason(draft.action)"
         :disabled="disabled || busy"
       />
     </label>
     <p v-if="error || localError" class="error" role="alert">
       {{ error || localError }}
     </p>
-    <t-button type="submit" :loading="busy" :disabled="disabled">
+    <t-button type="submit" :loading="busy" :disabled="disabled || busy">
       {{ k('submit') }}
     </t-button>
   </form>
 </template>
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
-import type { ReviewInput } from '@/api/knowledge-ops'
-import { createReviewDraft, reviewPayload, answerVerdicts, applyReviewAction } from './state'
+import type { AnswerReviewAction, ReviewInput } from '@/api/knowledge-ops'
+import { createReviewDraft, reviewPayload, applyReviewAction, reviewNeedsReason } from './state'
 import { useOpsText } from './locales'
 const props = defineProps<{
   analysisID: string
-  initialVerdict: string
   disabled: boolean
   busy: boolean
   error?: string
 }>()
 const emit = defineEmits<{ submit: [ReviewInput] }>()
-const { k, label, labelVerdict } = useOpsText()
+const { k } = useOpsText()
 const localError = ref('')
 const draft = reactive(createReviewDraft())
-const actions = ['confirmed', 'corrected', 'needs_more_evidence']
+const actions: AnswerReviewAction[] = ['accepted', 'revision_required', 'needs_more_evidence', 'excluded']
 function actionChanged() {
   localError.value = ''
-  applyReviewAction(draft, draft.action, props.initialVerdict)
+  applyReviewAction(draft, draft.action)
 }
 watch(
   () => props.analysisID,
   () => {
     localError.value = ''
-    Object.assign(draft, createReviewDraft(), { verdict: props.initialVerdict })
+    Object.assign(draft, createReviewDraft())
   },
   { immediate: true },
 )
 function submit() {
   localError.value = ''
-  if (draft.action !== 'confirmed' && !draft.reason.trim()) {
+  if (reviewNeedsReason(draft.action) && !draft.reason.trim()) {
     localError.value = k('reasonRequired')
     return
   }
@@ -127,7 +115,7 @@ function submit() {
 }
 .review-fields {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: var(--app-space-4);
 }
 @media (max-width: 600px) {

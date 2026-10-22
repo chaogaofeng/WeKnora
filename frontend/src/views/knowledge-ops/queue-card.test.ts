@@ -6,18 +6,44 @@ import vue from '@vitejs/plugin-vue'
 import { createSSRApp, h, type Component } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { createI18n } from 'vue-i18n'
-import { Button, Checkbox, Icon, Popup, Tag, Tooltip } from 'tdesign-vue-next'
+import { createRouter, createMemoryHistory } from 'vue-router'
+import { Button, Checkbox, Icon, Popup, Select, Tag, Textarea, Tooltip } from 'tdesign-vue-next'
 import type { OpsRun } from '@/api/knowledge-ops'
 
 let server: ViteDevServer
 let QueuePanel: Component
 let CaptureCoverage: Component
 let QueryContextPanel: Component
+let ReviewForm: Component
+let AdoptionPanel: Component
 before(async () => {
   server = await createServer({
     configFile: false,
     optimizeDeps: { noDiscovery: true, entries: [] },
-    plugins: [vue()],
+    ssr: { noExternal: ['dompurify'] },
+    plugins: [{
+      // Substitute only app/session and network boundaries. Components and their
+      // TDesign controls render normally, without browser localStorage or HTTP.
+      name: 'ops-render-context',
+      enforce: 'pre',
+      resolveId(id) {
+        if (id === 'dompurify') return '\0ops-render-dom'
+        if (id.endsWith('/stores/auth') || id.endsWith('/stores/auth.ts')) return '\0ops-render-auth'
+        if (id.endsWith('/api/knowledge-ops') || id.endsWith('/api/knowledge-ops.ts')) return '\0ops-render-api'
+      },
+      load(id) {
+        // DOMPurify's browser DOM is outside these panel semantics; sanitizer
+        // behavior is covered by the dedicated document-preview tests.
+        if (id === '\0ops-render-dom') return 'export default { addHook() {}, removeHook() {}, sanitize: (html) => html }'
+        if (id === '\0ops-render-auth') return 'export const useAuthStore = () => ({ hasRole: () => false, effectiveTenantId: 1 })'
+        if (id === '\0ops-render-api') return `
+          const unexpected = () => { throw new Error('Read-only render must not request HTTP') }
+          export const adoptOpsAnswer = unexpected, getOpsAdoptionTargets = unexpected,
+            getOpsDetail = unexpected, retryOpsAdoption = unexpected
+          export const opsErrorCode = () => 'knowledge_ops_failed'
+        `
+      },
+    }, vue()],
     resolve: { alias: { '@': fileURLToPath(new URL('../../', import.meta.url)) } },
     server: { middlewareMode: true, hmr: false },
     appType: 'custom',
@@ -25,6 +51,8 @@ before(async () => {
   QueuePanel = (await server.ssrLoadModule('/src/views/knowledge-ops/QueuePanel.vue')).default
   CaptureCoverage = (await server.ssrLoadModule('/src/views/knowledge-ops/CaptureCoverage.vue')).default
   QueryContextPanel = (await server.ssrLoadModule('/src/views/knowledge-ops/QueryContextPanel.vue')).default
+  ReviewForm = (await server.ssrLoadModule('/src/views/knowledge-ops/ReviewForm.vue')).default
+  AdoptionPanel = (await server.ssrLoadModule('/src/views/knowledge-ops/AdoptionPanel.vue')).default
 })
 after(async () => { await server?.close() })
 
@@ -63,7 +91,8 @@ async function render(runs: OpsRun[] = [], props: Record<string, unknown> = {}) 
 async function renderContext(component: Component, props: Record<string, unknown>) {
   const app = createSSRApp({ render: () => h(component, props) })
   app.use(createI18n({ legacy: false, locale: 'zh-CN', messages: { 'zh-CN': {} } }))
-  for (const [name, value] of Object.entries({ Button, Icon, Popup, Tag, Tooltip })) app.component(`t-${name.toLowerCase()}`, value)
+  app.use(createRouter({ history: createMemoryHistory(), routes: [{ path: '/platform/knowledge-bases/:kbId', component: { render: () => null } }] }))
+  for (const [name, value] of Object.entries({ Button, Icon, Popup, Select, Tag, Textarea, Tooltip })) app.component(`t-${name.toLowerCase()}`, value)
   return renderToString(app)
 }
 
@@ -108,7 +137,7 @@ test('human evidence requests replace historical automatic routing as current wo
   assert.match(current, /人工补证要求/)
   assert.match(current, /复核人[^<]*reviewer-7/)
   assert.match(current, /2026\/10\/2/)
-  assert.match(current, /待复核[^<]*回答判定/)
+  assert.match(current, /待复核[^<]*回答质量/)
   assert.doesNotMatch(current, /待复核[^<]*根因判断/)
   assert.doesNotMatch(current, /机器自动记录|原始自动记录理由/)
   assert.equal(html.match(/原始自动记录理由/g)?.length, 1)
@@ -246,7 +275,7 @@ test('a redundant machine summary is hidden while distinct historical routing st
   item.pending_items = [{ route: 'human_review', reason: item.analysis!.route_reason }]
   const same = await render([item])
   assert.doesNotMatch(same, /原始机器诊断/)
-  assert.match(currentContent(same), /待复核[^<]*回答判定/)
+  assert.match(currentContent(same), /待复核[^<]*回答质量/)
   assert.match(currentContent(same), /自动记录尚未启用/)
   assert.match(currentContent(same), /去复核/)
 
@@ -267,4 +296,28 @@ test('source-only tasks do not request another answer review', async () => {
   assert.match(current, /补齐原文来源/)
   assert.match(current, /查看待办/)
   assert.doesNotMatch(current, /去复核|待复核[^<]*回答判定/)
+})
+
+
+test('review form presents whole-answer quality as its human decision with an optional acceptance note', async () => {
+  const html = await renderContext(ReviewForm, { analysisID: 'current', disabled: false, busy: false })
+  assert.match(html, /回答质量复核/)
+  assert.match(html, /通过 · 回答可用/)
+  assert.match(html, /整条回答是否准确、完整、可用/)
+  assert.match(html, /补充说明（选填）/)
+  assert.doesNotMatch(html, /确认当前判定|未找到支持|review-verdict-answer/)
+})
+
+test('published FAQ remains distinct from review completion and opens the verified knowledge-base route', async () => {
+  const html = await renderContext(AdoptionPanel, {
+    run: run(), analysisID: 'analysis-1', disabled: true,
+    adoptions: [{ id: 'adopted', run_id: 'run-1', analysis_id: 'analysis-1', review_id: 'accepted', status: 'succeeded', kb_id: 'faq-library', question: '申请额度所需材料', answer: '提交已签署合同。', entry_id: 23, created_at: '2026-10-21T09:00:00Z', updated_at: '2026-10-21T09:00:00Z' }],
+  })
+  assert.match(html, /已发布/)
+  assert.match(html, /人工复核已单独保存/)
+  assert.match(html, /申请额度所需材料/)
+  assert.match(html, /提交已签署合同/)
+  assert.match(html, /href="\/platform\/knowledge-bases\/faq-library"/)
+  assert.match(html, /FAQ #23/)
+  assert.doesNotMatch(html, /重试发布/)
 })
