@@ -311,6 +311,10 @@ func (s *Service) loadDetail(ctx context.Context, tenant uint64, id string, full
 		return Detail{}, err
 	}
 	d.PendingTasks = int(pending)
+	d.Followups = []Followup{}
+	if err = s.repo.db.WithContext(ctx).Where("tenant_id = ? AND run_id = ?", tenant, id).Order("created_at DESC,id DESC").Find(&d.Followups).Error; err != nil {
+		return Detail{}, err
+	}
 	d.Reviews = []Review{}
 	err = s.repo.db.WithContext(ctx).Where("tenant_id = ? AND run_id = ?", tenant, id).Order("created_at DESC,id").Find(&d.Reviews).Error
 	if err == nil {
@@ -413,7 +417,7 @@ func (s *Service) RunOnce(ctx context.Context) error {
 	}
 	a.Report.SourceAudit = sourceAudit
 	a.ModelID = settings.ModelID
-	return s.repo.SaveAnalysis(ctx, *task, a)
+	return s.repo.SaveAnalysis(ctx, *task, a, settings)
 }
 func (s *Service) StartWorker() {
 	s.workerMu.Lock()

@@ -25,6 +25,9 @@ func (r *Repository) Settings(ctx context.Context, tenant uint64) (Settings, err
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return DefaultSettings(tenant), nil
 	}
+	if err == nil {
+		r.populateCalibration(ctx, &s)
+	}
 	return s, err
 }
 func (r *Repository) SaveSettings(ctx context.Context, tenant uint64, s Settings) error {
@@ -32,11 +35,47 @@ func (r *Repository) SaveSettings(ctx context.Context, tenant uint64, s Settings
 		return ErrInvalid
 	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		old, err := NewRepository(tx).Settings(ctx, tenant)
+		old, err := NewRepository(tx).settingsForCalibrationUpdate(ctx, tenant)
 		if err != nil {
 			return err
 		}
+		// Public derived fields are never accepted as approval. Preserve the old
+		// server binding on ordinary edits, so changes become stale, not reapproved.
+		s.CalibrationBinding = old.CalibrationBinding
+		s.CalibrationPolicyVersion = old.CalibrationPolicyVersion
+		s.CalibrationModelID = old.CalibrationModelID
+		s.CalibrationConfirmedAt = old.CalibrationConfirmedAt
 		s.TenantID = tenant
+		s.calibrationModelFingerprint = old.calibrationModelFingerprint
+		if s.CalibrationConfirmed {
+			if strings.TrimSpace(s.CalibrationNote) == "" {
+				return ErrInvalid
+			}
+			if err := NewRepository(tx).lockCalibrationModel(ctx, tenant, s.ModelID); err != nil {
+				return ErrInvalid
+			}
+			fingerprint, err := NewRepository(tx).calibrationModelFingerprint(ctx, tenant, s.ModelID)
+			if err != nil {
+				return ErrInvalid
+			}
+			if s.CalibrationSnapshot == "" || s.CalibrationSnapshot != calibrationSnapshot(tenant, s.ModelID, fingerprint) {
+				return ErrStale
+			}
+			s.calibrationModelFingerprint = fingerprint
+			s.CalibrationPolicyVersion = PolicyVersion
+			s.CalibrationModelID = s.ModelID
+			now := time.Now().UTC()
+			s.CalibrationConfirmedAt = &now
+			s.CalibrationBinding = calibrationBinding(s, SourceLookupPolicyFromEnv())
+		} else {
+			if !calibrationValid(s) {
+				s.CalibrationBinding = ""
+			}
+			if s.AutoRecordEnabled && !old.AutoRecordEnabled && !calibrationValid(s) {
+				return ErrInvalid
+			}
+		}
+		s.CalibrationConfirmed = false
 		s.UpdatedAt = time.Now().UTC()
 		s.CaptureEnabledAt = old.CaptureEnabledAt
 		if s.Enabled && !old.Enabled {
@@ -111,12 +150,19 @@ func (r *Repository) CompleteTask(ctx context.Context, t Task) error {
 	}
 	return nil
 }
-func (r *Repository) SaveAnalysis(ctx context.Context, t Task, a Analysis) error {
+func (r *Repository) SaveAnalysis(ctx context.Context, t Task, a Analysis, initialSettings ...Settings) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := lockRun(tx, t.TenantID, t.RunID); err != nil {
 			return err
 		}
 		if err := NewRepository(tx).CompleteTask(ctx, t); err != nil {
+			return err
+		}
+		var initial Settings
+		if len(initialSettings) > 0 {
+			initial = initialSettings[0]
+		}
+		if err := NewRepository(tx).recheckAutomaticCalibration(ctx, t.TenantID, initial, &a); err != nil {
 			return err
 		}
 		a.ID = uuid.NewString()

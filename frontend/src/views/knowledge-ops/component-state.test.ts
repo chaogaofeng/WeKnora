@@ -112,6 +112,14 @@ function setup(
     'answerEditing',
     'editAnswer',
     'previewAnswer',
+    'beginFollowup',
+    'saveFollowup',
+    'followupDraft',
+    'followupError',
+    'editingRoute',
+    'handling',
+    'canHandle',
+    'calibrationStatus',
   ]
   const expose = names
     .map(
@@ -346,6 +354,7 @@ const settings = (sample: number) => ({
   model_id: '',
   auto_record_enabled: false,
   calibration_note: '',
+  calibration_snapshot: 'snapshot-A',
   sample_percent: sample,
 })
 const detail = (id: string) => ({
@@ -1380,6 +1389,206 @@ test('a changed analysis, review or workspace discards pending publication respo
     assert.equal(h.api.publication.value, undefined, change)
     assert.equal(h.api.publishing.value, false, change)
     assert.equal(h.events.length, 0, change)
+    h.stop()
+  }
+})
+
+function followupHarness(overrides: Record<string, any> = {}, dependencies: Record<string, unknown> = {}) {
+  const props = vue.reactive({
+    run: { id: 'run-a', analysis: { id: 'a1' }, followups: [
+      { route: 'source_verification', reason: 'Version unavailable', state: 'pending' },
+      { route: 'technical_followup', reason: 'Cancelled', state: 'closed', latest: { id: 'f1', action: 'accepted_limitation' } },
+    ] },
+    analysisID: 'a1',
+    records: [],
+    disabled: false,
+    ...overrides,
+  })
+  const requests: unknown[] = []
+  const h = setup('FollowupPanel.vue', props, {
+    addOpsFollowup: async (run: string, payload: unknown) => { requests.push([run, payload]); return { id: 'f2' } },
+    ...dependencies,
+  })
+  return { ...h, props, requests }
+}
+
+test('follow-up closure requires a reason and binds the displayed diagnosis without changing its evidence', async () => {
+  const h = followupHarness()
+  assert.equal(h.api.canHandle.value, true)
+  h.api.beginFollowup(h.props.run.followups[0])
+  await h.api.saveFollowup()
+  assert.equal(h.requests.length, 0)
+  assert.equal(h.api.followupError.value, 'followupReasonRequired')
+  h.api.followupDraft.reason = '  Source version cannot be recovered; business owner accepted the limit.  '
+  h.api.followupDraft.action = 'accepted_limitation'
+  await h.api.saveFollowup()
+  assert.deepEqual(JSON.parse(JSON.stringify(h.requests)), [['run-a', {
+    analysis_id: 'a1', route: 'source_verification', action: 'accepted_limitation',
+    reason: 'Source version cannot be recovered; business owner accepted the limit.', previous_id: '',
+  }]])
+  assert.equal(h.props.run.followups[0].reason, 'Version unavailable')
+  assert.deepEqual(h.events, [['changed']])
+  h.stop()
+})
+
+test('reopening a closed follow-up uses its latest disposition and historical pages cannot submit', async () => {
+  const h = followupHarness()
+  h.api.beginFollowup(h.props.run.followups[1])
+  assert.equal(h.api.followupDraft.action, 'reopened')
+  h.api.followupDraft.reason = 'New information needs investigation'
+  await h.api.saveFollowup()
+  assert.equal((h.requests[0] as any)[1].previous_id, 'f1')
+  h.props.analysisID = 'historical'
+  assert.equal(h.api.canHandle.value, false)
+  h.api.beginFollowup(h.props.run.followups[0])
+  await h.api.saveFollowup()
+  assert.equal(h.requests.length, 1)
+  h.stop()
+})
+
+test('follow-up draft survives same-version refresh but cannot overwrite another operator result', async () => {
+  const h = followupHarness()
+  h.api.beginFollowup(h.props.run.followups[0])
+  h.api.followupDraft.reason = 'Investigation notes'
+  h.props.run = { ...h.props.run }
+  await vue.nextTick()
+  assert.equal(h.api.followupDraft.reason, 'Investigation notes')
+  h.props.run.followups[0] = { ...h.props.run.followups[0], state: 'closed', latest: { id: 'concurrent', action: 'resolved' } } as any
+  await h.api.saveFollowup()
+  assert.equal(h.requests.length, 0)
+  assert.equal(h.api.followupError.value, 'version_changed')
+  h.stop()
+})
+
+test('follow-up late responses cannot affect another run, version or workspace', async () => {
+  for (const change of ['run', 'analysis', 'tenant']) {
+    const pending = deferred<unknown>()
+    let requests = 0
+    const h = followupHarness({}, { addOpsFollowup: () => { requests++; return pending.promise } })
+    h.api.beginFollowup(h.props.run.followups[0])
+    h.api.followupDraft.reason = 'Investigated'
+    h.api.followupDraft.action = 'resolved'
+    const saving = h.api.saveFollowup()
+    assert.equal(requests, 1)
+    if (change === 'run') h.props.run = { ...h.props.run, id: 'run-b' }
+    else if (change === 'analysis') h.props.analysisID = 'a2'
+    else h.auth.effectiveTenantId = 2
+    pending.resolve({ id: 'late' })
+    await saving
+    assert.equal(h.api.editingRoute.value, '')
+    assert.equal(h.api.handling.value, false)
+    assert.equal(h.events.length, 0)
+    h.stop()
+  }
+})
+
+test('auto-record cannot be newly enabled by a calibration note alone', async () => {
+  const requests: unknown[] = []
+  const h = setup('SettingsDrawer.vue', vue.reactive({ visible: true }), {
+    getOpsSettings: async () => ({ ...settings(10), model_id: 'model', calibration_status: 'unconfirmed', calibration_note: 'Sample results' }),
+    listModels: async () => [{ id: 'model' }],
+    saveOpsSettings: async (value: unknown) => { requests.push(value); return value },
+  })
+  await h.api.load()
+  h.api.draft.value.enabled = false
+  h.api.draft.value.auto_record_enabled = true
+  await h.api.save()
+  assert.equal(requests.length, 0)
+  assert.equal(h.api.saveError.value, 'calibrationConfirmationRequired')
+  h.api.draft.value.calibration_confirmed = true
+  await h.api.save()
+  assert.equal(requests.length, 1)
+  assert.equal((requests[0] as any).calibration_confirmed, true)
+  h.stop()
+})
+
+test('model and diagnostic budget edits invalidate a shown calibration and reset confirmation', async () => {
+  const h = setup('SettingsDrawer.vue', vue.reactive({ visible: true }), {
+    getOpsSettings: async () => ({ ...settings(10), model_id: 'model', calibration_status: 'valid', calibration_note: 'Sample results' }),
+    listModels: async () => [{ id: 'model' }],
+  })
+  await h.api.load()
+  assert.equal(h.api.calibrationStatus?.value, 'valid')
+  h.api.draft.value.model_id = 'changed-model'
+  assert.equal(h.api.calibrationStatus.value, 'stale')
+  h.api.draft.value.calibration_confirmed = true
+  h.api.draft.value.max_output_tokens = 4096
+  assert.equal(h.api.draft.value.calibration_confirmed, false)
+  h.api.draft.value.calibration_confirmed = true
+  h.api.draft.value.calibration_note = 'A different sample basis'
+  assert.equal(h.api.draft.value.calibration_confirmed, false)
+  h.stop()
+})
+
+test('switching calibration model clears the old snapshot until the selected configuration loads', async () => {
+  const pending = deferred<unknown>()
+  const requests: any[] = []
+  const h = setup('SettingsDrawer.vue', vue.reactive({ visible: true }), {
+    getOpsSettings: async () => ({ ...settings(10), model_id: 'model', calibration_snapshot: 'snapshot-A', calibration_note: 'Samples', auto_record_enabled: true }),
+    getOpsCalibrationSnapshot: () => pending.promise,
+    listModels: async () => [{ id: 'model' }, { id: 'model-B' }],
+    saveOpsSettings: async (value: any) => { requests.push(value); return value },
+  })
+  await h.api.load()
+  h.api.draft.value.calibration_confirmed = true
+  h.api.draft.value.model_id = 'model-B'
+  assert.equal(h.api.draft.value.calibration_snapshot, '')
+  assert.equal(h.api.draft.value.calibration_confirmed, false)
+  h.api.draft.value.calibration_confirmed = true
+  await h.api.save()
+  assert.equal(requests.length, 0)
+  pending.resolve({ model_id: 'model-B', snapshot: 'snapshot-B' })
+  await setImmediate()
+  h.api.draft.value.calibration_confirmed = true
+  await h.api.save()
+  assert.equal(requests.length, 1)
+  assert.equal(requests[0].calibration_snapshot, 'snapshot-B')
+  h.stop()
+})
+
+test('stale calibration confirmation keeps edits but requires a fresh configuration check', async () => {
+  const h = setup('SettingsDrawer.vue', vue.reactive({ visible: true }), {
+    getOpsSettings: async () => ({ ...settings(10), model_id: 'model', calibration_snapshot: 'snapshot-A', calibration_note: 'Sample evidence', auto_record_enabled: true }),
+    listModels: async () => [{ id: 'model' }],
+    opsErrorCode: () => 'version_changed',
+    saveOpsSettings: async () => { throw new Error('stale model') },
+  })
+  await h.api.load()
+  h.api.draft.value.calibration_confirmed = true
+  await h.api.save()
+  assert.equal(h.api.draft.value.calibration_confirmed, false)
+  assert.equal(h.api.draft.value.calibration_snapshot, '')
+  assert.equal(h.api.draft.value.calibration_note, 'Sample evidence')
+  assert.equal(h.api.saveError.value, 'calibrationChanged')
+  assert.equal(h.events.length, 0)
+  h.stop()
+})
+
+test('late calibration configuration responses cannot replace a newer selection or another tenant', async () => {
+  for (const change of ['selection', 'tenant', 'close']) {
+    const old = deferred<any>()
+    const current = deferred<any>()
+    const props = vue.reactive({ visible: true })
+    const h = setup('SettingsDrawer.vue', props, {
+      getOpsSettings: async () => ({ ...settings(10), model_id: 'model', calibration_snapshot: 'snapshot-A', calibration_note: 'Samples' }),
+      listModels: async () => [{ id: 'model' }, { id: 'model-B' }, { id: 'model-C' }],
+      getOpsCalibrationSnapshot: (id: string) => id === 'model-B' ? old.promise : current.promise,
+    })
+    await h.api.load()
+    h.api.draft.value.model_id = 'model-B'
+    if (change === 'selection') {
+      h.api.draft.value.model_id = 'model-C'
+      current.resolve({ model_id: 'model-C', snapshot: 'snapshot-C' })
+      await setImmediate()
+    } else if (change === 'tenant') {
+      h.auth.effectiveTenantId = 2
+      await setImmediate()
+    } else props.visible = false
+    old.resolve({ model_id: 'model-B', snapshot: 'late-snapshot-B' })
+    await setImmediate()
+    if (change === 'selection') assert.equal(h.api.draft.value.calibration_snapshot, 'snapshot-C')
+    else if (change === 'tenant') assert.equal(h.api.draft.value.calibration_snapshot, 'snapshot-A')
+    else assert.equal(h.api.draft.value, undefined)
     h.stop()
   }
 })

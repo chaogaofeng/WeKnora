@@ -412,6 +412,15 @@
           </details>
         </section>
 
+        <FollowupPanel
+          v-if="analysis"
+          :run="detail.run"
+          :analysisID="analysis.id"
+          :records="detail.followups || []"
+          :disabled="!canReview"
+          @changed="adoptionChanged"
+        />
+
         <section
           v-if="noKnowledgeCheck && !showOptionalReview"
           class="optional-review"
@@ -727,6 +736,7 @@ import {
 import EmptyState from '@/components/EmptyState.vue'
 import ReviewForm from './ReviewForm.vue'
 import AdoptionPanel from './AdoptionPanel.vue'
+import FollowupPanel from './FollowupPanel.vue'
 import { latestAnswerReview } from './state'
 import { useOpsText } from './locales'
 const props = defineProps<{

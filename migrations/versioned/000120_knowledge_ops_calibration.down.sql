@@ -1,0 +1,4 @@
+ALTER TABLE knowledge_ops_settings DROP COLUMN calibration_confirmed_at;
+ALTER TABLE knowledge_ops_settings DROP COLUMN calibration_model_id;
+ALTER TABLE knowledge_ops_settings DROP COLUMN calibration_policy_version;
+ALTER TABLE knowledge_ops_settings DROP COLUMN calibration_binding;

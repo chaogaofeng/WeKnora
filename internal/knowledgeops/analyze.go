@@ -74,6 +74,13 @@ func (a *Analyzer) Analyze(ctx context.Context, run Run, evidence []Evidence, s 
 		return result, &analysisError{code: "analysis_model_unavailable", cause: err}
 	}
 	result.ModelName = model.GetModelName()
+	// Only the snapshot used to construct this exact client can authorize its
+	// output. A factory without provenance still diagnoses, but routes manually.
+	s.calibrationModelFingerprint = ""
+	if snapshot, ok := model.(*diagnosticModel); ok {
+		s.calibrationModelFingerprint = snapshot.fingerprint
+		result.calibrationModelFingerprint = snapshot.fingerprint
+	}
 	sourceConflictPending, err := analyzeWithCorrection(bounded, model, string(body), run, evidence, s, &result)
 	if err != nil {
 		return result, err
@@ -84,6 +91,10 @@ func (a *Analyzer) Analyze(ctx context.Context, run Run, evidence []Evidence, s 
 	applySupportPolicy(run, &result.Report)
 	result.SamplePercent = s.SamplePercent
 	result.SampleStratum = run.QAType + "/" + run.Channel + "/" + result.Report.Risk + "/" + result.Report.SourceCheck
+	// A custom runtime source policy must match the confirmed deployment policy.
+	if calibrationBinding(s, a.sourcePolicy) != s.CalibrationBinding {
+		s.calibrationModelFingerprint = ""
+	}
 	result.Route, result.RouteReason = Triage(run, result.Report, s)
 	if sourceConflictPending && run.Status == "completed" && result.Route != "human_review" {
 		result.Route, result.RouteReason = "human_review", "模型提示来源可能冲突，但补查范围尚不完整，需人工核实"
@@ -222,8 +233,11 @@ func Triage(run Run, r Report, s Settings) (string, string) {
 	if run.QAType != "rag-qa" && run.QAType != "wiki-qa" && run.QAType != "hybrid-rag-wiki" || run.Channel == "" || run.Channel == "unknown" {
 		return "needs_evidence", "模式或渠道未明确，不纳入自动记录"
 	}
-	if !s.AutoRecordEnabled || strings.TrimSpace(s.CalibrationNote) == "" {
+	if !s.AutoRecordEnabled {
 		return "human_review", "自动记录尚未启用，保守人工复核"
+	}
+	if !calibrationValid(s) {
+		return "human_review", "当前配置的校准尚未确认或已失效，保留人工复核"
 	}
 	// Sampling is stable per run+policy and has an explicit probability.
 	h := sha256.Sum256([]byte(run.ID + run.QAType + run.Channel + r.Risk + r.SourceCheck + PolicyVersion))

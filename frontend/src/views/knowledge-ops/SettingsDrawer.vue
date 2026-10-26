@@ -51,6 +51,12 @@
             <t-switch v-model="draft.auto_record_enabled" />
           </label>
           <p class="help">{{ k('calibrationHint') }}</p>
+          <div class="calibration-state">
+            <t-tag :theme="calibrationStatus === 'valid' ? 'success' : 'default'" variant="light">{{ k(`calibration_${calibrationStatus}`) }}</t-tag>
+            <span v-if="draft.calibration_confirmed_at" class="help">{{ date(draft.calibration_confirmed_at) }}</span>
+          </div>
+          <p v-if="draft.auto_record_enabled && calibrationStatus !== 'valid'" class="notice">{{ k('calibrationPaused') }}</p>
+          <p v-if="draft.calibration_policy_version" class="help">{{ k('calibrationBoundTo') }}: {{ draft.calibration_model_id }} · {{ draft.calibration_policy_version }}</p>
           <label>
             {{ k('calibration_note') }}
             <t-textarea
@@ -60,6 +66,15 @@
               :aria-label="k('calibration_note')"
             />
           </label>
+          <t-checkbox v-if="draft.auto_record_enabled" class="calibration-confirm" v-model="draft.calibration_confirmed" :disabled="saving || snapshotLoading || !draft.calibration_snapshot">
+            {{ k('calibrationConfirm') }}
+          </t-checkbox>
+          <p v-if="snapshotLoading" class="help" role="status">{{ k('calibrationLoading') }}</p>
+          <div v-else-if="draft.auto_record_enabled && !draft.calibration_snapshot" class="help">
+            {{ k('calibrationUnavailable') }}
+            <t-button variant="text" size="small" :disabled="saving || !draft.model_id" @click="refreshSnapshot">{{ k('calibrationRefresh') }}</t-button>
+          </div>
+          <p class="help">{{ k('calibrationBindingHint') }}</p>
         </div>
         <div class="settings-section">
           <h3>{{ k('budgetSettings') }}</h3>
@@ -90,11 +105,12 @@
   </t-drawer>
 </template>
 <script setup lang="ts">
-import { onScopeDispose, ref, watch } from 'vue'
+import { computed, onScopeDispose, ref, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { listModels, type ModelConfig } from '@/api/model'
 import {
   getOpsSettings,
+  getOpsCalibrationSnapshot,
   saveOpsSettings,
   opsErrorCode,
   type OpsSettings,
@@ -106,13 +122,54 @@ const emit = defineEmits<{ close: []; saved: [OpsSettings] }>()
 const { k, date } = useOpsText()
 const auth = useAuthStore()
 let requestID = 0
+let snapshotRequestID = 0
+const snapshotLoading = ref(false)
 let loadedTenant: number | null | undefined
 const draft = ref<OpsSettings>()
+const loadedSignature = ref('')
+const loadedAutoRecord = ref(false)
+function calibrationSignature(value?: OpsSettings) {
+  if (!value) return ''
+  return JSON.stringify([value.model_id, value.calibration_snapshot, value.max_evidence_chars, value.max_output_tokens, value.timeout_seconds, value.sample_percent, value.calibration_note.trim()])
+}
+const calibrationStatus = computed(() => {
+  const status = draft.value?.calibration_status || 'unconfirmed'
+  return status === 'valid' && calibrationSignature(draft.value) !== loadedSignature.value ? 'stale' : status
+})
+watch(() => calibrationSignature(draft.value), () => {
+  if (draft.value) draft.value.calibration_confirmed = false
+}, { flush: 'sync' })
 const models = ref<ModelConfig[]>([])
 const loading = ref(false)
 const saving = ref(false)
 const loadError = ref('')
 const saveError = ref('')
+async function refreshSnapshot() {
+  const modelID = draft.value?.model_id
+  const token = ++snapshotRequestID
+  const tenant = auth.effectiveTenantId
+  if (draft.value) {
+    draft.value.calibration_snapshot = ''
+    draft.value.calibration_confirmed = false
+  }
+  snapshotLoading.value = false
+  if (!modelID) return
+  const current = () => token === snapshotRequestID && props.visible && tenant === auth.effectiveTenantId && draft.value?.model_id === modelID
+  snapshotLoading.value = true
+  try {
+    const result = await getOpsCalibrationSnapshot(modelID)
+    if (current() && draft.value && result.model_id === modelID) {
+      draft.value.calibration_snapshot = result.snapshot
+    }
+  } catch (error) {
+    if (current()) saveError.value = k(opsErrorCode(error))
+  } finally {
+    if (current()) snapshotLoading.value = false
+  }
+}
+watch(() => draft.value?.model_id, (modelID, previous) => {
+  if (modelID !== undefined && previous !== undefined && modelID !== previous) void refreshSnapshot()
+}, { flush: 'sync' })
 const numberFields: {
   key:
     | 'sample_percent'
@@ -129,6 +186,8 @@ const numberFields: {
 ]
 async function load() {
   const token = ++requestID
+  snapshotRequestID++
+  snapshotLoading.value = false
   const tenant = auth.effectiveTenantId
   const current = () =>
     token === requestID && props.visible && tenant === auth.effectiveTenantId
@@ -145,7 +204,9 @@ async function load() {
     ])
     if (!current()) return
     loadedTenant = tenant
-    draft.value = { ...settings }
+    loadedSignature.value = calibrationSignature(settings)
+    loadedAutoRecord.value = settings.auto_record_enabled
+    draft.value = { ...settings, calibration_confirmed: false }
     models.value = choices.filter(
       (model) =>
         model.id &&
@@ -184,6 +245,14 @@ async function save() {
     saveError.value = k('calibrationRequired')
     return
   }
+  if (draft.value.calibration_confirmed && (snapshotLoading.value || !draft.value.calibration_snapshot)) {
+    saveError.value = k('calibrationUnavailable')
+    return
+  }
+  if (draft.value.auto_record_enabled && !loadedAutoRecord.value && calibrationStatus.value !== 'valid' && !draft.value.calibration_confirmed) {
+    saveError.value = k('calibrationConfirmationRequired')
+    return
+  }
   if (new TextEncoder().encode(draft.value.calibration_note).length > 4000) {
     saveError.value = k('calibrationTooLong')
     return
@@ -196,7 +265,16 @@ async function save() {
       emit('close')
     }
   } catch (error) {
-    if (current()) saveError.value = k(opsErrorCode(error))
+    if (current()) {
+      const code = opsErrorCode(error)
+      if (code === 'version_changed' && draft.value) {
+        snapshotRequestID++
+        snapshotLoading.value = false
+        draft.value.calibration_confirmed = false
+        draft.value.calibration_snapshot = ''
+        saveError.value = k('calibrationChanged')
+      } else saveError.value = k(code)
+    }
   } finally {
     if (current()) saving.value = false
   }
@@ -205,6 +283,8 @@ watch(
   () => [props.visible, auth.effectiveTenantId],
   () => {
     requestID++
+    snapshotRequestID++
+    snapshotLoading.value = false
     loadedTenant = undefined
     draft.value = undefined
     models.value = []
@@ -218,6 +298,7 @@ watch(
 )
 onScopeDispose(() => {
   requestID++
+  snapshotRequestID++
 })
 </script>
 <style scoped>
@@ -251,6 +332,16 @@ onScopeDispose(() => {
 small {
   color: var(--td-text-color-secondary);
   font-size: var(--app-text-md);
+}
+.calibration-state { display: flex; align-items: center; flex-wrap: wrap; gap: var(--app-space-2); }
+.ops-settings .calibration-confirm {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0;
+}
+.calibration-confirm :deep(.t-checkbox__input) {
+  flex-shrink: 0;
+  margin-top: var(--app-space-1);
 }
 .number-grid {
   display: grid;

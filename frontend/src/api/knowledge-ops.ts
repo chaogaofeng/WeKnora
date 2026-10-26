@@ -1,6 +1,12 @@
 import { get, post, put } from '@/utils/request'
 
 export interface OpsSettings {
+  calibration_confirmed?: boolean
+  calibration_snapshot?: string
+  calibration_status?: 'unconfirmed' | 'valid' | 'stale'
+  calibration_policy_version?: string
+  calibration_model_id?: string
+  calibration_confirmed_at?: string | null
   enabled: boolean
   model_id: string
   auto_record_enabled: boolean
@@ -140,6 +146,7 @@ export interface OpsHistoryContext {
   ever_compacted: boolean
 }
 export interface OpsRun {
+  followups?: OpsFollowupState[]
   query_context?: OpsQueryContext
   conversation?: OpsConversation
   history_context?: OpsHistoryContext
@@ -263,6 +270,7 @@ export interface OpsAdoption extends OpsAdoptionInput {
   updated_at: string
 }
 export interface OpsDetail {
+  followups?: OpsFollowup[]
   pending_tasks: number
   run: OpsRun
   evidence: OpsEvidence[]
@@ -274,12 +282,35 @@ export interface OpsPage<T> {
   items: T[]
   total: number
 }
+export type OpsFollowupRoute = 'source_verification' | 'technical_followup'
+export type OpsFollowupAction = 'resolved' | 'accepted_limitation' | 'not_required' | 'reopened'
+export interface OpsFollowupInput {
+  analysis_id: string
+  route: OpsFollowupRoute
+  action: OpsFollowupAction
+  reason: string
+  previous_id: string
+}
+export interface OpsFollowup extends OpsFollowupInput {
+  id: string
+  run_id: string
+  actor_id: string
+  created_at: string
+}
+export interface OpsFollowupState {
+  route: OpsFollowupRoute
+  reason: string
+  state: 'pending' | 'closed'
+  latest?: OpsFollowup
+}
 export interface OpsGroup {
   key: string
   count: number
   representative: OpsRun
 }
 export interface OpsOverview {
+  answer_outcomes?: Record<string, number>
+  sample_revision_required?: number
   non_knowledge_runs?: number
   content_coverage: {
     total: number
@@ -352,6 +383,8 @@ async function unwrap<T>(request: Promise<Envelope<T>>): Promise<T> {
 }
 export const getOpsSettings = () =>
   unwrap(get<Envelope<OpsSettings>>(`${base}/settings`))
+export const getOpsCalibrationSnapshot = (modelID: string) =>
+  unwrap(get<Envelope<{ model_id: string; snapshot: string }>>(`${base}/calibration-snapshot`, { params: { model_id: modelID } }))
 export const saveOpsSettings = (value: OpsSettings) =>
   unwrap(put<Envelope<OpsSettings>>(`${base}/settings`, value))
 export const getOpsOverview = (params: OpsFilters) =>
@@ -377,6 +410,8 @@ export const addOpsReview = (id: string, value: ReviewInput) =>
   )
 export const getOpsReviews = (params: OpsFilters) =>
   unwrap(get<Envelope<OpsPage<OpsReview>>>(`${base}/reviews`, { params }))
+export const addOpsFollowup = (id: string, value: OpsFollowupInput) =>
+  unwrap(post<Envelope<OpsFollowup>>(`${base}/runs/${encodeURIComponent(id)}/followups`, value))
 export function opsErrorCode(error: unknown): string {
   if (error && typeof error === 'object') {
     const value = error as {

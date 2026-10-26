@@ -112,11 +112,14 @@ func TestDocumentMetadataUsesCaptureBudget(t *testing.T) {
 
 func TestAnalysisDisclosesConfigurationLimitWithoutBlockingEvidenceSupport(t *testing.T) {
 	m := &fakeChat{payload: `{"verdict":"supported","claims":[{"text":"A","position":"answer","verdict":"supported","evidence_ids":["e"],"reason":"observed"}],"source_check":"not_checked","risk":"low","scope":"source support"}`}
-	a := NewAnalyzer(func(context.Context, string) (chat.Chat, error) { return m, nil }, nil)
 	settings := DefaultSettings(1)
 	settings.AutoRecordEnabled = true
 	settings.CalibrationNote = "validated"
 	settings.SamplePercent = 0
+	settings = withTestCalibration(settings)
+	a := NewAnalyzer(func(context.Context, string) (chat.Chat, error) {
+		return &diagnosticModel{diagnosticChat: m, fingerprint: settings.calibrationModelFingerprint}, nil
+	}, nil)
 	out, err := a.Analyze(context.Background(), Run{Status: "completed", CaptureStatus: "complete", QAType: "rag-qa", Channel: "web"}, []Evidence{{ID: "e", Content: "A", Kind: "chunk", SentToModel: true}}, settings)
 	require.NoError(t, err)
 	require.Equal(t, "auto_record", out.Route)

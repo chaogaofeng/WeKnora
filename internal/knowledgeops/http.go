@@ -30,7 +30,9 @@ func (s *Service) RegisterHTTP(g *gin.RouterGroup) {
 		c.Next()
 	})
 	s.registerAdoptionHTTP(g)
+	s.registerFollowupHTTP(g)
 	g.GET("/settings", s.getSettings)
+	g.GET("/calibration-snapshot", s.getCalibrationSnapshot)
 	g.PUT("/settings", s.putSettings)
 	g.GET("/overview", s.overview)
 	g.GET("/runs", s.listRuns)
@@ -68,6 +70,15 @@ func reply(c *gin.Context, data any, err error) {
 func (s *Service) getSettings(c *gin.Context) {
 	v, e := s.repo.Settings(c.Request.Context(), tenant(c))
 	reply(c, v, e)
+}
+func (s *Service) getCalibrationSnapshot(c *gin.Context) {
+	id := c.Query("model_id")
+	if id == "" {
+		reply(c, nil, ErrInvalid)
+		return
+	}
+	snapshot, err := s.repo.CalibrationSnapshot(c.Request.Context(), tenant(c), id)
+	reply(c, gin.H{"model_id": id, "snapshot": snapshot}, err)
 }
 func (s *Service) putSettings(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 16384)

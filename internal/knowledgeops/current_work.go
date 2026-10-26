@@ -21,6 +21,7 @@ type PendingItem struct {
 type currentWork struct {
 	ReviewState          string
 	PendingReviewTargets []string
+	Followups            []FollowupState
 	Items                []PendingItem
 }
 
@@ -86,11 +87,11 @@ func deriveCurrentWork(d Detail) currentWork {
 			work.PendingReviewTargets = append(work.PendingReviewTargets, request.Target)
 		}
 	}
-	if reason := sourceFollowupReason(d.Run); reason != "" {
-		work.Items = append(work.Items, PendingItem{Route: "source_verification", Reason: reason})
-	}
-	if reason := technicalFollowupReason(d.Run); reason != "" {
-		work.Items = append(work.Items, PendingItem{Route: "technical_followup", Reason: reason})
+	work.Followups = deriveFollowups(d)
+	for _, followup := range work.Followups {
+		if followup.State == "pending" {
+			work.Items = append(work.Items, PendingItem{Route: followup.Route, Reason: followup.Reason})
+		}
 	}
 	return work
 }
@@ -149,5 +150,6 @@ func populateCurrentWork(d *Detail) {
 	d.Run.PendingItems = work.Items
 	d.Run.EffectiveRisk = effectiveRisk(d.Run)
 	d.Run.SourceCheckDisplay = sourceCheckDisplay(*d)
-	d.Run.SourceFollowupPending = sourceFollowupPending(d.Run)
+	d.Run.Followups = work.Followups
+	d.Run.SourceFollowupPending = slices.ContainsFunc(work.Followups, func(f FollowupState) bool { return f.Route == "source_verification" && f.State == "pending" })
 }

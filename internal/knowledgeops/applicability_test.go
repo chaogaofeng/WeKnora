@@ -68,6 +68,7 @@ func TestKnowledgeRequestsWithoutClaimsCannotAutoRecord(t *testing.T) {
 	settings.AutoRecordEnabled = true
 	settings.CalibrationNote = "calibrated"
 	settings.SamplePercent = 0
+	settings = withTestCalibration(settings)
 	for _, tc := range []struct{ question, applicability, want string }{
 		{"第二点展开说说", "unknown", "needs_evidence"},
 		{"请说明办理流程", "", "needs_evidence"},
@@ -86,6 +87,7 @@ func TestEmptySocialAnswerCannotFallThroughToAutoRecord(t *testing.T) {
 	settings := DefaultSettings(1)
 	settings.AutoRecordEnabled = true
 	settings.CalibrationNote = "calibrated"
+	settings = withTestCalibration(settings)
 	var report Report
 	require.NoError(t, json.Unmarshal([]byte(socialReport), &report))
 	run := Run{Status: "completed", Question: "谢谢", CaptureStatus: "complete", QAType: "rag-qa", Channel: "web"}

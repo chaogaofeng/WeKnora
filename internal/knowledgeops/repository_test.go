@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
@@ -22,7 +23,7 @@ func testStore(t *testing.T) *Repository {
 	require.NoError(t, err)
 	raw.SetMaxOpenConns(1)
 	t.Cleanup(func() { raw.Close() })
-	for _, name := range []string{"000034_knowledge_ops", "000035_knowledge_ops_history", "000036_knowledge_ops_queries", "000037_knowledge_ops_adoptions"} {
+	for _, name := range []string{"000034_knowledge_ops", "000035_knowledge_ops_history", "000036_knowledge_ops_queries", "000037_knowledge_ops_adoptions", "000038_knowledge_ops_followups", "000039_knowledge_ops_calibration"} {
 		data, err := os.ReadFile(filepath.Join("..", "..", "migrations", "sqlite", name+".up.sql"))
 		require.NoError(t, err)
 		for _, sql := range strings.Split(string(data), ";") {
@@ -31,6 +32,7 @@ func testStore(t *testing.T) *Repository {
 			}
 		}
 	}
+	require.NoError(t, db.AutoMigrate(&types.Model{}))
 	return NewRepository(db)
 }
 func TestSettingsDefaultDisabledAndEnableTimeStable(t *testing.T) {
@@ -150,6 +152,10 @@ func TestAutoRecordingRequiresCalibrationAndReviewsMatchTarget(t *testing.T) {
 	s.AutoRecordEnabled = true
 	require.ErrorIs(t, r.SaveSettings(ctx, 1, s), ErrInvalid)
 	s.CalibrationNote = "manually evaluated mode/channel/risk strata"
+	s.ModelID = "calibration-review-model"
+	s.CalibrationConfirmed = true
+	require.NoError(t, r.db.Create(&types.Model{ID: s.ModelID, TenantID: 1, Name: "review-model", Type: types.ModelTypeKnowledgeQA, Status: types.ModelStatusActive}).Error)
+	s.CalibrationSnapshot, _ = r.CalibrationSnapshot(ctx, 1, s.ModelID)
 	require.NoError(t, r.SaveSettings(ctx, 1, s))
 	run := Run{ID: uuid.NewString(), TenantID: 1, MessageID: uuid.NewString(), StartedAt: time.Now()}
 	require.NoError(t, r.CreateRun(ctx, &run))

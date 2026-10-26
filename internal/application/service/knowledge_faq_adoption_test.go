@@ -108,7 +108,7 @@ func newAdoptionServiceIntegration(t *testing.T) (*faqWriteFixture, *knowledgeop
 	require.NoError(t, f.db.AutoMigrate(&types.KnowledgeBase{}, &types.Tenant{}, &types.AuditLog{}))
 	require.NoError(t, f.db.Create(f.kb).Error)
 	require.NoError(t, f.db.Create(&types.Tenant{ID: 7, Name: "owner", StorageQuota: 1000}).Error)
-	for _, name := range []string{"000034_knowledge_ops", "000035_knowledge_ops_history", "000036_knowledge_ops_queries", "000037_knowledge_ops_adoptions"} {
+	for _, name := range []string{"000034_knowledge_ops", "000035_knowledge_ops_history", "000036_knowledge_ops_queries", "000037_knowledge_ops_adoptions", "000038_knowledge_ops_followups", "000039_knowledge_ops_calibration"} {
 		body, err := os.ReadFile(filepath.Join("..", "..", "..", "migrations", "sqlite", name+".up.sql"))
 		require.NoError(t, err)
 		for _, sql := range strings.Split(string(body), ";") {

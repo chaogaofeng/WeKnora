@@ -186,6 +186,7 @@ func TestCapturedRAGHistorySupplementsRemainIncomplete(t *testing.T) {
 			require.Equal(t, []string{tc.gap}, analysis.Report.AnalysisAudit.History.ContextGaps)
 			settings := DefaultSettings(1)
 			settings.AutoRecordEnabled, settings.CalibrationNote = true, "calibrated"
+			settings = withTestCalibration(settings)
 			route, _ := Triage(run, analysis.Report, settings)
 			require.Equal(t, "needs_evidence", route)
 			require.Equal(t, "complete", detail.Run.Coverage.ContentStatus, "current knowledge bodies were saved in full")

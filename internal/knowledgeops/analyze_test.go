@@ -29,6 +29,7 @@ func TestTriageNeverLetsHighRiskOrPartialAutoRecord(t *testing.T) {
 	s.AutoRecordEnabled = true
 	s.CalibrationNote = "test calibration"
 	s.SamplePercent = 0
+	s = withTestCalibration(s)
 	report := Report{Verdict: "supported", SourceCheck: "consistent", Risk: "low", Claims: []Claim{{Verdict: "supported"}}}
 	run := Run{ID: "r", QAType: "rag-qa", Channel: "web", Question: "融资额度上限是多少", CaptureStatus: "complete", Status: "completed"}
 	route, _ := Triage(run, report, s)
@@ -79,6 +80,7 @@ func TestUnknownModeCannotAutoRecord(t *testing.T) {
 	s.AutoRecordEnabled = true
 	s.CalibrationNote = "calibrated"
 	s.SamplePercent = 0
+	s = withTestCalibration(s)
 	r := Run{ID: "unknown", Status: "completed", CaptureStatus: "complete", QAType: "unknown", Channel: "web"}
 	route, _ := Triage(r, Report{Verdict: "supported", Risk: "low", SourceCheck: "not_checked"}, s)
 	require.Equal(t, "needs_evidence", route)

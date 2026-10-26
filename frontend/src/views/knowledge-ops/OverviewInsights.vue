@@ -126,6 +126,18 @@
       </div>
     </details>
 
+    <details v-if="Object.values(stats.answer_outcomes || {}).some(value => value > 0)" class="capture-panel">
+      <summary><span class="capture-title">{{ k('humanQualityStats') }}</span></summary>
+      <div class="capture-detail">
+        <div class="provenance-summary">
+          <p v-for="outcome in ['usable', 'revision_required', 'needs_evidence', 'excluded']" :key="outcome" class="stat">
+            <span>{{ label(outcome) }}</span><strong>{{ stats.answer_outcomes?.[outcome] || 0 }}</strong>
+          </p>
+          <p class="muted">{{ k('humanQualityStatsHint') }}</p>
+        </div>
+      </div>
+    </details>
+
     <div v-if="hasCauses || stats.sample_total" class="supplement-grid">
       <section v-if="hasCauses" class="cause-panel">
         <h2>{{ k('causeStats') }}</h2>
@@ -155,6 +167,10 @@
           ><strong>{{ stats.sample_reviewed || 0 }}</strong>
         </p>
         <p class="stat">
+          <span>{{ k('sampleRevisionRequired') }}</span
+          ><strong>{{ stats.sample_revision_required || 0 }}</strong>
+        </p>
+        <p v-if="stats.sample_corrected" class="stat">
           <span>{{ k('sampleCorrected') }}</span
           ><strong>{{ stats.sample_corrected || 0 }}</strong>
         </p>

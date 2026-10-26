@@ -35,6 +35,7 @@ func TestSupportDistinguishesVersionGapsFromContextLoss(t *testing.T) {
 			run := Run{Status: "completed", CaptureStatus: tc.status, Gaps: tc.gaps, QAType: "rag-qa", Channel: "web"}
 			settings := DefaultSettings(1)
 			settings.AutoRecordEnabled, settings.CalibrationNote = true, "calibrated"
+			settings = withTestCalibration(settings)
 			out, err := a.Analyze(context.Background(), run, []Evidence{{ID: "e", Content: "A", SentToModel: true, Kind: "chunk"}}, settings)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, out.Report.Verdict)

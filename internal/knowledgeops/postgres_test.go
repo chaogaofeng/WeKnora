@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/postgres"
@@ -47,7 +48,7 @@ func TestPostgresMigrationAndConcurrentReviewVersionGate(t *testing.T) {
 	require.NoError(t, db.Raw("SELECT current_schema()").Scan(&activeSchema).Error)
 	require.Equal(t, schema, activeSchema, "never run integration migrations against application tables")
 	apply := func(suffix string) {
-		names := []string{"000115_knowledge_ops", "000116_knowledge_ops_history", "000117_knowledge_ops_queries", "000118_knowledge_ops_adoptions"}
+		names := []string{"000115_knowledge_ops", "000116_knowledge_ops_history", "000117_knowledge_ops_queries", "000118_knowledge_ops_adoptions", "000119_knowledge_ops_followups", "000120_knowledge_ops_calibration"}
 		if suffix == "down" {
 			for i, j := 0, len(names)-1; i < j; i, j = i+1, j-1 {
 				names[i], names[j] = names[j], names[i]
@@ -65,6 +66,7 @@ func TestPostgresMigrationAndConcurrentReviewVersionGate(t *testing.T) {
 	}
 	apply("up")
 	require.True(t, db.Migrator().HasTable(&Adoption{}))
+	require.True(t, db.Migrator().HasTable(&Followup{}))
 	repo := NewRepository(db)
 	ctx := context.Background()
 	settings := DefaultSettings(1)
@@ -107,10 +109,48 @@ func TestPostgresMigrationAndConcurrentReviewVersionGate(t *testing.T) {
 	var reviews int64
 	require.NoError(t, db.Model(&Review{}).Count(&reviews).Error)
 	require.Zero(t, reviews)
+
+	// Follow-up CAS shares the parent lock. The second operator must see the
+	// committed predecessor before deciding whether their input is still current.
+	var current Analysis
+	require.NoError(t, db.Where("tenant_id = ? AND run_id = ?", 1, run.ID).Order("version DESC").First(&current).Error)
+	followupCtx := types.WithCaller(ctx, types.Caller{TenantID: 1, UserID: "operator", Role: types.TenantRoleAdmin})
+	access := func(context.Context, Run, []Evidence) error { return nil }
+	input := FollowupInput{AnalysisID: current.ID, Route: "source_verification", Action: "resolved", Reason: "source investigated"}
+	followupTx := db.Begin()
+	require.NoError(t, followupTx.Error)
+	defer followupTx.Rollback()
+	first, err := (&Service{repo: NewRepository(followupTx), access: access}).AddFollowup(followupCtx, 1, run.ID, input)
+	require.NoError(t, err)
+	concurrent := make(chan error, 1)
+	go func() {
+		_, err := (&Service{repo: repo, access: access}).AddFollowup(followupCtx, 1, run.ID, input)
+		concurrent <- err
+	}()
+	select {
+	case err := <-concurrent:
+		t.Fatalf("followup bypassed uncommitted parent lock: %v", err)
+	case <-time.After(150 * time.Millisecond):
+	}
+	require.NoError(t, followupTx.Commit().Error)
+	select {
+	case err := <-concurrent:
+		require.ErrorIs(t, err, ErrStale)
+	case <-time.After(5 * time.Second):
+		t.Fatal("followup did not resume after commit")
+	}
+	input.Action = "reopened"
+	input.PreviousID = first.ID
+	reopened, err := (&Service{repo: repo, access: access}).AddFollowup(followupCtx, 1, run.ID, input)
+	require.NoError(t, err)
+	require.Equal(t, first.ID, reopened.PreviousID)
+	t.Run("calibration_finalization", func(t *testing.T) { testPostgresCalibrationFinalization(t, db) })
 	apply("down")
 	require.False(t, db.Migrator().HasTable(&Run{}))
 	require.False(t, db.Migrator().HasTable(&Adoption{}))
+	require.False(t, db.Migrator().HasTable(&Followup{}))
 	apply("up")
 	require.True(t, db.Migrator().HasTable(&Run{}))
 	require.True(t, db.Migrator().HasTable(&Adoption{}))
+	require.True(t, db.Migrator().HasTable(&Followup{}))
 }

@@ -17,23 +17,25 @@ type Coverage struct {
 	Missing  int `json:"missing"`
 }
 type WorkbenchStats struct {
-	NonKnowledgeRuns      int                  `json:"non_knowledge_runs"`
-	ContentCoverage       Coverage             `json:"content_coverage"`
-	ContentCoverageByMode map[string]*Coverage `json:"content_coverage_by_mode"`
-	ProvenanceCounts      map[string]int       `json:"provenance_counts"`
-	CoverageByMode        map[string]*Coverage `json:"coverage_by_mode"`
-	SourceChecks          map[string]int       `json:"source_checks"`
-	Causes                map[string]int       `json:"causes"`
-	QueueCounts           map[string]int       `json:"queue_counts"`
-	PendingRuns           int                  `json:"pending_runs"`
-	DiagnosisStatus       map[string]int       `json:"diagnosis_status"`
-	SampleTotal           int                  `json:"sample_total"`
-	SampleReviewed        int                  `json:"sample_reviewed"`
-	SampleCorrected       int                  `json:"sample_corrected"`
+	AnswerOutcomes         map[string]int       `json:"answer_outcomes"`
+	SampleRevisionRequired int                  `json:"sample_revision_required"`
+	NonKnowledgeRuns       int                  `json:"non_knowledge_runs"`
+	ContentCoverage        Coverage             `json:"content_coverage"`
+	ContentCoverageByMode  map[string]*Coverage `json:"content_coverage_by_mode"`
+	ProvenanceCounts       map[string]int       `json:"provenance_counts"`
+	CoverageByMode         map[string]*Coverage `json:"coverage_by_mode"`
+	SourceChecks           map[string]int       `json:"source_checks"`
+	Causes                 map[string]int       `json:"causes"`
+	QueueCounts            map[string]int       `json:"queue_counts"`
+	PendingRuns            int                  `json:"pending_runs"`
+	DiagnosisStatus        map[string]int       `json:"diagnosis_status"`
+	SampleTotal            int                  `json:"sample_total"`
+	SampleReviewed         int                  `json:"sample_reviewed"`
+	SampleCorrected        int                  `json:"sample_corrected"`
 }
 
 func newWorkbenchStats() WorkbenchStats {
-	return WorkbenchStats{ContentCoverageByMode: map[string]*Coverage{}, ProvenanceCounts: map[string]int{}, CoverageByMode: map[string]*Coverage{}, SourceChecks: map[string]int{}, Causes: map[string]int{}, QueueCounts: map[string]int{}, DiagnosisStatus: map[string]int{}}
+	return WorkbenchStats{AnswerOutcomes: map[string]int{}, ContentCoverageByMode: map[string]*Coverage{}, ProvenanceCounts: map[string]int{}, CoverageByMode: map[string]*Coverage{}, SourceChecks: map[string]int{}, Causes: map[string]int{}, QueueCounts: map[string]int{}, DiagnosisStatus: map[string]int{}}
 }
 
 func (v *Coverage) observe(status string) {
@@ -99,6 +101,12 @@ func (v *WorkbenchStats) observe(d Detail) {
 		return
 	}
 	v.DiagnosisStatus[a.Status]++
+	// Human conclusions describe the current answer independently of whether
+	// machine diagnosis succeeded or classified it as a knowledge request.
+	outcome := currentAnswerOutcome(d)
+	if outcome != "" {
+		v.AnswerOutcomes[outcome]++
+	}
 	// Execution failures have no valid quality finding. Keep them in diagnosis
 	// status and actionable queues, never in answer/source/cause distributions.
 	if a.Status != "succeeded" {
@@ -118,6 +126,9 @@ func (v *WorkbenchStats) observe(d Detail) {
 	}
 	if a.Route == "quality_sample" {
 		v.SampleTotal++
+		if outcome == "revision_required" {
+			v.SampleRevisionRequired++
+		}
 		if humanReviewState(d) == "reviewed" {
 			v.SampleReviewed++
 		}

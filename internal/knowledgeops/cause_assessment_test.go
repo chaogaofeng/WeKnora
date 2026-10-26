@@ -75,6 +75,7 @@ func TestUnlinkedGenerationAssessmentCannotAutoRecordOrBeConfirmed(t *testing.T)
 	analyzer := NewAnalyzer(func(context.Context, string) (chat.Chat, error) { return m, nil }, nil)
 	s := DefaultSettings(1)
 	s.AutoRecordEnabled, s.CalibrationNote, s.SamplePercent = true, "calibrated", 0
+	s = withTestCalibration(s)
 	a, err := analyzer.Analyze(context.Background(), Run{Status: "completed", CaptureStatus: "complete", QAType: "rag-qa", Channel: "web"}, []Evidence{{ID: "e", Kind: "chunk", Content: "A", SentToModel: true}}, s)
 	require.NoError(t, err, "one inconsistent attribution must not discard the valid answer assessment")
 	require.Equal(t, "supported", a.Report.Verdict)
