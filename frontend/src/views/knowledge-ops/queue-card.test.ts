@@ -7,7 +7,7 @@ import { createSSRApp, h, type Component } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { createI18n } from 'vue-i18n'
 import { createRouter, createMemoryHistory } from 'vue-router'
-import { Button, Checkbox, Icon, Popup, Select, Tag, Textarea, Tooltip } from 'tdesign-vue-next'
+import { Button, Checkbox, Icon, Popup, RadioButton, RadioGroup, Select, Tag, Textarea, Tooltip } from 'tdesign-vue-next'
 import type { OpsRun } from '@/api/knowledge-ops'
 
 let server: ViteDevServer
@@ -16,6 +16,7 @@ let CaptureCoverage: Component
 let QueryContextPanel: Component
 let ReviewForm: Component
 let AdoptionPanel: Component
+let StatusBadge: Component
 before(async () => {
   server = await createServer({
     configFile: false,
@@ -53,6 +54,7 @@ before(async () => {
   QueryContextPanel = (await server.ssrLoadModule('/src/views/knowledge-ops/QueryContextPanel.vue')).default
   ReviewForm = (await server.ssrLoadModule('/src/views/knowledge-ops/ReviewForm.vue')).default
   AdoptionPanel = (await server.ssrLoadModule('/src/views/knowledge-ops/AdoptionPanel.vue')).default
+  StatusBadge = (await server.ssrLoadModule('/src/views/knowledge-ops/StatusBadge.vue')).default
 })
 after(async () => { await server?.close() })
 
@@ -93,6 +95,8 @@ async function renderContext(component: Component, props: Record<string, unknown
   app.use(createI18n({ legacy: false, locale: 'zh-CN', messages: { 'zh-CN': {} } }))
   app.use(createRouter({ history: createMemoryHistory(), routes: [{ path: '/platform/knowledge-bases/:kbId', component: { render: () => null } }] }))
   for (const [name, value] of Object.entries({ Button, Icon, Popup, Select, Tag, Textarea, Tooltip })) app.component(`t-${name.toLowerCase()}`, value)
+  app.component('t-radio-group', RadioGroup)
+  app.component('t-radio-button', RadioButton)
   return renderToString(app)
 }
 
@@ -320,4 +324,29 @@ test('published FAQ remains distinct from review completion and opens the verifi
   assert.match(html, /href="\/platform\/knowledge-bases\/faq-library"/)
   assert.match(html, /FAQ #23/)
   assert.doesNotMatch(html, /重试发布/)
+})
+
+test('pure Wiki renders the saved Wiki page with a direct link even when a newer FAQ and no current approval exist', async () => {
+  const html = await renderContext(AdoptionPanel, {
+    run: run({ qa_type: 'wiki-qa' }), analysisID: 'analysis-1', disabled: true,
+    adoptions: [
+      { id: 'faq', run_id: 'run-1', analysis_id: 'analysis-1', review_id: 'accepted', status: 'succeeded', kb_id: 'faq-library', question: 'FAQ only question', answer: 'FAQ only answer', entry_id: 23, created_at: '2026-10-22T09:00:00Z', updated_at: '2026-10-22T09:00:00Z' },
+      { id: 'wiki', target_type: 'wiki', run_id: 'run-1', analysis_id: 'analysis-1', review_id: 'accepted', status: 'succeeded', kb_id: 'wiki-library', question: 'Wiki 独立问题', answer: '人工确认的 Wiki 答案。', wiki_page_id: 'wiki-page', wiki_slug: 'ops/question', wiki_version: 1, created_at: '2026-10-21T09:00:00Z', updated_at: '2026-10-21T09:00:00Z' },
+    ],
+  })
+  assert.match(html, /Wiki 独立问题/)
+  assert.match(html, /人工确认的 Wiki 答案/)
+  assert.match(html, /href="\/platform\/knowledge-bases\/wiki-library\?tab=wiki&amp;slug=ops%2Fquestion"/)
+  assert.match(html, /无需向量索引/)
+  assert.match(html, /文档或标签限定可能将其排除/)
+  assert.doesNotMatch(html, /FAQ only question|FAQ #23|重试发布/)
+})
+
+test('human-reviewed Wiki sources render a neutral original-source comparison label', async () => {
+  const html = await renderContext(StatusBadge, { value: 'human_reviewed' })
+  assert.match(html, /人工审核问答 · 无原文对照/)
+  assert.doesNotMatch(html, /t-tag--success|t-tag--warning|t-tag--danger/)
+  const queue = await render([run({ source_check_display: 'human_reviewed', source_followup_pending: false, pending_items: [] })])
+  assert.match(queue, /人工审核问答 · 无原文对照/)
+  assert.doesNotMatch(queue, />human_reviewed</)
 })

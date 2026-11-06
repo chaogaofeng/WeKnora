@@ -378,7 +378,7 @@ func (s *Service) RunOnce(ctx context.Context) error {
 				break
 			}
 		}
-		if sourceErr != nil {
+		if sourceReadIncomplete(sourceErr) {
 			run.Gaps = append(run.Gaps, "source_lookup_incomplete")
 		}
 		for _, e := range supplement {
@@ -400,6 +400,7 @@ func (s *Service) RunOnce(ctx context.Context) error {
 		}
 	}
 	if err == nil {
+		run.sourceAudit = sourceAudit
 		a, err = s.analyzer.Analyze(execCtx, run, evidence, settings)
 	}
 	if err != nil {

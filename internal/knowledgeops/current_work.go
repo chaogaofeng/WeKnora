@@ -134,6 +134,9 @@ func sourceCheckDisplay(d Detail) string {
 		return "not_applicable"
 	}
 	source := d.Run.Analysis.Report.SourceCheck
+	if d.Run.Analysis.Status == "succeeded" && humanReviewedSourceOnly(d.Run, d.Run.Analysis.Report) {
+		return humanReviewedSourceScope
+	}
 	if source == "not_checked" && d.Run.QAType == "rag-qa" && !slices.ContainsFunc(d.Evidence, func(e Evidence) bool {
 		return e.SentToModel && !e.PostHoc && e.PageID != ""
 	}) {

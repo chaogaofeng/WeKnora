@@ -7,9 +7,18 @@
       </div>
       <StatusBadge v-if="publication" :value="publication.status" :text="k(`adoption_${publication.status}`)" />
     </div>
+    <div class="target-type">
+      <span :id="`${fieldID}-type`" class="field-label">{{ k('adoptionType') }}</span>
+      <t-radio-group :value="targetType" :aria-labelledby="`${fieldID}-type`" :disabled="typeChangeBlocked" variant="default-filled" @change="targetTypeChanged">
+        <t-radio-button v-for="type in targetTypes" :key="type" :value="type">
+          {{ k(`adoptionType_${type}`) }}<span v-if="publicationFor(type)" class="type-status"> · {{ k(`adoption_${publicationFor(type)!.status}`) }}</span>
+        </t-radio-button>
+      </t-radio-group>
+    </div>
+    <p class="muted retrieval-hint">{{ targetText('adoptionRetrievalHint') }}</p>
     <template v-if="publication">
       <dl class="publication-summary">
-        <dt>{{ k('adoptionTarget') }}</dt>
+        <dt>{{ targetText('adoptionTarget') }}</dt>
         <dd>{{ targetName(publication.kb_id) }}</dd>
         <dt>{{ k('standardQuestion') }}</dt>
         <dd>{{ publication.question }}</dd>
@@ -21,33 +30,33 @@
         <AnswerContent :content="publication.answer" />
       </details>
       <template v-if="publication.status === 'succeeded'">
-        <p class="success" role="status">{{ k(publication.reused ? 'adoptionReused' : 'adoptionSucceeded') }}</p>
-        <router-link class="library-link" :to="`/platform/knowledge-bases/${encodeURIComponent(publication.kb_id)}`">
-          {{ k('openAdoptionLibrary') }}<template v-if="publication.entry_id"> · FAQ #{{ publication.entry_id }}</template>
+        <p class="success" role="status">{{ targetText(publication.reused ? 'adoptionReused' : 'adoptionSucceeded') }}</p>
+        <router-link class="library-link" :to="publicationLink">
+          {{ targetText('openAdoptionLibrary') }}<template v-if="targetType === 'faq' && publication.entry_id"> · FAQ #{{ publication.entry_id }}</template>
         </router-link>
       </template>
-      <p v-if="publication.status === 'publishing'" class="muted" role="status">{{ k('adoptionPublishingHint') }}</p>
+      <p v-if="publication.status === 'publishing'" class="muted" role="status">{{ targetText('adoptionPublishingHint') }}</p>
       <p v-if="publication.status === 'failed'" class="error" role="alert">{{ publicationError }}</p>
       <p v-if="publication.status === 'failed' && !approvalMatches" class="muted">{{ k('adoptionApprovalChanged') }}</p>
       <div class="panel-actions">
-        <t-button v-if="['failed', 'publishing'].includes(publication.status) && approvalMatches" :disabled="!allowed || publishing" :loading="publishing" @click="retryPublication">
-          {{ k('retryPublication') }}
+        <t-button v-if="['failed', 'publishing'].includes(publication.status) && approvalMatches" :disabled="!allowed || publishing || refreshing || uncertain" :loading="publishing" @click="retryPublication">
+          {{ targetText('retryPublication') }}
         </t-button>
-        <t-button v-if="publication.status === 'publishing'" variant="outline" :loading="refreshing" @click="refreshPublication">
+        <t-button v-if="publication.status === 'publishing'" variant="outline" :disabled="publishing" :loading="refreshing" @click="refreshPublication">
           {{ k('refreshPublication') }}
         </t-button>
       </div>
     </template>
     <template v-else>
-      <t-button v-if="!expanded" variant="outline" :disabled="!allowed" @click="openDraft">{{ k('adoptAsKnowledge') }}</t-button>
+      <t-button v-if="!expanded" variant="outline" :disabled="!allowed" @click="openDraft">{{ targetText('adoptAsKnowledge') }}</t-button>
       <form v-else class="adoption-form" @submit.prevent="publish">
         <p class="muted">{{ k('adoptionDraftHint') }}</p>
         <label :id="`${fieldID}-kb`">
-          {{ k('adoptionTarget') }}
+          {{ targetText('adoptionTarget') }}
           <t-select
             v-model="draft.kb_id"
             :aria-labelledby="`${fieldID}-kb`"
-            :placeholder="k('selectAdoptionTarget')"
+            :placeholder="targetText('selectAdoptionTarget')"
             :options="targets.map((target) => ({ value: target.id, label: target.name }))"
             :loading="loadingTargets"
             :disabled="!allowed || publishing || !targets.length || !!targetError"
@@ -55,12 +64,15 @@
           />
         </label>
         <p v-if="targetError" class="error" role="alert">{{ targetError }}</p>
-        <p v-else-if="!loadingTargets && !targets.length" class="muted" role="status">{{ k('noAdoptionTargets') }}</p>
+        <p v-else-if="!loadingTargets && !targets.length" class="muted" role="status">{{ targetText('noAdoptionTargets') }}</p>
         <t-button v-if="targetError" size="small" variant="text" :disabled="!allowed" @click="loadTargets">{{ k('retry') }}</t-button>
         <label :id="`${fieldID}-question`">
           {{ k('standardQuestion') }}
-          <t-textarea v-model="draft.question" :aria-labelledby="`${fieldID}-question`" :autosize="{ minRows: 2, maxRows: 5 }" :maxlength="16000" :disabled="!allowed || publishing" />
+          <t-textarea v-model="draft.question" :aria-labelledby="`${fieldID}-question`" :aria-describedby="`${fieldID}-question-hint`" :aria-invalid="questionTooLong" :status="questionTooLong ? 'error' : undefined" :autosize="{ minRows: 2, maxRows: 5 }" :disabled="!allowed || publishing" />
         </label>
+        <p :id="`${fieldID}-question-hint`" :class="questionTooLong ? 'error' : 'muted'" :role="questionTooLong ? 'alert' : undefined">
+          {{ targetText(questionTooLong ? 'adoptionQuestionTooLong' : 'adoptionQuestionLimit') }} · {{ questionLength }} / {{ questionLimit }}
+        </p>
         <div class="answer-draft">
           <div class="answer-heading">
             <label :id="`${fieldID}-answer`">{{ k('standardAnswer') }}</label>
@@ -74,17 +86,17 @@
             <p v-else class="muted">{{ k('emptyAdoptionAnswer') }}</p>
           </div>
           <p class="muted">{{ k(answerEditing ? 'previewBeforePublication' : 'adoptionAnswerPrepared') }}</p>
+          <p v-if="wikiCitationRemaining" class="error" role="alert">{{ k('adoptionWikiCitationRemaining') }}</p>
         </div>
-        <p class="muted retrieval-hint">{{ k('adoptionRetrievalHint') }}</p>
         <div class="panel-actions">
-          <t-button type="submit" :loading="publishing" :disabled="!canPublish">{{ k('publishToKnowledge') }}</t-button>
+          <t-button type="submit" :loading="publishing" :disabled="!canPublish">{{ targetText('publishToKnowledge') }}</t-button>
           <t-button variant="text" theme="default" :disabled="publishing" @click="expanded = false">{{ k('collapseDraft') }}</t-button>
         </div>
       </form>
     </template>
     <p v-if="publishError" class="error" role="alert">{{ publishError }}</p>
     <div v-if="uncertain" class="uncertain-state">
-      <p class="muted">{{ k('adoptionUncertain') }}</p>
+      <p class="muted">{{ targetText('adoptionUncertain') }}</p>
       <t-button variant="outline" :loading="refreshing" @click="refreshPublication">{{ k('refreshPublication') }}</t-button>
     </div>
     <p v-if="disabled || !auth.hasRole('admin')" class="muted">{{ k('adoptionReadOnly') }}</p>
@@ -94,7 +106,7 @@
 <script setup lang="ts">
 import { computed, onScopeDispose, reactive, ref, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { adoptOpsAnswer, getOpsAdoptionTargets, getOpsDetail, opsErrorCode, retryOpsAdoption, type OpsAdoption, type OpsAdoptionTarget, type OpsReview, type OpsRun } from '@/api/knowledge-ops'
+import { adoptOpsAnswer, getOpsAdoptionTargets, getOpsDetail, opsErrorCode, retryOpsAdoption, type OpsAdoption, type OpsAdoptionTarget, type OpsAdoptionTargetType, type OpsReview, type OpsRun } from '@/api/knowledge-ops'
 import { compareOpsTimestamps, latestAnswerReview } from './state'
 import { prepareAdoptionAnswer } from './adoption-answer'
 import AnswerContent from './AnswerContent.vue'
@@ -120,23 +132,42 @@ const publishing = ref(false)
 const refreshing = ref(false)
 const uncertain = ref(false)
 const stale = ref(false)
-const localPublication = ref<OpsAdoption>()
+const targetTypes: OpsAdoptionTargetType[] = ['faq', 'wiki']
+const targetType = ref<OpsAdoptionTargetType>('faq')
+const localPublications = ref<OpsAdoption[]>([])
 const draft = reactive({ kb_id: '', question: '', answer: '' })
 let scopeID = 0
 let targetRequest = 0
 const fieldID = computed(() => `ops-adopt-${props.run.id}-${props.analysisID}`)
-const publication = computed(() => {
-  const values = [...(localPublication.value ? [localPublication.value] : []), ...(props.adoptions || [])]
-  return values.filter((item) => item.analysis_id === props.analysisID && item.run_id === props.run.id)
+function publicationFor(type: OpsAdoptionTargetType) {
+  const values = [...localPublications.value, ...(props.adoptions || [])]
+  return values.filter((item) => item.analysis_id === props.analysisID && item.run_id === props.run.id && (item.target_type || 'faq') === type)
     .sort((a, b) => compareOpsTimestamps(b.updated_at || b.created_at, a.updated_at || a.created_at))[0]
+}
+const publication = computed(() => publicationFor(targetType.value))
+const publicationLink = computed(() => {
+  const value = publication.value
+  if (!value) return ''
+  const library = `/platform/knowledge-bases/${encodeURIComponent(value.kb_id)}`
+  return targetType.value === 'wiki' ? `${library}?tab=wiki&slug=${encodeURIComponent(value.wiki_slug || '')}` : library
 })
 const allowed = computed(() => !props.disabled && !stale.value && auth.hasRole('admin') && props.review?.action === 'accepted' && props.review.verdict === 'usable' && props.review.analysis_id === props.analysisID)
 const approvalMatches = computed(() => !!props.review && publication.value?.review_id === props.review.id)
-const canPublish = computed(() => allowed.value && expanded.value && !answerEditing.value && !publishing.value && !uncertain.value && !publication.value && !targetError.value && !loadingTargets.value && targets.value.some((target) => target.id === draft.kb_id) && !!draft.question.trim() && !!draft.answer.trim() && prepareAdoptionAnswer(draft.answer) === draft.answer.trim())
+const typeChangeBlocked = computed(() => publishing.value || refreshing.value || uncertain.value)
+const questionLimit = computed(() => targetType.value === 'wiki' ? 512 : 16000)
+const questionLength = computed(() => Array.from(draft.question.trim()).length)
+const questionTooLong = computed(() => questionLength.value > questionLimit.value)
+// Wiki's save path removes these even inside code. Preserve literal examples
+// in the draft and require the reviewer to edit them before confirming.
+const wikiCitationRemaining = computed(() => targetType.value === 'wiki' && /\[c\d{3,}(?:\s*[,;]\s*c\d{3,})*\]/.test(draft.answer))
+const canPublish = computed(() => allowed.value && expanded.value && !answerEditing.value && !typeChangeBlocked.value && !publication.value && !targetError.value && !loadingTargets.value && targets.value.some((target) => target.id === draft.kb_id) && !!draft.question.trim() && !questionTooLong.value && !!draft.answer.trim() && !wikiCitationRemaining.value && Array.from(draft.answer.trim()).length <= 24000 && prepareAdoptionAnswer(draft.answer) === draft.answer.trim())
 const publicationError = computed(() => {
   const code = publication.value?.error || ''
-  return k(['faq_publish_failed', 'faq_index_failed', 'faq_lookup_failed', 'faq_question_conflict', 'access_revoked', 'approval_changed'].includes(code) ? code : 'adoptionFailed')
+  return ['faq_publish_failed', 'faq_index_failed', 'faq_lookup_failed', 'faq_question_conflict', 'wiki_publish_failed', 'wiki_lookup_failed', 'wiki_question_conflict', 'access_revoked', 'approval_changed'].includes(code) ? k(code) : targetText('adoptionFailed')
 })
+function targetText(key: string) {
+  return k(targetType.value === 'wiki' ? `${key}Wiki` : key)
+}
 function targetName(id: string) {
   return targets.value.find((target) => target.id === id)?.name || id
 }
@@ -145,7 +176,20 @@ function operationScope() {
   const tenant = auth.effectiveTenantId
   const runID = props.run.id
   const analysisID = props.analysisID
-  return () => scope === scopeID && tenant === auth.effectiveTenantId && runID === props.run.id && analysisID === props.analysisID
+  const type = targetType.value
+  return () => scope === scopeID && tenant === auth.effectiveTenantId && runID === props.run.id && analysisID === props.analysisID && type === targetType.value
+}
+async function targetTypeChanged(value: unknown) {
+  if ((value !== 'faq' && value !== 'wiki') || value === targetType.value || typeChangeBlocked.value) return
+  scopeID++
+  targetRequest++
+  targetType.value = value
+  targets.value = []
+  draft.kb_id = ''
+  loadingTargets.value = false
+  targetError.value = ''
+  publishError.value = ''
+  if (expanded.value || publication.value) await loadTargets()
 }
 async function loadTargets() {
   if (!auth.hasRole('admin')) return
@@ -154,14 +198,14 @@ async function loadTargets() {
   loadingTargets.value = true
   targetError.value = ''
   try {
-    const response = await getOpsAdoptionTargets()
+    const response = await getOpsAdoptionTargets(targetType.value)
     if (token !== targetRequest || !current()) return
     targets.value = response.items || []
     if (!targets.value.some((target) => target.id === draft.kb_id)) draft.kb_id = ''
   } catch (error) {
     if (token === targetRequest && current()) {
       targets.value = []
-      targetError.value = k(opsErrorCode(error) === 'forbidden' ? 'adoptionForbidden' : 'adoptionTargetsFailed')
+      targetError.value = targetText(opsErrorCode(error) === 'forbidden' ? 'adoptionForbidden' : 'adoptionTargetsFailed')
     }
   } finally {
     if (token === targetRequest && current()) loadingTargets.value = false
@@ -189,10 +233,10 @@ async function refreshPublication() {
     if (!current()) return
     const latestID = value.run.analysis?.id || [...value.analyses].sort((a, b) => b.version - a.version)[0]?.id
     const review = latestAnswerReview(value.reviews, props.analysisID)
-    stale.value = latestID !== props.analysisID || review?.id !== props.review?.id || review?.action !== 'accepted' || !!value.pending_tasks
-    localPublication.value = value.adoptions?.find((item) => item.analysis_id === props.analysisID)
+    stale.value = latestID !== props.analysisID || review?.id !== props.review?.id || review?.action !== 'accepted' || review?.verdict !== 'usable' || !!value.pending_tasks
+    localPublications.value = [...(value.adoptions || []), ...localPublications.value]
     uncertain.value = false
-    if (localPublication.value) publishError.value = ''
+    if (publication.value) publishError.value = ''
     emit('changed')
   } catch (error) {
     if (current()) {
@@ -213,12 +257,13 @@ async function publish() {
     const result = await adoptOpsAnswer(props.run.id, {
       analysis_id: props.analysisID,
       review_id: props.review!.id,
+      target_type: targetType.value,
       kb_id: draft.kb_id,
       question: draft.question.trim(),
       answer: draft.answer.trim(),
     })
     if (!current()) return
-    localPublication.value = result
+    localPublications.value = [result, ...localPublications.value]
     emit('changed')
   } catch (error) {
     if (current()) {
@@ -233,7 +278,7 @@ async function publish() {
 }
 async function retryPublication() {
   const value = publication.value
-  if (!allowed.value || !approvalMatches.value || publishing.value || !value || !['failed', 'publishing'].includes(value.status)) return
+  if (!allowed.value || !approvalMatches.value || typeChangeBlocked.value || !value || !['failed', 'publishing'].includes(value.status)) return
   const current = operationScope()
   publishing.value = true
   publishError.value = ''
@@ -241,7 +286,7 @@ async function retryPublication() {
   try {
     const result = await retryOpsAdoption(props.run.id, value.id)
     if (!current()) return
-    localPublication.value = result
+    localPublications.value = [result, ...localPublications.value]
     emit('changed')
   } catch (error) {
     if (current()) {
@@ -269,10 +314,11 @@ watch(
     refreshing.value = false
     uncertain.value = false
     stale.value = false
-    localPublication.value = undefined
+    localPublications.value = []
+    targetType.value = props.run.qa_type === 'wiki-qa' ? 'wiki' : 'faq'
     const rewrite = props.run.query_context?.rewrite
     Object.assign(draft, { kb_id: '', question: rewrite?.status === 'rewritten' && rewrite.query.trim() ? rewrite.query : props.run.question, answer: prepareAdoptionAnswer(props.run.answer) })
-    if ((props.adoptions || []).some((item) => item.analysis_id === props.analysisID)) void loadTargets()
+    if (publication.value) void loadTargets()
   },
   { immediate: true, flush: 'sync' },
 )
@@ -290,6 +336,10 @@ onScopeDispose(() => { scopeID++; targetRequest++ })
 h3 { margin: 0; font-size: var(--app-text-lg); font-weight: 600; }
 p { margin: var(--app-space-2) 0; }
 .muted { color: var(--td-text-color-secondary); font-size: var(--app-text-sm); }
+.target-type { display: flex; flex-direction: column; align-items: flex-start; gap: var(--app-space-2); }
+.target-type :deep(.t-radio-group) { flex-wrap: wrap; max-width: 100%; height: auto; }
+.field-label { font-size: var(--app-text-sm); color: var(--td-text-color-secondary); }
+.type-status { font-size: var(--app-text-sm); }
 .adoption-form label { display: flex; flex-direction: column; gap: var(--app-space-2); margin: var(--app-space-4) 0; font-size: var(--app-text-sm); }
 .answer-draft { margin: var(--app-space-4) 0; }
 .answer-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--app-space-2); margin-bottom: var(--app-space-2); }

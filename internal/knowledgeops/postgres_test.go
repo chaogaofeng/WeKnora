@@ -48,7 +48,7 @@ func TestPostgresMigrationAndConcurrentReviewVersionGate(t *testing.T) {
 	require.NoError(t, db.Raw("SELECT current_schema()").Scan(&activeSchema).Error)
 	require.Equal(t, schema, activeSchema, "never run integration migrations against application tables")
 	apply := func(suffix string) {
-		names := []string{"000115_knowledge_ops", "000116_knowledge_ops_history", "000117_knowledge_ops_queries", "000118_knowledge_ops_adoptions", "000119_knowledge_ops_followups", "000120_knowledge_ops_calibration"}
+		names := []string{"000115_knowledge_ops", "000116_knowledge_ops_history", "000117_knowledge_ops_queries", "000118_knowledge_ops_adoptions", "000119_knowledge_ops_followups", "000120_knowledge_ops_calibration", "000121_knowledge_ops_wiki_adoptions"}
 		if suffix == "down" {
 			for i, j := 0, len(names)-1; i < j; i, j = i+1, j-1 {
 				names[i], names[j] = names[j], names[i]
@@ -145,6 +145,7 @@ func TestPostgresMigrationAndConcurrentReviewVersionGate(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, first.ID, reopened.PreviousID)
 	t.Run("calibration_finalization", func(t *testing.T) { testPostgresCalibrationFinalization(t, db) })
+	t.Run("wiki_adoption_migration", func(t *testing.T) { testPostgresWikiAdoptionMigration(t, db) })
 	apply("down")
 	require.False(t, db.Migrator().HasTable(&Run{}))
 	require.False(t, db.Migrator().HasTable(&Adoption{}))
@@ -153,4 +154,43 @@ func TestPostgresMigrationAndConcurrentReviewVersionGate(t *testing.T) {
 	require.True(t, db.Migrator().HasTable(&Run{}))
 	require.True(t, db.Migrator().HasTable(&Adoption{}))
 	require.True(t, db.Migrator().HasTable(&Followup{}))
+}
+
+func testPostgresWikiAdoptionMigration(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	now := time.Now().UTC()
+	run := Run{ID: uuid.NewString(), TenantID: 1, MessageID: uuid.NewString(), StartedAt: now, Status: "completed"}
+	require.NoError(t, NewRepository(db).CreateRun(context.Background(), &run))
+	analysis := Analysis{ID: uuid.NewString(), TenantID: 1, RunID: run.ID, Version: 1, Status: "succeeded", CreatedAt: now}
+	require.NoError(t, db.Create(&analysis).Error)
+	review := Review{ID: uuid.NewString(), TenantID: 1, RunID: run.ID, AnalysisID: analysis.ID, Target: "answer", Action: "accepted", Verdict: "usable", Reason: "verified", ReviewerID: "publisher", CreatedAt: now}
+	require.NoError(t, db.Create(&review).Error)
+	original := Adoption{ID: uuid.NewString(), TenantID: 1, RunID: run.ID, AnalysisID: analysis.ID, ReviewID: review.ID, TargetType: "faq", TargetTenantID: 1, KBID: "faq", Question: "migration question", Answer: "migration answer", Status: "succeeded", EntryID: 123456, KnowledgeID: "faq-container", CreatedAt: now, UpdatedAt: now}
+	require.NoError(t, db.Create(&original).Error)
+	require.NoError(t, applyWikiAdoptionMigration(db, "versioned", "down"))
+	require.NoError(t, applyWikiAdoptionMigration(db, "versioned", "up"))
+	var migrated Adoption
+	require.NoError(t, db.First(&migrated, "id = ?", original.ID).Error)
+	require.Equal(t, "faq", migrated.TargetType)
+	require.Equal(t, original.EntryID, migrated.EntryID)
+	require.Equal(t, original.Question, migrated.Question)
+	require.Equal(t, original.Answer, migrated.Answer)
+	wiki := original
+	wiki.ID = uuid.NewString()
+	wiki.TargetType = "wiki"
+	wiki.WikiPageID = "published-page"
+	wiki.WikiVersion = 1
+	wiki.WikiSlug = "ops-qa-question"
+	require.NoError(t, db.Create(&wiki).Error)
+	duplicate := wiki
+	duplicate.ID = uuid.NewString()
+	require.Error(t, db.Create(&duplicate).Error)
+	require.Error(t, applyWikiAdoptionMigration(db, "versioned", "down"), "rollback must retain published Wiki provenance")
+	var retained Adoption
+	require.NoError(t, db.First(&retained, "id = ?", wiki.ID).Error)
+	require.Equal(t, "published-page", retained.WikiPageID)
+	require.Equal(t, "wiki", retained.TargetType)
+	require.NoError(t, db.Delete(&wiki).Error)
+	require.NoError(t, applyWikiAdoptionMigration(db, "versioned", "down"))
+	require.NoError(t, applyWikiAdoptionMigration(db, "versioned", "up"))
 }

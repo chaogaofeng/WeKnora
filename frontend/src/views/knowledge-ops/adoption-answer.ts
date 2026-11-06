@@ -70,6 +70,16 @@ function stripOutsideInlineCode(prose: string): string {
       i += 2
       continue
     }
+    if (prose[i] === '[' && prose[i - 1] !== '[') {
+      const citation = prose.slice(i).match(/^\[c\d{3,}(?:\s*[,;]\s*c\d{3,})*\]/)
+      // Keep literal Markdown links and definitions. Wiki publication blocks
+      // remaining handles because the Wiki service would strip them on save.
+      if (citation && !/^\s*[([:\]]/.test(prose.slice(i + citation[0].length))) {
+        result = result.replace(/[ \t]+$/, '')
+        i += citation[0].length
+        continue
+      }
+    }
     if (prose[i] === '<') {
       const tag = prose.slice(i).match(referenceTag)
       if (tag) {

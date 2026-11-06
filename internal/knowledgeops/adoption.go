@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// Adoption is an immutable, explicitly approved FAQ publication snapshot. It is
+// Adoption is an immutable, explicitly approved knowledge publication snapshot. It is
 // separate from the human review: successful review does not mean indexing did.
 type Adoption struct {
 	ID             string     `json:"id" gorm:"primaryKey"`
@@ -25,12 +25,16 @@ type Adoption struct {
 	SourceActorID  string     `json:"source_actor_id"`
 	ActorID        string     `json:"actor_id"`
 	KBID           string     `json:"kb_id"`
+	TargetType     string     `json:"target_type" gorm:"default:faq"`
 	TargetTenantID uint64     `json:"-"`
 	Question       string     `json:"question"`
 	Answer         string     `json:"answer"`
 	Status         string     `json:"status"`
 	EntryID        int64      `json:"entry_id"`
 	KnowledgeID    string     `json:"knowledge_id"`
+	WikiPageID     string     `json:"wiki_page_id"`
+	WikiSlug       string     `json:"wiki_slug"`
+	WikiVersion    int        `json:"wiki_version"`
 	Reused         bool       `json:"reused"`
 	Error          string     `json:"error"`
 	LeaseToken     string     `json:"-"`
@@ -42,6 +46,7 @@ type Adoption struct {
 func (Adoption) TableName() string { return "knowledge_ops_adoptions" }
 
 type AdoptionInput struct {
+	TargetType string `json:"target_type"`
 	AnalysisID string `json:"analysis_id"`
 	ReviewID   string `json:"review_id"`
 	KBID       string `json:"kb_id"`
@@ -67,14 +72,32 @@ func adoptionAuthority(ctx context.Context, tenant uint64) error {
 	}
 	return nil
 }
-func (s *Service) AdoptionTargets(ctx context.Context, tenant uint64) ([]AdoptionTarget, error) {
+func normalizeAdoptionTargetType(value string) (string, error) {
+	if value == "" {
+		return "faq", nil
+	}
+	if value != "faq" && value != "wiki" {
+		return "", ErrInvalid
+	}
+	return value, nil
+}
+
+func (s *Service) AdoptionTargets(ctx context.Context, tenant uint64, targetTypes ...string) ([]AdoptionTarget, error) {
 	if err := adoptionAuthority(ctx, tenant); err != nil {
 		return nil, err
 	}
 	if s.adoption == nil {
 		return nil, ErrInvalid
 	}
-	return s.adoption.targets(ctx)
+	targetType := ""
+	if len(targetTypes) > 0 {
+		targetType = targetTypes[0]
+	}
+	targetType, err := normalizeAdoptionTargetType(targetType)
+	if err != nil {
+		return nil, err
+	}
+	return s.adoption.targets(ctx, targetType)
 }
 func (s *Service) Adopt(ctx context.Context, tenant uint64, runID string, input AdoptionInput) (Adoption, error) {
 	if err := adoptionAuthority(ctx, tenant); err != nil {
@@ -83,19 +106,24 @@ func (s *Service) Adopt(ctx context.Context, tenant uint64, runID string, input 
 	if s.adoption == nil {
 		return Adoption{}, ErrInvalid
 	}
+	var err error
+	input.TargetType, err = normalizeAdoptionTargetType(input.TargetType)
+	if err != nil {
+		return Adoption{}, err
+	}
 	input.Question = strings.TrimSpace(input.Question)
 	input.Answer = strings.TrimSpace(input.Answer)
 	if input.AnalysisID == "" || input.ReviewID == "" || input.KBID == "" || input.Question == "" || input.Answer == "" || len([]rune(input.Question)) > 16000 || len([]rune(input.Answer)) > 24000 {
 		return Adoption{}, ErrInvalid
 	}
-	if containsAdoptionCitation(input.Answer) {
+	if containsAdoptionCitation(input.Answer) || (input.TargetType == "wiki" && (len([]rune(input.Question)) > 512 || wikiStrippedCitation.MatchString(input.Answer))) {
 		return Adoption{}, ErrInvalid
 	}
 	d, err := s.loadDetail(ctx, tenant, runID, false)
 	if err != nil {
 		return Adoption{}, err
 	}
-	_, kb, err := s.adoption.target(ctx, input.KBID, 0)
+	_, kb, err := s.adoption.target(ctx, input.KBID, 0, input.TargetType)
 	if err != nil {
 		return Adoption{}, err
 	}
@@ -120,10 +148,10 @@ func (s *Service) RetryAdoption(ctx context.Context, tenant uint64, runID, id st
 	if err = s.repo.db.WithContext(ctx).First(&value, "tenant_id = ? AND run_id = ? AND id = ?", tenant, runID, id).Error; err != nil {
 		return Adoption{}, err
 	}
-	if _, _, err = s.adoption.target(ctx, value.KBID, value.TargetTenantID); err != nil {
+	if _, _, err = s.adoption.target(ctx, value.KBID, value.TargetTenantID, value.TargetType); err != nil {
 		return Adoption{}, err
 	}
-	input := AdoptionInput{AnalysisID: value.AnalysisID, ReviewID: value.ReviewID, KBID: value.KBID, Question: value.Question, Answer: value.Answer}
+	input := AdoptionInput{TargetType: value.TargetType, AnalysisID: value.AnalysisID, ReviewID: value.ReviewID, KBID: value.KBID, Question: value.Question, Answer: value.Answer}
 	value, claimed, err := s.repo.admitAdoption(ctx, d.Run, input, value.TargetTenantID)
 	if err != nil || !claimed {
 		return value, err
@@ -146,7 +174,7 @@ func (s *Service) detailWithAdoptions(ctx context.Context, tenant uint64, id str
 
 // All admissions serialize with analysis/review version creation on the parent
 // row. This short transaction is the approval snapshot's linearization point;
-// it ends before calling FAQ services or embedding/indexing.
+// it ends before calling publication services or embedding/indexing.
 func (r *Repository) admitAdoption(ctx context.Context, run Run, input AdoptionInput, targetTenant uint64) (Adoption, bool, error) {
 	var value Adoption
 	claimed := false
@@ -154,7 +182,7 @@ func (r *Repository) admitAdoption(ctx context.Context, run Run, input AdoptionI
 		if err := lockRun(tx, run.TenantID, run.ID); err != nil {
 			return err
 		}
-		err := tx.First(&value, "tenant_id = ? AND run_id = ? AND analysis_id = ?", run.TenantID, run.ID, input.AnalysisID).Error
+		err := tx.First(&value, "tenant_id = ? AND run_id = ? AND analysis_id = ? AND target_type = ?", run.TenantID, run.ID, input.AnalysisID, input.TargetType).Error
 		exists := err == nil
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
@@ -177,7 +205,7 @@ func (r *Repository) admitAdoption(ctx context.Context, run Run, input AdoptionI
 		until := now.Add(adoptionLeaseDuration)
 		token := uuid.NewString()
 		if !exists {
-			value = Adoption{ID: uuid.NewString(), TenantID: run.TenantID, RunID: run.ID, AnalysisID: input.AnalysisID, ReviewID: input.ReviewID, SessionID: run.SessionID, MessageID: run.MessageID, SourceActorID: run.ActorID, ActorID: types.CallerFromContext(ctx).UserID, KBID: input.KBID, TargetTenantID: targetTenant, Question: input.Question, Answer: input.Answer, Status: "publishing", LeaseToken: token, LeaseUntil: &until, CreatedAt: now, UpdatedAt: now}
+			value = Adoption{ID: uuid.NewString(), TenantID: run.TenantID, RunID: run.ID, AnalysisID: input.AnalysisID, ReviewID: input.ReviewID, SessionID: run.SessionID, MessageID: run.MessageID, SourceActorID: run.ActorID, ActorID: types.CallerFromContext(ctx).UserID, KBID: input.KBID, TargetTenantID: targetTenant, TargetType: input.TargetType, Question: input.Question, Answer: input.Answer, Status: "publishing", LeaseToken: token, LeaseUntil: &until, CreatedAt: now, UpdatedAt: now}
 			if err := tx.Create(&value).Error; err != nil {
 				return err
 			}
@@ -238,15 +266,24 @@ func (s *Service) publishAdoption(ctx context.Context, value Adoption) (Adoption
 	publishCtx, cancel := context.WithTimeout(ctx, adoptionPublishTimeout)
 	defer cancel()
 	var entry *types.FAQEntry
+	var page *types.WikiPage
 	reused := false
 	code := "faq_publish_failed"
+	if value.TargetType == "wiki" {
+		code = "wiki_publish_failed"
+	}
 	// Recheck both resource access and the approval immediately before the
 	// external side effect; retry never turns a revoked snapshot into a grant.
 	targetCtx, err := s.authorizeAdoptionPublication(publishCtx, value)
 	if err == nil {
-		entry, reused, code, err = s.adoption.publish(targetCtx, value, func(checkCtx context.Context) (context.Context, error) {
+		reauthorize := func(checkCtx context.Context) (context.Context, error) {
 			return s.authorizeAdoptionPublication(checkCtx, value)
-		})
+		}
+		if value.TargetType == "wiki" {
+			page, reused, code, err = s.adoption.publishWiki(targetCtx, value, reauthorize)
+		} else {
+			entry, reused, code, err = s.adoption.publish(targetCtx, value, reauthorize)
+		}
 	}
 	if errors.Is(err, ErrForbidden) {
 		code = "access_revoked"
@@ -257,14 +294,20 @@ func (s *Service) publishAdoption(ctx context.Context, value Adoption) (Adoption
 	status := "succeeded"
 	if err != nil {
 		status = "failed"
-		logger.Warnf(ctx, "[KnowledgeOps] FAQ adoption failed id=%s run=%s code=%s: %v", value.ID, value.RunID, code, err)
+		logger.Warnf(ctx, "[KnowledgeOps] Adoption failed id=%s run=%s code=%s: %v", value.ID, value.RunID, code, err)
 	}
 	updates := map[string]any{"status": status, "error": "", "lease_token": "", "lease_until": nil, "updated_at": time.Now().UTC()}
 	if err != nil {
 		updates["error"] = code
 	} else {
-		updates["entry_id"] = entry.ID
-		updates["knowledge_id"] = entry.KnowledgeID
+		if page != nil {
+			updates["wiki_page_id"] = page.ID
+			updates["wiki_slug"] = page.Slug
+			updates["wiki_version"] = page.Version
+		} else {
+			updates["entry_id"] = entry.ID
+			updates["knowledge_id"] = entry.KnowledgeID
+		}
 		updates["reused"] = reused
 	}
 	// A lost client connection must not strand a successfully indexed entry.
@@ -282,7 +325,7 @@ func (s *Service) publishAdoption(ctx context.Context, value Adoption) (Adoption
 	return value, err
 }
 
-// FAQ listing can involve application services. Authorize again after that read
+// Publication lookups can involve application services. Authorize again after that read
 // and immediately before creation so a changed review or revoked source/target
 // cannot be turned into a write using an earlier context grant.
 func (s *Service) authorizeAdoptionPublication(ctx context.Context, value Adoption) (context.Context, error) {
@@ -292,6 +335,6 @@ func (s *Service) authorizeAdoptionPublication(ctx context.Context, value Adopti
 	if err := validateAdoptionReview(s.repo.db.WithContext(ctx), value.TenantID, value.RunID, value.AnalysisID, value.ReviewID); err != nil {
 		return ctx, err
 	}
-	scoped, _, err := s.adoption.target(ctx, value.KBID, value.TargetTenantID)
+	scoped, _, err := s.adoption.target(ctx, value.KBID, value.TargetTenantID, value.TargetType)
 	return scoped, err
 }

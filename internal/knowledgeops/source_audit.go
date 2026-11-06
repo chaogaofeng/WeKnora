@@ -15,6 +15,30 @@ type SourceReadError struct {
 
 func (e *SourceReadError) Error() string { return "source comparison incomplete" }
 
+// SourceReadOutcome carries trusted scope without changing SourceReader's
+// legacy signature. Zero issues is a successful lookup, not an error/gap.
+type SourceReadOutcome struct {
+	SourceReadError
+	ComparisonScope string
+	HumanPageIDs    []string
+}
+
+func (e *SourceReadOutcome) Error() string { return "source comparison scope recorded" }
+func (e *SourceReadOutcome) Unwrap() error {
+	if len(e.Issues) == 0 {
+		return nil
+	}
+	return &e.SourceReadError
+}
+
+func sourceReadIncomplete(err error) bool {
+	var outcome *SourceReadOutcome
+	if errors.As(err, &outcome) {
+		return len(outcome.Issues) > 0
+	}
+	return err != nil
+}
+
 func sourceFollowupPending(run Run) bool {
 	return sourceFollowupReason(run) != ""
 }
@@ -46,7 +70,7 @@ func sourceFollowupReason(run Run) string {
 	if a.Report.SourceCheck == "" {
 		return "来源核验状态缺失，需确认核验是否完成"
 	}
-	if a.Report.SourceCheck == "not_checked" && (run.QAType == "wiki-qa" || run.QAType == "hybrid-rag-wiki") {
+	if a.Report.SourceCheck == "not_checked" && !humanReviewedSourceOnly(run, a.Report) && (run.QAType == "wiki-qa" || run.QAType == "hybrid-rag-wiki") {
 		return "Wiki 与原始来源尚未完成比较，需核验来源"
 	}
 	return ""
@@ -56,7 +80,15 @@ func sourceAuditForAttempt(err error) *SourceAudit {
 	audit := &SourceAudit{EvidenceIDs: []string{}, Issues: []string{}}
 	if err != nil {
 		var sourceErr *SourceReadError
-		if errors.As(err, &sourceErr) {
+		var outcome *SourceReadOutcome
+		if errors.As(err, &outcome) {
+			audit.ComparisonScope = outcome.ComparisonScope
+			audit.HumanPageIDs = append([]string(nil), outcome.HumanPageIDs...)
+			sourceErr = &outcome.SourceReadError
+		} else {
+			errors.As(err, &sourceErr)
+		}
+		if sourceErr != nil {
 			audit.CharLimit = sourceErr.CharLimit
 			for _, issue := range sourceErr.Issues {
 				if slices.Contains(sourceIssueCodes, issue) && !slices.Contains(audit.Issues, issue) {
@@ -64,7 +96,7 @@ func sourceAuditForAttempt(err error) *SourceAudit {
 				}
 			}
 		}
-		if len(audit.Issues) == 0 {
+		if len(audit.Issues) == 0 && sourceReadIncomplete(err) {
 			audit.Issues = append(audit.Issues, "source_lookup_failed")
 		}
 	}

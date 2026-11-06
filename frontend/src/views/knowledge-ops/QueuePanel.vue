@@ -265,7 +265,7 @@ const rows = computed(() => {
       candidates.length > 0 || unlinked.length > 0 ||
       !!analysis.report.unknowns?.length || !!analysis.report.review_questions?.length ||
       analysis.report.risk !== risk ||
-      ['consistent', 'inconsistent', 'unresolved'].includes(sourceCheck || '') ||
+      ['consistent', 'inconsistent', 'unresolved', 'human_reviewed'].includes(sourceCheck || '') ||
       !pendingItems.some((item) => !item.review_id && item.route === analysis.route && item.reason === analysis.route_reason)
     )
     return {

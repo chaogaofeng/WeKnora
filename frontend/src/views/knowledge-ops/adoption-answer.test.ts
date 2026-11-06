@@ -66,3 +66,11 @@ test('a leading indented code example is converted to a stable fenced draft befo
   assert.equal(prepareAdoptionAnswer(`<answer>\n${raw}\n</answer>`), prepared)
   assert.equal(prepareAdoptionAnswer(`Final Answer:\n${raw}`), prepared)
 })
+
+test('draft preparation removes Wiki chunk handles from prose before preview without altering literal examples', () => {
+  const raw = '正文[c003]。多个来源 [c003, c1000]。\n保留 [citation]、[C003]、[c12]。\n示例 `[c003]` 和 [c004](https://example.com)。\n\n```text\n[c005]\n```'
+  const expected = '正文。多个来源。\n保留 [citation]、[C003]、[c12]。\n示例 `[c003]` 和 [c004](https://example.com)。\n\n```text\n[c005]\n```'
+  assert.equal(prepareAdoptionAnswer(raw), expected)
+  assert.equal(prepareAdoptionAnswer(expected), expected)
+  assert.equal(prepareAdoptionAnswer('[c003; c1000]'), '')
+})

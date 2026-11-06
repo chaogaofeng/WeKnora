@@ -37,6 +37,8 @@ func DefaultSettings(tenant uint64) Settings {
 }
 
 type Run struct {
+	// Runtime-only source attestation, never accepted from JSON or run storage.
+	sourceAudit           *SourceAudit
 	Followups             []FollowupState          `json:"followups" gorm:"-"`
 	AnalysisHistory       *AnalysisHistory         `json:"-" gorm:"-"`
 	QueryContext          *capture.QuerySnapshot   `json:"query_context,omitempty" gorm:"serializer:json;type:text"`
@@ -113,6 +115,8 @@ type Cause struct {
 	Status          string   `json:"status"`
 }
 type SourceAudit struct {
+	ComparisonScope   string              `json:"comparison_scope,omitempty"`
+	HumanPageIDs      []string            `json:"human_page_ids,omitempty"`
 	LookupPolicy      *SourceLookupPolicy `json:"lookup_policy,omitempty"`
 	SelectionStrategy string              `json:"selection_strategy,omitempty"`
 	EvidenceIDs       []string            `json:"evidence_ids"`

@@ -26,15 +26,19 @@ type faqAdoptionWriter interface {
 type AdoptionAdapter struct {
 	DB     *gorm.DB
 	FAQ    FAQAdoptionService
+	Wiki   WikiAdoptionService
 	Shares access.KBShareLookup
 }
 
-func (a *AdoptionAdapter) target(ctx context.Context, id string, expectedTenant uint64) (context.Context, *types.KnowledgeBase, error) {
-	if a == nil || a.DB == nil || a.FAQ == nil {
+func (a *AdoptionAdapter) target(ctx context.Context, id string, expectedTenant uint64, targetType string) (context.Context, *types.KnowledgeBase, error) {
+	if a == nil || a.DB == nil {
 		return ctx, nil, ErrInvalid
 	}
 	var kb types.KnowledgeBase
-	if err := a.DB.WithContext(ctx).First(&kb, "id = ? AND type = ? AND is_temporary = ?", id, types.KnowledgeBaseTypeFAQ, false).Error; err != nil {
+	if err := a.DB.WithContext(ctx).First(&kb, "id = ? AND is_temporary = ?", id, false).Error; err != nil {
+		return ctx, nil, ErrForbidden
+	}
+	if !adoptionTargetMatches(kb, targetType) {
 		return ctx, nil, ErrForbidden
 	}
 	if expectedTenant != 0 && kb.TenantID != expectedTenant {
@@ -46,15 +50,18 @@ func (a *AdoptionAdapter) target(ctx context.Context, id string, expectedTenant 
 	}
 	return grant.Context(ctx), &kb, nil
 }
-func (a *AdoptionAdapter) targets(ctx context.Context) ([]AdoptionTarget, error) {
-	if a == nil || a.DB == nil || a.FAQ == nil {
+func (a *AdoptionAdapter) targets(ctx context.Context, targetType string) ([]AdoptionTarget, error) {
+	if a == nil || a.DB == nil {
 		return nil, ErrInvalid
 	}
 	out := []AdoptionTarget{}
 	last := ""
 	for {
 		var batch []types.KnowledgeBase
-		q := a.DB.WithContext(ctx).Where("type = ? AND is_temporary = ?", types.KnowledgeBaseTypeFAQ, false)
+		q := a.DB.WithContext(ctx).Where("is_temporary = ?", false)
+		if targetType == "faq" {
+			q = q.Where("type = ?", types.KnowledgeBaseTypeFAQ)
+		}
 		if last != "" {
 			q = q.Where("id > ?", last)
 		}
@@ -66,6 +73,9 @@ func (a *AdoptionAdapter) targets(ctx context.Context) ([]AdoptionTarget, error)
 		}
 		for _, kb := range batch {
 			last = kb.ID
+			if !adoptionTargetMatches(kb, targetType) {
+				continue
+			}
 			if _, err := access.ResolveKB(ctx, access.KBRequest{Caller: types.CallerFromContext(ctx)}, &kb, types.OrgRoleEditor, a.Shares, nil); err == nil {
 				out = append(out, AdoptionTarget{ID: kb.ID, Name: kb.Name})
 			}
@@ -114,6 +124,9 @@ func (a *AdoptionAdapter) matchingEntry(ctx context.Context, value Adoption) (*t
 	}
 }
 func (a *AdoptionAdapter) publish(ctx context.Context, value Adoption, reauthorize func(context.Context) (context.Context, error)) (*types.FAQEntry, bool, string, error) {
+	if a.FAQ == nil {
+		return nil, false, "faq_publish_failed", fmt.Errorf("FAQ publication is unavailable")
+	}
 	entry, conflict, err := a.matchingEntry(ctx, value)
 	if err != nil {
 		return nil, false, "faq_lookup_failed", err
@@ -153,4 +166,11 @@ func (a *AdoptionAdapter) publish(ctx context.Context, value Adoption, reauthori
 		err = fmt.Errorf("FAQ creation returned no indexed entry")
 	}
 	return nil, false, "faq_publish_failed", err
+}
+
+func adoptionTargetMatches(kb types.KnowledgeBase, targetType string) bool {
+	if targetType == "wiki" {
+		return kb.IsWikiEnabled()
+	}
+	return targetType == "faq" && kb.Type == types.KnowledgeBaseTypeFAQ
 }

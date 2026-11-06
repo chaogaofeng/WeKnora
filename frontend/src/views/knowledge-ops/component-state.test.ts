@@ -64,6 +64,7 @@ function setup(
     'successfulCount',
     'unassessedCount',
     'supportRows',
+    'sourceRows',
     'causeRows',
     'rows',
     'causeCandidates',
@@ -108,6 +109,14 @@ function setup(
     'publication',
     'canPublish',
     'publishing',
+    'refreshing',
+    'uncertain',
+    'targetType',
+    'targetTypeChanged',
+    'typeChangeBlocked',
+    'questionTooLong',
+    'wikiCitationRemaining',
+    'publicationLink',
     'refreshPublication',
     'answerEditing',
     'editAnswer',
@@ -555,6 +564,17 @@ test('overview percentages use successful diagnoses and react to scope changes',
   h.stop()
 })
 
+test('overview keeps human-reviewed sources separate from original-source consistency counts', () => {
+  const h = setup('OverviewInsights.vue', {
+    stats: { total: 3, diagnosis_status: { succeeded: 3 }, source_checks: { consistent: 1, human_reviewed: 2 } },
+  })
+  assert.deepEqual(Array.from(h.api.sourceRows.value, (row: any) => ({ key: row.key, count: row.count })), [
+    { key: 'consistent', count: 1 },
+    { key: 'human_reviewed', count: 2 },
+  ])
+  h.stop()
+})
+
 test('cause drilldown keeps the applied scope and resets pagination without applying draft edits', async () => {
   const requests: Record<string, unknown>[] = []
   const h = setup(
@@ -788,6 +808,36 @@ test('source section hides only inapplicable empty checks and preserves real fol
     await setImmediate()
     h.api.selectedID.value = 'a'
     assert.equal(h.api.showSourceSection?.value, kind !== 'empty', kind)
+    h.stop()
+  }
+})
+
+test('historical human-reviewed Wiki scope avoids invented original-source follow-up only with complete attestation', async () => {
+  for (const kind of ['attested', 'mixed', 'missing-pages', 'issue', 'gap', 'run-gap', 'unresolved', 'legacy']) {
+    const selected = {
+      id: 'old', version: 1, status: 'succeeded',
+      report: { source_check: kind === 'unresolved' ? 'unresolved' : 'not_checked', source_audit: {
+        comparison_scope: kind === 'legacy' ? undefined : kind === 'mixed' ? 'mixed' : 'human_reviewed',
+        human_page_ids: kind === 'missing-pages' ? [] : ['page-1'],
+        chars: 0, char_limit: 16000, evidence_ids: [],
+        issues: kind === 'issue' ? ['source_lookup_failed'] : [],
+      } },
+    }
+    const latest = { ...selected, id: 'latest', version: 2 }
+    const h = setup('DetailDrawer.vue', vue.reactive({ runID: 'A', enabled: true }), {
+      getOpsDetail: async () => ({ ...detail('A'),
+        run: { id: 'A', qa_type: 'wiki-qa', analysis: latest, source_check_display: 'unresolved', source_followup_pending: true,
+          gaps: kind === 'run-gap' ? ['source_lookup_incomplete'] : [],
+          coverage: { provenance_gaps: kind === 'gap' ? ['source_version_unknown'] : [] } },
+        analyses: [latest, selected],
+      }),
+    })
+    await setImmediate()
+    assert.equal(h.api.displaySourceCheck.value, 'unresolved', 'current diagnosis trusts the server display')
+    h.api.selectedID.value = 'old'
+    assert.equal(h.api.displaySourceCheck.value, kind === 'attested' ? 'human_reviewed' : selected.report.source_check, kind)
+    assert.equal(h.api.sourcePending.value, kind !== 'attested', kind)
+    assert.equal(selected.report.source_check, kind === 'unresolved' ? 'unresolved' : 'not_checked')
     h.stop()
   }
 })
@@ -1252,7 +1302,7 @@ test('adoption opens an editable rewrite draft and requires explicit complete pu
   h.api.draft.question = ' Standard question '
   h.api.draft.answer = ' Standard answer '
   await h.api.publish()
-  assert.deepEqual(JSON.parse(JSON.stringify(publications)), [{ analysis_id: 'v2', review_id: 'accepted-review', kb_id: 'faq', question: 'Standard question', answer: 'Standard answer' }])
+  assert.deepEqual(JSON.parse(JSON.stringify(publications)), [{ analysis_id: 'v2', review_id: 'accepted-review', target_type: 'faq', kb_id: 'faq', question: 'Standard question', answer: 'Standard answer' }])
   assert.equal(h.api.publication.value.status, 'succeeded')
   h.stop()
 })
@@ -1391,6 +1441,205 @@ test('a changed analysis, review or workspace discards pending publication respo
     assert.equal(h.events.length, 0, change)
     h.stop()
   }
+})
+
+test('adoption defaults only pure Wiki runs to Wiki, keeping FAQ for hybrid and legacy runs', () => {
+  for (const [qa_type, expected] of [['wiki-qa', 'wiki'], ['hybrid-rag-wiki', 'faq'], ['rag-qa', 'faq'], ['', 'faq']]) {
+    const h = adoptionHarness({ run: { id: 'A', question: 'Question', answer: 'Answer', qa_type } })
+    assert.equal(h.api.targetType?.value, expected, qa_type)
+    h.stop()
+  }
+})
+
+test('adoption selection keeps separate latest FAQ and Wiki snapshots, including legacy FAQ records', async () => {
+  const h = adoptionHarness({ adoptions: [
+    { id: 'legacy-faq', run_id: 'A', analysis_id: 'v2', status: 'succeeded', updated_at: '2026-10-27T12:00:00Z' },
+    { id: 'wiki', target_type: 'wiki', run_id: 'A', analysis_id: 'v2', kb_id: 'wiki kb', wiki_slug: 'ops/question', status: 'failed', updated_at: '2026-10-27T12:01:00Z' },
+    { id: 'other-run', target_type: 'wiki', run_id: 'B', analysis_id: 'v2', status: 'succeeded', updated_at: '2026-10-27T12:02:00Z' },
+  ] })
+  assert.equal(h.api.publication.value.id, 'legacy-faq')
+  await h.api.targetTypeChanged('wiki')
+  assert.equal(h.api.publication.value.id, 'wiki')
+  assert.equal(h.api.publicationLink.value, '/platform/knowledge-bases/wiki%20kb?tab=wiki&slug=ops%2Fquestion')
+  await h.api.targetTypeChanged('faq')
+  assert.equal(h.api.publication.value.id, 'legacy-faq')
+  h.stop()
+})
+
+test('switching adoption type preserves edited content and preview requirement but resets its destination', async () => {
+  const requests: string[] = []
+  const h = adoptionHarness({}, { getOpsAdoptionTargets: async (type: string) => {
+    requests.push(type)
+    return { items: [{ id: type, name: type }] }
+  } })
+  assert.equal(h.api.targetType?.value, 'faq')
+  await h.api.openDraft()
+  h.api.draft.kb_id = 'faq'
+  h.api.draft.question = 'Edited question'
+  h.api.editAnswer()
+  h.api.draft.answer = 'Edited Markdown answer'
+  await h.api.targetTypeChanged('wiki')
+  assert.equal(h.api.draft.kb_id, '')
+  assert.equal(h.api.draft.question, 'Edited question')
+  assert.equal(h.api.draft.answer, 'Edited Markdown answer')
+  assert.equal(h.api.answerEditing.value, true)
+  assert.equal(h.api.targets.value[0].id, 'wiki')
+  assert.deepEqual(requests, ['faq', 'wiki'])
+  h.stop()
+})
+
+test('late target success or failure from the previous adoption type cannot affect the active destination', async () => {
+  for (const fails of [false, true]) {
+    const old = deferred<unknown>()
+    const h = adoptionHarness({}, { getOpsAdoptionTargets: (type: string) => type === 'faq' ? old.promise : Promise.resolve({ items: [{ id: 'wiki', name: 'Wiki library' }] }) })
+    assert.equal(h.api.targetType?.value, 'faq')
+    const opening = h.api.openDraft()
+    await h.api.targetTypeChanged('wiki')
+    h.api.draft.kb_id = 'wiki'
+    if (fails) old.reject(new Error('old request failed'))
+    else old.resolve({ items: [{ id: 'faq', name: 'FAQ library' }] })
+    await opening
+    assert.equal(h.api.targets.value[0].id, 'wiki')
+    assert.equal(h.api.draft.kb_id, 'wiki')
+    assert.equal(h.api.targetError.value, '')
+    assert.equal(h.api.canPublish.value, true)
+    h.stop()
+  }
+})
+
+test('Wiki title validation retains long draft content and counts Unicode characters at the 512 boundary', async () => {
+  const h = adoptionHarness({}, { getOpsAdoptionTargets: async () => ({ items: [{ id: 'library', name: 'Library' }] }) })
+  assert.equal(h.api.targetType?.value, 'faq')
+  await h.api.openDraft()
+  h.api.draft.question = '题'.repeat(513)
+  await h.api.targetTypeChanged('wiki')
+  h.api.draft.kb_id = 'library'
+  assert.equal(h.api.draft.question, '题'.repeat(513))
+  assert.equal(h.api.questionTooLong.value, true)
+  assert.equal(h.api.canPublish.value, false)
+  h.api.draft.question = '😀'.repeat(512)
+  assert.equal(h.api.questionTooLong.value, false)
+  assert.equal(h.api.canPublish.value, true)
+  h.api.draft.question += '题'
+  assert.equal(h.api.canPublish.value, false)
+  await h.api.targetTypeChanged('faq')
+  h.api.draft.kb_id = 'library'
+  assert.equal(h.api.canPublish.value, true)
+  h.stop()
+})
+
+test('Wiki publication requires an explicit edit for literal citation handles that the Wiki service would strip', async () => {
+  let submitted = false
+  const h = adoptionHarness({ run: { id: 'A', qa_type: 'wiki-qa', question: 'Question', answer: 'Literal `[c003]` example.' } }, {
+    adoptOpsAnswer: async () => { submitted = true },
+  })
+  await h.api.openDraft()
+  h.api.draft.kb_id = 'faq'
+  assert.equal(h.api.canPublish.value, false)
+  assert.equal(h.api.wikiCitationRemaining?.value, true)
+  await h.api.publish()
+  assert.equal(submitted, false)
+  assert.equal(h.api.draft.answer, 'Literal `[c003]` example.')
+  h.api.editAnswer()
+  h.api.draft.answer = 'Reviewed answer [c003].'
+  h.api.previewAnswer()
+  assert.equal(h.api.draft.answer, 'Reviewed answer.')
+  assert.equal(h.api.canPublish.value, true)
+  h.stop()
+})
+
+test('publishing both destinations sends explicit types and preserves each local snapshot before parent refresh', async () => {
+  const requests: any[] = []
+  const h = adoptionHarness({}, {
+    getOpsAdoptionTargets: async (type: string) => ({ items: [{ id: type, name: type }] }),
+    adoptOpsAnswer: async (_run: string, input: any) => {
+      requests.push(input)
+      return { ...input, id: input.target_type, run_id: 'A', status: 'succeeded', updated_at: '2026-10-27T12:00:00Z' }
+    },
+  })
+  assert.equal(h.api.targetType?.value, 'faq')
+  await h.api.openDraft()
+  h.api.draft.kb_id = 'faq'
+  await h.api.publish()
+  await h.api.targetTypeChanged('wiki')
+  assert.equal(h.api.publication.value, undefined)
+  h.api.draft.kb_id = 'wiki'
+  await h.api.publish()
+  assert.deepEqual(requests.map(({ target_type, kb_id }) => [target_type, kb_id]), [['faq', 'faq'], ['wiki', 'wiki']])
+  assert.equal(h.api.publication.value.id, 'wiki')
+  await h.api.targetTypeChanged('faq')
+  assert.equal(h.api.publication.value.id, 'faq')
+  h.stop()
+})
+
+test('Wiki lost-response recovery selects its own publication even when FAQ is first in the detail', async () => {
+  const wiki = { id: 'wiki-publication', target_type: 'wiki', run_id: 'A', analysis_id: 'v2', review_id: 'accepted-review', status: 'succeeded', kb_id: 'wiki', question: 'Question', answer: 'Answer' }
+  const h = adoptionHarness({ run: { id: 'A', qa_type: 'wiki-qa', question: 'Question', answer: 'Answer' } }, {
+    getOpsAdoptionTargets: async () => ({ items: [{ id: 'wiki', name: 'Wiki' }] }),
+    adoptOpsAnswer: async () => { throw new Error('connection closed') },
+    getOpsDetail: async () => ({ ...detail('A'), run: { id: 'A', analysis: { id: 'v2' } }, analyses: [], reviews: [h.props.review], adoptions: [{ ...wiki, id: 'faq-publication', target_type: undefined }, wiki] }),
+  })
+  assert.equal(h.api.targetType?.value, 'wiki')
+  await h.api.openDraft()
+  h.api.draft.kb_id = 'wiki'
+  await h.api.publish()
+  assert.equal(h.api.publication.value.id, 'wiki-publication')
+  assert.equal(h.api.canPublish.value, false)
+  await h.api.targetTypeChanged('faq')
+  assert.equal(h.api.publication.value.id, 'faq-publication')
+  h.stop()
+})
+
+test('adoption type cannot change during publish, refresh or unresolved publication recovery', async () => {
+  const pending = deferred<unknown>()
+  const refresh = deferred<unknown>()
+  const h = adoptionHarness({}, {
+    adoptOpsAnswer: () => pending.promise,
+    getOpsDetail: () => refresh.promise,
+  })
+  assert.equal(h.api.targetType?.value, 'faq')
+  await h.api.openDraft()
+  h.api.draft.kb_id = 'faq'
+  const publication = h.api.publish()
+  assert.equal(h.api.typeChangeBlocked.value, true)
+  await h.api.targetTypeChanged('wiki')
+  assert.equal(h.api.targetType.value, 'faq')
+  pending.reject(new Error('connection closed'))
+  await setImmediate()
+  assert.equal(h.api.refreshing.value, true)
+  await h.api.targetTypeChanged('wiki')
+  assert.equal(h.api.targetType.value, 'faq')
+  refresh.reject(new Error('still disconnected'))
+  await publication
+  assert.equal(h.api.uncertain.value, true)
+  await h.api.targetTypeChanged('wiki')
+  assert.equal(h.api.targetType.value, 'faq')
+  h.stop()
+})
+
+test('retry targets only the selected Wiki snapshot and changed approval leaves both records readable without retry', async () => {
+  const records = [
+    { id: 'faq-failed', run_id: 'A', analysis_id: 'v2', review_id: 'accepted-review', status: 'failed', kb_id: 'faq', question: 'FAQ question', answer: 'FAQ answer' },
+    { id: 'wiki-failed', target_type: 'wiki', run_id: 'A', analysis_id: 'v2', review_id: 'accepted-review', status: 'failed', kb_id: 'wiki', question: 'Wiki title', answer: 'Wiki answer' },
+  ]
+  const retries: string[] = []
+  const h = adoptionHarness({ adoptions: records }, {
+    retryOpsAdoption: async (_runID: string, id: string) => { retries.push(id); return records[1] },
+  })
+  await h.api.targetTypeChanged('wiki')
+  await h.api.retryPublication()
+  assert.deepEqual(retries, ['wiki-failed'])
+  h.props.review = { ...h.props.review, id: 'changed-review', action: 'revision_required', verdict: 'revision_required' }
+  await vue.nextTick()
+  assert.equal(h.api.publication.value.id, 'faq-failed')
+  await h.api.retryPublication()
+  await h.api.targetTypeChanged('wiki')
+  assert.equal(h.api.publication.value.id, 'wiki-failed')
+  assert.equal(h.api.publication.value.answer, 'Wiki answer')
+  await h.api.retryPublication()
+  assert.deepEqual(retries, ['wiki-failed'])
+  assert.equal(h.api.canPublish.value, false)
+  h.stop()
 })
 
 function followupHarness(overrides: Record<string, any> = {}, dependencies: Record<string, unknown> = {}) {

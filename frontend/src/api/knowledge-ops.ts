@@ -46,6 +46,8 @@ export interface OpsReport {
   applicability?: 'knowledge' | 'non_knowledge' | 'unknown'
   applicability_reason?: string
   source_audit?: {
+    comparison_scope?: 'human_reviewed' | 'mixed'
+    human_page_ids?: string[]
     selection_strategy?: string
     lookup_policy?: {
       max_chars: number
@@ -251,7 +253,9 @@ export interface OpsAdoptionTarget {
   id: string
   name: string
 }
+export type OpsAdoptionTargetType = 'faq' | 'wiki'
 export interface OpsAdoptionInput {
+  target_type?: OpsAdoptionTargetType
   analysis_id: string
   review_id: string
   kb_id: string
@@ -264,6 +268,9 @@ export interface OpsAdoption extends OpsAdoptionInput {
   status: 'publishing' | 'succeeded' | 'failed'
   entry_id: number
   knowledge_id?: string
+  wiki_page_id?: string
+  wiki_slug?: string
+  wiki_version?: number
   reused?: boolean
   error: string
   created_at: string
@@ -435,8 +442,8 @@ export const getOpsConversation = (id: string) =>
     ),
   )
 
-export const getOpsAdoptionTargets = () =>
-  unwrap(get<Envelope<{ items: OpsAdoptionTarget[] }>>(`${base}/adoption-targets`))
+export const getOpsAdoptionTargets = (targetType: OpsAdoptionTargetType = 'faq') =>
+  unwrap(get<Envelope<{ items: OpsAdoptionTarget[] }>>(`${base}/adoption-targets`, { params: { target_type: targetType } }))
 export const adoptOpsAnswer = (id: string, value: OpsAdoptionInput) =>
   unwrap(post<Envelope<OpsAdoption>>(`${base}/runs/${encodeURIComponent(id)}/adoptions`, value))
 export const retryOpsAdoption = (id: string, adoptionID: string) =>

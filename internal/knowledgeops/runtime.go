@@ -140,16 +140,42 @@ func (a *RuntimeAdapter) Sources(ctx context.Context, run Run, evidence []Eviden
 	budget := policy.MaxChars
 	terms := sourceSearchTerms(run)
 	pages, issues := a.sourcePages(ctx, run, evidence)
+	humanPageIDs := []string{}
+	documentPages := make([]types.WikiPage, 0, len(pages))
+	for _, page := range pages {
+		independent, err := a.independentHumanPage(ctx, page)
+		if err != nil && !slices.Contains(issues, "source_lookup_failed") {
+			issues = append(issues, "source_lookup_failed")
+		}
+		if independent {
+			humanPageIDs = append(humanPageIDs, page.ID)
+		} else {
+			documentPages = append(documentPages, page)
+		}
+	}
 	addIssue := func(code string) {
 		if !slices.Contains(issues, code) {
 			issues = append(issues, code)
 		}
 	}
+	sourceOutcome := func() error {
+		if len(humanPageIDs) > 0 {
+			scope := "mixed"
+			if len(documentPages) == 0 && len(issues) == 0 {
+				scope = humanReviewedSourceScope
+			}
+			return &SourceReadOutcome{SourceReadError: SourceReadError{Issues: issues, CharLimit: policy.MaxChars}, ComparisonScope: scope, HumanPageIDs: humanPageIDs}
+		}
+		if len(issues) > 0 {
+			return &SourceReadError{Issues: issues, CharLimit: policy.MaxChars}
+		}
+		return nil
+	}
 	sourceError := func(code string) error {
 		addIssue(code)
-		return &SourceReadError{Issues: issues, CharLimit: policy.MaxChars}
+		return sourceOutcome()
 	}
-	documents, documentIssues := a.sourceDocuments(ctx, pages, terms, policy)
+	documents, documentIssues := a.sourceDocuments(ctx, documentPages, terms, policy)
 	for _, issue := range documentIssues {
 		addIssue(issue)
 	}
@@ -199,8 +225,5 @@ func (a *RuntimeAdapter) Sources(ctx context.Context, run Run, evidence []Eviden
 			}
 		}
 	}
-	if len(issues) > 0 {
-		return out, &SourceReadError{Issues: issues, CharLimit: policy.MaxChars}
-	}
-	return out, nil
+	return out, sourceOutcome()
 }

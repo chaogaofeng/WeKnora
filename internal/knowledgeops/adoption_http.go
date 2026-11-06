@@ -12,7 +12,7 @@ func (s *Service) registerAdoptionHTTP(g *gin.RouterGroup) {
 	g.POST("/runs/:id/adoptions/:adoptionID/retry", s.retryAdoption)
 }
 func (s *Service) getAdoptionTargets(c *gin.Context) {
-	items, err := s.AdoptionTargets(c.Request.Context(), tenant(c))
+	items, err := s.AdoptionTargets(c.Request.Context(), tenant(c), c.Query("target_type"))
 	reply(c, gin.H{"items": items}, err)
 }
 func (s *Service) adoptAnswer(c *gin.Context) {

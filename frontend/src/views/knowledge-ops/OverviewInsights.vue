@@ -223,6 +223,7 @@ const sourceRows = computed(() =>
     'consistent',
     'inconsistent',
     'unresolved',
+    'human_reviewed',
     'not_checked',
     'not_applicable',
     'unknown',

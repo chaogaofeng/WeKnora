@@ -799,15 +799,20 @@ const effectiveRisk = computed(() =>
     ? detail.value?.run.effective_risk || analysis.value?.report.risk
     : analysis.value?.report.risk,
 )
-const displaySourceCheck = computed(() =>
-  analysis.value?.route === 'not_required' &&
-  analysis.value.status === 'succeeded'
-    ? 'not_applicable'
-    : isCurrent.value
-      ? detail.value?.run.source_check_display ||
-        analysis.value?.report.source_check
-      : analysis.value?.report.source_check,
-)
+const displaySourceCheck = computed(() => {
+  const selected = analysis.value
+  if (selected?.route === 'not_required' && selected.status === 'succeeded') return 'not_applicable'
+  if (isCurrent.value && detail.value?.run.source_check_display) return detail.value.run.source_check_display
+  const audit = selected?.report.source_audit
+  // This scope attests an unchanged human publication, not agreement with an
+  // original document. Older or mixed reports retain their recorded check.
+  if (selected?.status === 'succeeded' && selected.report.source_check === 'not_checked' &&
+      audit?.comparison_scope === 'human_reviewed' && audit.human_page_ids?.length &&
+      !audit.issues?.length && !selectedCoverage.value?.provenance_gaps?.length &&
+      !detail.value?.run.gaps?.some((gap) => ['source_version_unknown', 'wiki_linked_summary_versions_unknown', 'source_lookup_incomplete'].includes(gap)) &&
+      !(isCurrent.value && detail.value?.run.source_followup_pending)) return 'human_reviewed'
+  return selected?.report.source_check
+})
 const selectedCoverage = computed(
   () => analysis.value?.capture_coverage || detail.value?.run.coverage,
 )
@@ -915,6 +920,7 @@ const sourcePending = computed(() => {
     detail.value?.run.source_followup_pending !== undefined
   )
     return detail.value.run.source_followup_pending
+  if (displaySourceCheck.value === 'human_reviewed' && !sourceIssues.value.length) return false
   return (
     sourceIssues.value.length > 0 ||
     (analysis.value?.status !== 'failed' &&
