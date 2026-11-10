@@ -101,6 +101,14 @@ func (r *RedisStreamManager) AppendEvent(
 	return nil
 }
 
+// ResetEvents deletes the message's event list.
+func (r *RedisStreamManager) ResetEvents(ctx context.Context, sessionID, messageID string) error {
+	if err := r.client.Del(ctx, r.buildKey(sessionID, messageID)).Err(); err != nil {
+		return fmt.Errorf("failed to reset stream events: %w", err)
+	}
+	return nil
+}
+
 // GetEvents gets events starting from offset using Redis LRange
 // Returns: events slice, next offset, error
 func (r *RedisStreamManager) GetEvents(
@@ -492,6 +500,40 @@ func (r *RedisStreamManager) ClearLiveRun(
 	if err := clearLiveRunCAS.Run(ctx, r.client,
 		[]string{r.buildLiveRunKey(sessionID)}, needle).Err(); err != nil && err != redis.Nil {
 		return fmt.Errorf("failed to clear live run marker in Redis: %w", err)
+	}
+	return nil
+}
+
+// DropMessageStreams removes event and steer lists for deleted messages, and
+// clears a live-run marker that still names one of them.
+func (r *RedisStreamManager) DropMessageStreams(
+	ctx context.Context, sessionID string, messageIDs []string,
+) error {
+	if sessionID == "" || len(messageIDs) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(messageIDs)*2+1)
+	wantLive := make(map[string]struct{}, len(messageIDs))
+	for _, messageID := range messageIDs {
+		if messageID == "" {
+			continue
+		}
+		wantLive[messageID] = struct{}{}
+		keys = append(keys, r.buildKey(sessionID, messageID), r.buildSteerKey(sessionID, messageID))
+	}
+	if len(keys) > 0 {
+		if err := r.client.Del(ctx, keys...).Err(); err != nil {
+			return fmt.Errorf("failed to drop message streams in Redis: %w", err)
+		}
+	}
+	liveID, _, err := r.GetLiveRun(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	if _, ok := wantLive[liveID]; ok {
+		if err := r.ClearLiveRun(ctx, sessionID, liveID); err != nil {
+			return err
+		}
 	}
 	return nil
 }

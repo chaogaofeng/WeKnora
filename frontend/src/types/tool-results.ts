@@ -31,10 +31,16 @@ export type DisplayType =
     | 'write_sandbox_file'
     | 'edit_sandbox_file'
     | 'read_skill'
+    | 'image_view'
     | 'mcp_discovery'
     | 'mcp_call'
     // [push-files] push_files tool card (migrated from dev2 M2)
-    | 'file_push';
+    | 'file_push'
+    | 'find_operations'
+    | 'run_operation'
+    | 'search_weknora_docs'
+    | 'read_weknora_doc'
+    | 'work_wait';
 
 // Search result item
 export interface SearchResultItem {
@@ -301,6 +307,7 @@ export interface GrepResultsData {
 // Chunk row inside a knowledge_chunks_list payload. `role` / `match_snippet`
 // are only set by read_document in query mode (in-document search).
 export interface KnowledgeChunksListChunk {
+    id?: string;
     index?: number;
     chunk_id?: string;
     chunk_index?: number;
@@ -333,6 +340,9 @@ export interface KnowledgeChunksListDocument {
 export interface KnowledgeChunksListData {
     display_type: 'knowledge_chunks_list';
     knowledge_id?: string;
+    knowledge_base_id?: string;
+    chunk_ids?: string[];
+    source_chunk_id?: string;
     knowledge_title?: string;
     total_chunks?: number;
     fetched_chunks?: number;
@@ -447,6 +457,21 @@ export interface ReadSkillData {
     skill_dir?: string;
 }
 
+/** An image read by read_file: a sandbox image file, or images of an attachment. */
+export interface ImageViewData {
+    display_type?: 'image_view';
+    path?: string;
+    file_name?: string;
+    total_images?: number;
+    first_image?: number;
+    returned?: number;
+    image_numbers?: number[];
+    /** Aligned with image_numbers; present when a vision model described the images. */
+    image_descriptions?: string[];
+    image_errors?: string[];
+    next_path?: string;
+}
+
 // Union type for all wiki edit data
 export type WikiEditData = WikiWritePageData | WikiReplaceTextData | WikiRenamePageData | WikiDeletePageData;
 
@@ -495,6 +520,7 @@ export type ToolResultData =
     | ShellExecData
     | ListSandboxFilesData
     | ReadSkillData
+    | ImageViewData
     // [push-files]
     | FilePushData;
 

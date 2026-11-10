@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/sandbox"
+	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/stretchr/testify/require"
 )
 
@@ -56,13 +58,12 @@ func TestCheckpointScriptShape(t *testing.T) {
 	script := runner.calls[0]
 
 	// safe.directory must precede the rev-parse probe: the probe itself is
-	// what dubious-ownership blocks.
+	// what dubious-ownership blocks. -c, not --add: writing global config
+	// every turn would grow ~/.gitconfig (safe.directory is multi-valued).
 	require.Less(t,
 		strings.Index(script, "safe.directory"),
 		strings.Index(script, "rev-parse --git-dir"),
 	)
-	// Plain assignment, not --add: safe.directory is multi-valued and --add
-	// would append a duplicate line to ~/.gitconfig on every single turn.
 	require.NotContains(t, script, "--add safe.directory")
 	require.Contains(t, script, "--allow-empty")
 	require.Contains(t, script, "turn:msg-42")
@@ -70,6 +71,7 @@ func TestCheckpointScriptShape(t *testing.T) {
 	require.NotContains(t, script, "printf 'input/\\noutput/\\n'")
 	require.Equal(t, workspaceCheckpointTimeout, runner.timeout)
 	require.Equal(t, sandbox.SessionWorkspaceRoot, runner.workDir)
+	assertWorkspaceGitLayout(t, script)
 }
 
 func TestCheckpointReturnsNilWhenExecFails(t *testing.T) {
@@ -115,4 +117,65 @@ func TestCheckpointReturnsNilWithoutSandboxID(t *testing.T) {
 	// without a sandbox ID could never be validated at fork time.
 	require.Nil(t, cp.Checkpoint(context.Background(), "s1", "", "msg-1"))
 	require.Empty(t, runner.calls)
+}
+
+type hostShellRunner struct {
+	fakeShellRunner
+}
+
+func (h *hostShellRunner) VersionsWorkspace(context.Context, string) bool { return false }
+
+func TestCheckpointSkippedWhenBackendDoesNotVersionWorkspace(t *testing.T) {
+	runner := &hostShellRunner{fakeShellRunner: fakeShellRunner{result: &sandbox.ExecuteResult{
+		ExitCode: 0, Stdout: strings.Repeat("a", 40) + "\n",
+	}}}
+	cp := NewWorkspaceCheckpointer(runner)
+
+	require.Nil(t, cp.Checkpoint(context.Background(), "s1", "sbx-1", "msg-1"))
+	require.Empty(t, runner.calls, "must not git commit the user's real project")
+}
+
+func shaRunner() *fakeShellRunner {
+	return &fakeShellRunner{result: &sandbox.ExecuteResult{ExitCode: 0, Stdout: strings.Repeat("a", 40) + "\n"}}
+}
+
+func TestCheckpointFlagsCommitTakenWhileBackgroundWorkIsLive(t *testing.T) {
+	reg := liveActivityRegistry(t, interfaces.SessionRef{TenantID: 7, SessionID: "s1"})
+	cp := NewWorkspaceCheckpointer(shaRunner()).WithActivityRegistry(reg)
+
+	got := cp.Checkpoint(types.WithSandboxTenantID(context.Background(), 7), "s1", "sbx-1", "msg-1")
+
+	require.NotNil(t, got)
+	require.True(t, got.BackgroundActive)
+}
+
+func TestCheckpointLeavesFlagOffWithoutLiveBackgroundWork(t *testing.T) {
+	reg := liveActivityRegistry(t,
+		interfaces.SessionRef{TenantID: 7, SessionID: "s2"},
+		interfaces.SessionRef{TenantID: 8, SessionID: "s1"},
+	)
+	cp := NewWorkspaceCheckpointer(shaRunner()).WithActivityRegistry(reg)
+
+	got := cp.Checkpoint(types.WithSandboxTenantID(context.Background(), 7), "s1", "sbx-1", "msg-1")
+
+	require.NotNil(t, got)
+	require.False(t, got.BackgroundActive)
+}
+
+func TestCheckpointFlagsCommitWhenBackgroundLookupFails(t *testing.T) {
+	cp := NewWorkspaceCheckpointer(shaRunner()).
+		WithActivityRegistry(failingActivityRegistry{err: errors.New("redis down")})
+
+	got := cp.Checkpoint(types.WithSandboxTenantID(context.Background(), 7), "s1", "sbx-1", "msg-1")
+
+	require.NotNil(t, got)
+	require.True(t, got.BackgroundActive)
+}
+
+func TestCheckpointWithoutRegistryIsUnflagged(t *testing.T) {
+	got := NewWorkspaceCheckpointer(shaRunner()).
+		Checkpoint(types.WithSandboxTenantID(context.Background(), 7), "s1", "sbx-1", "msg-1")
+
+	require.NotNil(t, got)
+	require.False(t, got.BackgroundActive)
 }

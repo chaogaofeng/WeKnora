@@ -187,6 +187,25 @@ func (r *messageRepository) GetSessionArtifacts(
 	return result, nil
 }
 
+// ListLiveArtifactsByMessageIDs returns undeleted artifact rows for the given
+// messages. It does not join messages, so rewind can tombstone files after
+// those messages have already been soft-deleted.
+func (r *messageRepository) ListLiveArtifactsByMessageIDs(
+	ctx context.Context, sessionID string, messageIDs []string,
+) ([]types.MessageArtifactRecord, error) {
+	if sessionID == "" || len(messageIDs) == 0 {
+		return nil, nil
+	}
+	var rows []types.MessageArtifactRecord
+	if err := r.db.WithContext(ctx).
+		Where("session_id = ? AND message_id IN ? AND deleted_at IS NULL", sessionID, messageIDs).
+		Order("message_id ASC, position ASC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 // RecordRestoredArtifactMtime stamps a same-content sandbox restore's mtime
 // onto this session's artifacts at sourcePath whose content already hashed to
 // hash, mirroring MessageArtifacts.WithRestoredMtime: other versions at the
@@ -246,7 +265,7 @@ func (r *messageRepository) ListArtifactLibrary(
 		where []string
 		args  []any
 	)
-	where = append(where, "s.tenant_id = ?", "s.deleted_at IS NULL", "ma.deleted_at IS NULL")
+	where = append(where, "s.tenant_id = ?", "s.kind = ''", "s.deleted_at IS NULL", "ma.deleted_at IS NULL")
 	args = append(args, q.TenantID)
 	if q.UserID != "" {
 		where = append(where, "(s.user_id = ? OR s.user_id IS NULL OR s.user_id = '')")

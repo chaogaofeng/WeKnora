@@ -44,11 +44,20 @@ func init() {
 // preferAnydocWhenAvailable is the type-level default override: when the
 // anydoc binding is linked and converts this file type, use it instead of
 // builtin or the markitdown fallback. Simple formats stay on the Go reader.
+//
+// PDF is excluded. anydoc has no document model for it, so Convert force-
+// disables asset extraction, and AnydocReader only falls back to builtin
+// when the whole file yields no text at all. A born-digital PDF that yields
+// a few characters is therefore reported as parsed while its figures,
+// tables and layout are gone. The builtin parser classifies pages
+// individually and routes scanned ones through OCR/VLM, so it is the better
+// default for the one type anydoc cannot model.
 func preferAnydocWhenAvailable(fileType string) string {
-	if IsSimpleFormat(fileType) {
+	ft := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(fileType), "."))
+	if IsSimpleFormat(ft) || ft == "pdf" {
 		return ""
 	}
-	if anydoc.Available() && anydoc.Supports(fileType, "") {
+	if anydoc.Available() && anydoc.Supports(ft, "") {
 		return AnydocEngineName
 	}
 	return ""
@@ -190,8 +199,13 @@ func (e *mineruEngine) Name() string { return MinerUEngineName }
 
 func (e *mineruEngine) Description() string { return "MinerU self-hosted service" }
 
+// FileTypes lists what a self-hosted MinerU can parse. xlsx is a native Office
+// input since MinerU 3.1.0, listed the same way as pptx. xls is deliberately
+// not listed: only the 4.x docs name it, and this engine cannot detect the
+// server version, so an older server would fail at parse time. mineru_cloud is
+// intentionally left unchanged.
 func (e *mineruEngine) FileTypes(_ bool) []string {
-	return []string{"pdf", "jpg", "jpeg", "png", "bmp", "tiff", "doc", "docx", "ppt", "pptx"}
+	return []string{"pdf", "jpg", "jpeg", "png", "bmp", "tiff", "doc", "docx", "ppt", "pptx", "xlsx"}
 }
 
 func (e *mineruEngine) CheckAvailable(_ bool, overrides map[string]string) (bool, string) {
@@ -199,7 +213,7 @@ func (e *mineruEngine) CheckAvailable(_ bool, overrides map[string]string) (bool
 	if endpoint == "" {
 		return false, "MinerU service not configured"
 	}
-	return PingMinerU(endpoint)
+	return PingMinerU(endpoint, overrides["mineru_server_api_key"])
 }
 
 func (e *mineruEngine) NewReader(_ context.Context, deps ReaderDeps) (interfaces.DocReader, error) {

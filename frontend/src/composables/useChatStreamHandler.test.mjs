@@ -118,17 +118,13 @@ test('injected user messages fork a continuation assistant below the bubble', ()
   assert.match(source, /expandSteerForksInHistory\(\[\.\.\.messagesList\]\)/)
 })
 
-test('agent answer.done does not mark the session idle', () => {
+test('answer.done never marks the session idle before persisted completion', () => {
   const chunkStart = source.indexOf("case 'answer':")
   const chunkEnd = source.indexOf("case 'artifacts_pending'", chunkStart)
   assert.notEqual(chunkStart, -1)
   assert.notEqual(chunkEnd, -1)
   const chunk = source.slice(chunkStart, chunkEnd)
-  assert.match(chunk, /if \(!isAgentStreamSession\(\)\)/)
-  assert.ok(
-    chunk.indexOf('isAgentStreamSession') < chunk.indexOf('isReplying.value = false'),
-    'agent turns must wait for complete before clearing isReplying',
-  )
+  assert.doesNotMatch(chunk, /isReplying.value = false/)
 })
 
 // continue-stream replays the event log from the start, so after a refresh
@@ -178,7 +174,7 @@ const runAnswerCase = () => {
   }
   const state = { fullContent: { value: '' }, doneCount: 0 }
   const process = vm.runInNewContext(
-    ts.transpile(`(message, data, dataPayload) => { switch ('answer') { ${chunk} } }`),
+    ts.transpile(`(message, data, dataPayload) => { const turnPromptEvents = () => message.agentEventStream || []; switch ('answer') { ${chunk} } }`),
     {
       ...state,
       recomposeAgentAnswer: recompose,
@@ -278,7 +274,7 @@ test('the live answer path carries truncated onto the event and the message', ()
   const chunk = source.slice(chunkStart, source.indexOf("case 'artifacts_pending'", chunkStart))
   const state = { fullContent: { value: '' } }
   const process = vm.runInNewContext(
-    ts.transpile(`(message, data, dataPayload) => { switch ('answer') { ${chunk} } }`),
+    ts.transpile(`(message, data, dataPayload) => { const turnPromptEvents = () => message.agentEventStream || []; switch ('answer') { ${chunk} } }`),
     {
       ...state,
       recomposeAgentAnswer: (m) =>
@@ -297,4 +293,48 @@ test('the live answer path carries truncated onto the event and the message', ()
   process(message, { content: '' }, { event_id: 'r1', done: true, truncated: true })
   assert.equal(message._eventMap.get('r1').truncated, true)
   assert.equal(message.truncated, true)
+})
+
+test('work_event command output attaches to the pending async tool card only', () => {
+  const start = source.indexOf("case 'work_event': {")
+  const block = source.slice(start, source.indexOf("case 'work_finished':", start))
+  const asyncCard = { type: 'tool_call', tool_name: 'shell_exec_async', tool_call_id: 'tc9', pending: true }
+  const syncCard = { type: 'tool_call', tool_name: 'shell_exec', tool_call_id: 'tc1', pending: true }
+  const message = { agentEventStream: [syncCard, asyncCard] }
+  const process = vm.runInNewContext(ts.transpile(
+    `(payload) => { const dataPayload = payload; const toolCallId = payload.inner?.data?.tool_call_id; switch ('work_event') { ${block} } }`),
+    { message })
+  process({ work_id: 'sj_0123', kind: 'shell',
+    inner: { response_type: 'command_output', data: { tool_call_id: 'tc9', output: 'building', done: false } } })
+  assert.equal(asyncCard.command_output?.output, 'building')
+  assert.equal(asyncCard.pending, true)
+  assert.equal(syncCard.command_output, undefined, '不串到同步 shell 卡')
+})
+
+test('work_event command output still attaches after the async tool has returned', () => {
+  const start = source.indexOf("case 'work_event': {")
+  const block = source.slice(start, source.indexOf("case 'work_finished':", start))
+  const asyncCard = {
+    type: 'tool_call', tool_name: 'shell_exec_async', tool_call_id: 'tc9', pending: false,
+  }
+  const message = { agentEventStream: [asyncCard] }
+  const process = vm.runInNewContext(ts.transpile(
+    `(payload) => { const dataPayload = payload; switch ('work_event') { ${block} } }`),
+    { message })
+  process({
+    work_id: 'sj_0123', kind: 'shell',
+    inner: { response_type: 'command_output', data: { tool_call_id: 'tc9', output: 'still going', done: false } },
+  })
+  assert.equal(asyncCard.command_output?.output, 'still going')
+  assert.equal(asyncCard.pending, false)
+})
+
+test('work_finished records terminal state without ending the run', () => {
+  const start = source.indexOf("case 'work_finished': {")
+  const block = source.slice(start, source.indexOf('case ', start + 20) === -1
+    ? source.length : source.lastIndexOf('}', source.indexOf('case ', start + 20)))
+  const message = { background_work: {} }
+  const process = vm.runInNewContext(ts.transpile(`(payload) => { ${block} }`), { message })
+  process({ work_id: 'sj_0123', kind: 'shell', state: 'succeeded' })
+  assert.equal(message.background_work['sj_0123']?.state, 'succeeded')
 })

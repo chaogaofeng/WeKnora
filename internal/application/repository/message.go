@@ -106,6 +106,41 @@ func (r *messageRepository) GetRecentMessagesBySession(
 	return messages, nil
 }
 
+// GetRecentUserMessages returns the newest limit user messages, oldest first.
+func (r *messageRepository) GetRecentUserMessages(
+	ctx context.Context, sessionID string, limit int,
+) ([]*types.Message, error) {
+	var messages []*types.Message
+	if err := r.db.WithContext(ctx).
+		Where("session_id = ? AND role = ?", sessionID, "user").
+		Order("created_at DESC").Limit(limit).Find(&messages).Error; err != nil {
+		return nil, err
+	}
+	slices.Reverse(messages)
+	return messages, nil
+}
+
+// SessionHasIncompleteAssistant reports whether any assistant message in the
+// session is still generating. Rewind uses this instead of paging oldest
+// messages, so a late incomplete turn is not hidden behind a 1000-row window.
+func (r *messageRepository) SessionHasIncompleteAssistant(
+	ctx context.Context, sessionID string,
+) (bool, error) {
+	if sessionID == "" {
+		return false, nil
+	}
+	var id string
+	err := r.db.WithContext(ctx).Model(&types.Message{}).
+		Select("id").
+		Where("session_id = ? AND role = ? AND is_completed = ?", sessionID, "assistant", false).
+		Limit(1).
+		Scan(&id).Error
+	if err != nil {
+		return false, err
+	}
+	return id != "", nil
+}
+
 // GetMessagesBySessionBeforeTime retrieves messages from a session created before a specific time
 func (r *messageRepository) GetMessagesBySessionBeforeTime(
 	ctx context.Context, sessionID string, beforeTime time.Time, limit int,
@@ -213,17 +248,93 @@ func (r *messageRepository) ListMessagesBySessionUpTo(
 	return messages, nil
 }
 
+// ListAssistantCheckpointsUpTo returns the assistant messages strictly before
+// the (boundary, boundaryID) cursor, oldest first, carrying only the columns
+// that identify a workspace checkpoint.
+//
+// Rewind asks "does kept history still reach a commit SHA, and did it contain
+// an assistant turn at all". ListMessagesBySessionUpTo can answer that, but it
+// selects every column and joins artifacts for the whole conversation to do
+// so. This is the same question against a fraction of the rows and bytes.
+func (r *messageRepository) ListAssistantCheckpointsUpTo(
+	ctx context.Context, sessionID string, boundary time.Time, boundaryID string,
+) ([]*types.Message, error) {
+	var messages []*types.Message
+	if err := r.db.WithContext(ctx).
+		Model(&types.Message{}).
+		Select("id", "session_id", "role", "created_at", "sandbox_checkpoint").
+		Where("session_id = ? AND role = ?", sessionID, "assistant").
+		Where("created_at < ? OR (created_at = ? AND id < ?)", boundary, boundary, boundaryID).
+		Order("created_at ASC, id ASC").
+		Find(&messages).Error; err != nil {
+		return nil, err
+	}
+	return messages, nil
+}
+
 // UpdateMessage updates an existing message. Artifacts are rewritten only
 // when message.Artifacts is non-nil (see writeMessageArtifacts).
 func (r *messageRepository) UpdateMessage(ctx context.Context, message *types.Message) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&types.Message{}).Where(
 			"id = ? AND session_id = ?", message.ID, message.SessionID,
-		).Updates(message).Error; err != nil {
+		).Omit("context_checkpoint").Updates(message).Error; err != nil {
+			return err
+		}
+		// Updates skips zero values; written on its own so a resumed or
+		// closed run can clear it.
+		if err := tx.Model(&types.Message{}).Where(
+			"id = ? AND session_id = ?", message.ID, message.SessionID,
+		).Update("run_state", message.RunState).Error; err != nil {
 			return err
 		}
 		return writeMessageArtifacts(tx, message)
 	})
+}
+
+// DeleteMessagesFrom soft-deletes every message of a session at or after the
+// (boundary, boundaryID) composite cursor and returns the deleted rows, oldest
+// first, so the caller can clean up what hangs off them.
+//
+// inclusive selects the rewind semantics: a user rewind point is dropped along
+// with everything after it (the client prefills that question back into the
+// composer), while an assistant rewind point survives and the conversation
+// resumes after it. The cursor is composite for the same reason
+// ListMessagesBySessionUpTo is — two messages written in the same millisecond
+// are ordered by ID, so the cut is reproducible.
+//
+// The read and the delete share one transaction: the returned rows must be
+// exactly the rows that went away, or the cleanup that follows would act on a
+// different set than the conversation lost.
+func (r *messageRepository) DeleteMessagesFrom(
+	ctx context.Context, sessionID string, boundary time.Time, boundaryID string, inclusive bool,
+) ([]*types.Message, error) {
+	condition := "created_at > ? OR (created_at = ? AND id > ?)"
+	if inclusive {
+		condition = "created_at > ? OR (created_at = ? AND id >= ?)"
+	}
+
+	var deleted []*types.Message
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		scope := func() *gorm.DB {
+			return tx.Where("session_id = ?", sessionID).
+				Where(condition, boundary, boundary, boundaryID)
+		}
+		if err := scope().Order("created_at ASC, id ASC").Find(&deleted).Error; err != nil {
+			return err
+		}
+		if len(deleted) == 0 {
+			return nil
+		}
+		if err := invalidateDependentCheckpoints(tx, deleted[0]); err != nil {
+			return err
+		}
+		return scope().Delete(&types.Message{}).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return deleted, nil
 }
 
 // DeleteMessage deletes a message
@@ -293,7 +404,7 @@ func (r *messageRepository) SearchMessagesByKeyword(
 		Table("messages").
 		Select("messages.*, sessions.title as session_title").
 		Joins("INNER JOIN sessions ON sessions.id = messages.session_id AND sessions.deleted_at IS NULL").
-		Where("sessions.tenant_id = ?", tenantID).
+		Where("sessions.tenant_id = ? AND sessions.kind = ''", tenantID).
 		Where("messages.deleted_at IS NULL").
 		Where(contentLikeExpr, "%"+escapeLikeKeyword(keyword)+"%", likeEscapeChar)
 
@@ -333,7 +444,7 @@ func (r *messageRepository) OwnedSessionIDs(
 	query := r.db.WithContext(ctx).
 		Table("sessions").
 		Select("id").
-		Where("tenant_id = ?", tenantID).
+		Where("tenant_id = ? AND kind = ''", tenantID).
 		Where("deleted_at IS NULL").
 		Where("id IN ?", sessionIDs)
 	if ownerID != "" {

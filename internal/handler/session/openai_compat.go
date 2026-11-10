@@ -429,7 +429,7 @@ func (h *Handler) openAIStreamQA(
 	setSSEHeaders(c)
 
 	// Write initial agent_query event to StreamManager
-	h.writeAgentQueryEvent(ctx, sessionID, reqCtx.userMessageID, reqCtx.assistantMessage.CreatedAt, reqCtx.assistantMessage)
+	h.writeAgentQueryEvent(ctx, sessionID, reqCtx.userMessageID, reqCtx.assistantMessage.CreatedAt, reqCtx.assistantMessage, nil)
 
 	// Build base context for async work
 	baseCtx := ctx
@@ -1126,7 +1126,7 @@ func (h *Handler) openAINonStreamQA(
 	assistantMessageID := reqCtx.assistantMessage.ID
 
 	// Write initial event to StreamManager
-	h.writeAgentQueryEvent(ctx, sessionID, reqCtx.userMessageID, reqCtx.assistantMessage.CreatedAt, reqCtx.assistantMessage)
+	h.writeAgentQueryEvent(ctx, sessionID, reqCtx.userMessageID, reqCtx.assistantMessage.CreatedAt, reqCtx.assistantMessage, nil)
 
 	// Build base context
 	baseCtx := ctx
