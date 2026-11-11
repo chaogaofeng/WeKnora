@@ -30,7 +30,6 @@ async function membersFixture(t: TestContext, tenantId = 7, initialRole = 'owner
     'tdesign-vue-next': { MessagePlugin: { success() {}, error: assert.fail } },
     '@/stores/auth': { useAuthStore: () => auth },
     '@/utils/clipboard': { copyWithToast: async () => {} },
-    '@/utils/docsUrl': { docsUrl: () => '' },
     '@/i18n/auditActionRegistry': { AUDIT_ACTION_I18N_ROOTS: { tenantMember: '' } },
     '@/i18n/auditActionLabel': { auditActionLabel: () => '' },
     '@/api/tenant/members': {

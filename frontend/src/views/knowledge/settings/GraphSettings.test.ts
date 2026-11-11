@@ -77,7 +77,6 @@ function fixture(t: TestContext, embedded: boolean) {
       if (name === 'vue-i18n') return { useI18n: () => ({ t: (key: string) => key }) }
       if (name === '@/stores/editorResources') return { useEditorResourcesStore: () => store }
       if (name === '@/stores/auth') return { useAuthStore: () => ({ hasRole: () => true }) }
-      if (name === '@/utils/docsUrl') return { docsUrl: () => 'https://example.com/knowledge-graph' }
       if (name === 'tdesign-vue-next') return { MessagePlugin: {} }
       if (name === '@/api/initialization') return {
         extractTextRelations: () => assert.fail('Availability checks must not extract relations'),

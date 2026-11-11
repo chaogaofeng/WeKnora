@@ -65,7 +65,7 @@ func (p *WeKnoraCloudSignedDocumentReader) IsConnected() bool { return true }
 func (p *WeKnoraCloudSignedDocumentReader) ListEngines(ctx context.Context, overrides map[string]string) ([]types.ParserEngineInfo, error) {
 	return []types.ParserEngineInfo{{
 		Name:        WeKnoraCloudEngineName,
-		Description: "WeKnoraCloud signed docreader",
+		Description: "知域方舟 signed docreader",
 		FileTypes:   []string{"docx", "doc", "pdf", "md", "markdown", "xlsx", "xls", "pptx", "ppt"},
 		Available:   true,
 	}}, nil

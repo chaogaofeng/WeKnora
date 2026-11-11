@@ -66,7 +66,7 @@ var SettingsSections = map[string]openPageSection{
 	"memory":                {"长期记忆", "Long-term memory"},
 	"models":                {"模型管理", "Model Management"},
 	"ollama":                {"Ollama", "Ollama"},
-	"weknoracloud":          {"WeKnora Cloud", "WeKnora Cloud"},
+	"weknoracloud":          {"知域方舟 Cloud", "知域方舟 Cloud"},
 	"websearch":             {"网络搜索", "Web Search"},
 	"vectorstore":           {"向量数据库引擎", "Vector DB Engine"},
 	"parser":                {"解析引擎", "Parser Engine"},
