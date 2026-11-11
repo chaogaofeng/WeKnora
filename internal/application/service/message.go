@@ -623,7 +623,11 @@ func (s *messageService) SearchMessages(ctx context.Context, params *types.Messa
 	// session list is. Sessions are per-user state, and a workspace-wide
 	// keyword search over them let any viewer read a colleague's private
 	// conversations, which is not something a search box should be able to do.
-	if params.OwnerID == "" {
+	// Admins, however, operate the conversation-log console and must be able
+	// to find any tenant conversation (API-key, IM, and embed channel
+	// sessions) by content; for them we leave OwnerID empty so the result is
+	// tenant-wide and the owned-session restriction below short-circuits.
+	if params.OwnerID == "" && !types.TenantRoleFromContext(ctx).HasPermission(types.TenantRoleAdmin) {
 		params.OwnerID = types.SessionOwnerIDFromContext(ctx)
 	}
 

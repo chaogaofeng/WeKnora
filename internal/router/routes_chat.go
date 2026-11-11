@@ -126,6 +126,13 @@ func RegisterSessionRoutes(
 		// Deleting reclaims the stored bytes, so it is owner-only: unlike the
 		// download above it does not honour shared-agent read access.
 		sessions.DELETE("/:id/messages/:message_id/artifacts/:index", handler.DeleteMessageArtifact)
+		// Per-message feedback: user ratings + admin annotations for the
+		// conversation-log console. GET/DELETE use :id to match the GET tree;
+		// POST uses :session_id to match the POST tree (gin keeps a separate
+		// radix tree per verb, each requiring a single wildcard name).
+		sessions.GET("/:id/feedbacks", handler.ListSessionFeedbacks)
+		sessions.POST("/:session_id/feedbacks", handler.SaveSessionFeedback)
+		sessions.DELETE("/:id/feedbacks/:feedback_id", handler.DeleteSessionFeedback)
 	}
 
 	// Cross-session artifact library. Same guards as /sessions: the rows come

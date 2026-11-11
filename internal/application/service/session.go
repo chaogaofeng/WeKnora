@@ -415,6 +415,11 @@ func (s *sessionService) ListSessions(
 			)
 		}
 		query.UserID = ""
+	} else if types.TenantRoleFromContext(ctx).HasPermission(types.TenantRoleAdmin) {
+		// Admins get a tenant-wide conversation log that covers every user's
+		// sessions (web, embed, IM, API). This is the operations console's
+		// audit view, so per-user scoping is intentionally skipped here.
+		query.UserID = ""
 	} else if uid := types.SessionOwnerIDFromContext(ctx); uid != "" {
 		query.UserID = uid
 	}

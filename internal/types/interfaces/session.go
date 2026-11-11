@@ -141,3 +141,15 @@ type SessionRepository interface {
 	// ListStaleForkSnapshotLeases returns leases older than olderThan.
 	ListStaleForkSnapshotLeases(ctx context.Context, olderThan time.Time) ([]*types.ForkSnapshotLease, error)
 }
+
+// MessageFeedbackRepository stores per-message ratings and annotations
+// (user feedback and admin corrections) for the conversation-log console.
+type MessageFeedbackRepository interface {
+	// UpsertForMessage inserts or updates the single feedback for a
+	// (tenant, session, message, from_source) tuple. Returns the resulting row.
+	UpsertForMessage(ctx context.Context, fb *types.MessageFeedback) (*types.MessageFeedback, error)
+	// Delete removes a feedback row by id within the tenant scope.
+	Delete(ctx context.Context, tenantID uint64, id string) error
+	// ListBySession returns every feedback row for a session, newest first.
+	ListBySession(ctx context.Context, tenantID uint64, sessionID string) ([]*types.MessageFeedback, error)
+}

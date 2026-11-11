@@ -245,6 +245,19 @@ func (r *sessionRepository) QueryPaged(
 			return db.Where(webSessionPredicate, webSessionPredicateArgs()...)
 		case "embed":
 			return db.Where("ics.id IS NULL AND s.description LIKE ?", embedPrefix+"%")
+		case "channel":
+			// Admin-only aggregate of every channel-managed conversation:
+			// API-key sessions (api_tenant_key / api_external_user owners),
+			// embed sessions (description carries the embed marker), and any
+			// IM-bound session (non-empty ics.platform). Mirrors the sources an
+			// admin may open via loadSessionForRead's Admin+ fallback.
+			return db.Where(
+				"(s.user_id LIKE ? OR s.user_id LIKE ? OR s.description LIKE ? OR ics.platform <> ?)",
+				types.SessionOwnerAPITenantKeyPrefix+"%",
+				types.SessionOwnerAPIExternalUserPrefix+"%",
+				embedPrefix+"%",
+				"",
+			)
 		default:
 			if strings.HasPrefix(lower, "embed:") {
 				channelID := strings.TrimSpace(src[len("embed:"):])
@@ -290,7 +303,18 @@ func (r *sessionRepository) QueryPaged(
 			ics.thread_id      AS im_thread_id,
 			ics.user_id        AS im_user_id,
 			ics.agent_id       AS im_agent_id,
-			ics.im_channel_id  AS im_channel_id`).
+			ics.im_channel_id  AS im_channel_id,
+			(SELECT COUNT(*) FROM messages m
+				WHERE m.session_id = s.id AND m.deleted_at IS NULL) AS message_count,
+			(SELECT COUNT(*) FROM message_feedbacks mf
+				WHERE mf.session_id = s.id AND mf.from_source = 'user'
+				  AND mf.rating = 1 AND mf.deleted_at IS NULL) AS user_feedback_up,
+			(SELECT COUNT(*) FROM message_feedbacks mf
+				WHERE mf.session_id = s.id AND mf.from_source = 'user'
+				  AND mf.rating = -1 AND mf.deleted_at IS NULL) AS user_feedback_down,
+			(SELECT COUNT(*) FROM message_feedbacks mf
+				WHERE mf.session_id = s.id AND mf.from_source = 'admin'
+				  AND mf.deleted_at IS NULL) AS admin_feedback_count`).
 		Order(orderClause).
 		Offset((page - 1) * size).
 		Limit(size)

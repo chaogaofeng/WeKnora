@@ -106,6 +106,11 @@
           <ChatHistorySettings />
         </div>
 
+        <!-- 会话日志 -->
+        <div v-if="currentSection === 'convlogs'" class="section">
+          <ConversationLogs />
+        </div>
+
         <!-- 默认配置（空间级默认模型与搜索引擎） -->
         <div v-if="currentSection === 'defaults'" class="section">
           <DefaultSettings />
@@ -229,6 +234,7 @@ import ModelCatalog from '../system/ModelCatalog.vue'
 import OllamaSettings from './OllamaSettings.vue'
 import WebSearchSettings from './WebSearchSettings.vue'
 import ChatHistorySettings from './ChatHistorySettings.vue'
+import ConversationLogs from './ConversationLogs.vue'
 import MemorySettings from './MemorySettings.vue'
 import EnvVarSettings from './EnvVarSettings.vue'
 import CredentialVaultSettings from './CredentialVaultSettings.vue'
@@ -378,6 +384,7 @@ const navItems = computed(() => {
     { key: 'models', icon: 'control-platform', label: t('settings.modelManagement') },
     { key: 'websearch', icon: 'search', label: t('settings.webSearchConfig') },
     { key: 'chathistory', icon: 'chat', label: t('chatHistorySettings.title') },
+    { key: 'convlogs', icon: 'history', label: t('conversationLogs.title') },
     { key: 'defaults', icon: 'setting-1', label: t('defaultSettings.title') },
     { key: 'memory', icon: 'bulletpoint', label: t('memoryWorkspaceSettings.title') },
     { key: 'vectorstore', icon: 'data-base', label: t('settings.vectorStoreEngine') },
@@ -424,7 +431,7 @@ const navGroups = computed<NavGroup[]>(() => {
     {
       key: 'workspace',
       label: t('settings.navGroups.workspace'),
-      items: pickItems(['tenant', 'members', 'defaults', 'chathistory', 'memory']),
+      items: pickItems(['tenant', 'members', 'defaults', 'chathistory', 'memory', 'convlogs']),
     },
     {
       key: 'models_runtime',

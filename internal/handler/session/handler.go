@@ -4,6 +4,7 @@ import (
 	"context"
 	stderrors "errors"
 	"net/http"
+	"strings"
 
 	"github.com/Tencent/WeKnora/internal/agent/hitl"
 	"github.com/Tencent/WeKnora/internal/application/service"
@@ -53,6 +54,9 @@ type Handler struct {
 	// handshake (browser WebSocket upgrades cannot send Authorization).
 	userService   interfaces.UserService
 	memberService interfaces.TenantMemberService
+	// feedbackRepo stores per-message user ratings and admin annotations for the
+	// conversation-log console.
+	feedbackRepo interfaces.MessageFeedbackRepository
 	// terminalService opens PTYs on the sandbox bound to a session. It also
 	// owns first-use provisioning: the WS handshake carries the chat page's
 	// selected agent so the sandbox is created with the same config a
@@ -110,6 +114,7 @@ func NewHandler(
 	memoryService interfaces.MemoryService,
 	userService interfaces.UserService,
 	memberService interfaces.TenantMemberService,
+	feedbackRepo interfaces.MessageFeedbackRepository,
 	terminalService *service.SandboxTerminalService,
 	browserSkill *browserskill.Manager,
 	desktopService *service.SandboxDesktopService,
@@ -145,6 +150,7 @@ func NewHandler(
 		memoryService:         memoryService,
 		userService:           userService,
 		memberService:         memberService,
+		feedbackRepo:          feedbackRepo,
 		terminalService:       terminalService,
 		desktopService:        desktopService,
 		desktopTickets:        desktopTickets,
@@ -309,7 +315,7 @@ func (h *Handler) GetSession(c *gin.Context) {
 // @Param        page_size  query     int     false  "每页数量"  minimum(1)  maximum(1000)  extensions(x-agent,x-agent-maximum=20)
 // @Param        kind       query     string  false  "会话类型：空值仅普通会话；assistant 仅当前用户的助手会话" Enums(assistant)  extensions(x-agent)
 // @Param        keyword    query     string  false  "标题模糊搜索"  extensions(x-agent)
-// @Param        source     query     string  false  "来源过滤：web / embed / api / feishu / wechat / slack / ...（api、embed、IM 渠道需 Admin+）"
+// @Param        source     query     string  false  "来源过滤：web / embed / api / feishu / wechat / slack / channel（api、embed、IM、channel 渠道需 Admin+）"
 // @Param        agent_id   query     string  false  "按 Agent 过滤（仅对 IM 会话生效）"
 // @Success      200        {object}  sessionListResponse  "会话列表"
 // @Failure      400        {object}  errors.AppError         "请求参数错误"
@@ -352,6 +358,8 @@ func (h *Handler) GetSessionsByTenant(c *gin.Context) {
 	}
 
 	items, _ := result.Data.([]*types.SessionListItem)
+	resolveSessionOwnerNames(ctx, h.userService, items)
+
 	c.JSON(http.StatusOK, sessionListResponse{
 		Success:  true,
 		Data:     items,
@@ -359,6 +367,141 @@ func (h *Handler) GetSessionsByTenant(c *gin.Context) {
 		Page:     result.Page,
 		PageSize: result.PageSize,
 	})
+}
+
+// resolveSessionOwnerNames fills OwnerName for Web/internal user-owned sessions
+// so the conversation log can show who each conversation belongs to. Channel
+// sessions (API key, embed, IM) have no human owner and are left empty; the UI
+// falls back to a source label for those.
+func resolveSessionOwnerNames(ctx context.Context, svc interfaces.UserService, items []*types.SessionListItem) {
+	if len(items) == 0 {
+		return
+	}
+	ids := make([]string, 0, len(items))
+	seen := make(map[string]struct{}, len(items))
+	for _, it := range items {
+		if id := it.UserID; id != "" && isResolvableUserID(id) {
+			if _, ok := seen[id]; !ok {
+				seen[id] = struct{}{}
+				ids = append(ids, id)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	users, err := svc.GetUsersByIDs(ctx, ids)
+	if err != nil {
+		return
+	}
+	for _, it := range items {
+		if u, ok := users[it.UserID]; ok && u != nil {
+			it.OwnerName = u.Username
+		}
+	}
+}
+
+// isResolvableUserID reports whether an owner id names a real human user (a bare
+// user UUID) rather than a channel/API/embed/IM principal, which embed a colon
+// and a type prefix (e.g. "api_tenant_key:7:99", "embed:7:c:s", "im_user:...").
+func isResolvableUserID(id string) bool {
+	if strings.Contains(id, ":") {
+		return false
+	}
+	switch {
+	case strings.HasPrefix(id, "api_"),
+		strings.HasPrefix(id, "embed"),
+		strings.HasPrefix(id, "im_"),
+		strings.HasPrefix(id, "mcp_"):
+		return false
+	}
+	return true
+}
+
+// ListSessionFeedbacks returns every feedback row for a session (user ratings
+// and admin annotations). Visible to any viewer of the tenant, matching the
+// conversation-log read scope.
+func (h *Handler) ListSessionFeedbacks(c *gin.Context) {
+	ctx := c.Request.Context()
+	tenantID := types.MustTenantIDFromContext(ctx)
+	sessionID := paramSessionID(c)
+	items, err := h.feedbackRepo.ListBySession(ctx, tenantID, sessionID)
+	if err != nil {
+		logger.ErrorWithFields(ctx, err, nil)
+		c.Error(errors.NewInternalServerError(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": items})
+}
+
+// saveSessionFeedbackRequest is the JSON body of SaveSessionFeedback.
+type saveSessionFeedbackRequest struct {
+	MessageID  string `json:"message_id"`
+	FromSource string `json:"from_source"`
+	Rating     int    `json:"rating"`
+	Content    string `json:"content"`
+}
+
+// SaveSessionFeedback upserts a rating/annotation on a message. User feedback can
+// be written by any viewer (they rate their own conversation); admin annotations
+// require tenant admin or owner.
+func (h *Handler) SaveSessionFeedback(c *gin.Context) {
+	ctx := c.Request.Context()
+	tenantID := types.MustTenantIDFromContext(ctx)
+	sessionID := paramSessionID(c)
+
+	var req saveSessionFeedbackRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+	if req.MessageID == "" {
+		c.Error(errors.NewBadRequestError("message_id is required"))
+		return
+	}
+	if req.FromSource != types.FeedbackSourceUser && req.FromSource != types.FeedbackSourceAdmin {
+		c.Error(errors.NewBadRequestError("from_source must be 'user' or 'admin'"))
+		return
+	}
+	if req.FromSource == types.FeedbackSourceAdmin &&
+		!types.TenantRoleFromContext(ctx).HasPermission(types.TenantRoleAdmin) {
+		c.Error(errors.NewForbiddenError("writing admin feedback requires tenant admin or owner role"))
+		return
+	}
+
+	fb := &types.MessageFeedback{
+		TenantID:   tenantID,
+		SessionID:  sessionID,
+		MessageID:  req.MessageID,
+		FromSource: req.FromSource,
+		Rating:     req.Rating,
+		Content:    req.Content,
+		CreatorID:  types.SessionOwnerIDFromContext(ctx),
+	}
+	saved, err := h.feedbackRepo.UpsertForMessage(ctx, fb)
+	if err != nil {
+		logger.ErrorWithFields(ctx, err, nil)
+		c.Error(errors.NewInternalServerError(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": saved})
+}
+
+// DeleteSessionFeedback removes a feedback row. Admin only.
+func (h *Handler) DeleteSessionFeedback(c *gin.Context) {
+	ctx := c.Request.Context()
+	tenantID := types.MustTenantIDFromContext(ctx)
+	if !types.TenantRoleFromContext(ctx).HasPermission(types.TenantRoleAdmin) {
+		c.Error(errors.NewForbiddenError("deleting feedback requires tenant admin or owner role"))
+		return
+	}
+	id := c.Param("feedback_id")
+	if err := h.feedbackRepo.Delete(ctx, tenantID, id); err != nil {
+		logger.ErrorWithFields(ctx, err, nil)
+		c.Error(errors.NewInternalServerError(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 // sessionListResponse is the body of GetSessionsByTenant.

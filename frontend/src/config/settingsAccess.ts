@@ -14,6 +14,7 @@ export const SETTINGS_SECTION_MIN_ROLE: Record<string, SettingsRoleKey> = {
   models: 'viewer',
   websearch: 'admin',
   chathistory: 'admin',
+  convlogs: 'admin',
   vectorstore: 'admin',
   parser: 'admin',
   storage: 'admin',

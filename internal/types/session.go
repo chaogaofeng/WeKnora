@@ -313,6 +313,20 @@ type SessionListItem struct {
 	IMUserID    string `json:"im_user_id,omitempty"    gorm:"column:im_user_id"`
 	IMAgentID   string `json:"im_agent_id,omitempty"   gorm:"column:im_agent_id"`
 	IMChannelID string `json:"im_channel_id,omitempty" gorm:"column:im_channel_id"`
+	// OwnerName is the display name of the session owner, populated only for
+	// Web/internal user-owned sessions. Channel sessions (API key, embed, IM)
+	// have no human owner, so this stays empty and the UI falls back to a
+	// source label. Filled by the list handler via a batch user lookup.
+	OwnerName string `json:"owner_name,omitempty" gorm:"-"`
+	// MessageCount is the number of non-deleted messages in the session,
+	// filled by a correlated subquery in the paged list query (mirrors the
+	// message-count column of an ops log page).
+	MessageCount int64 `json:"message_count" gorm:"column:message_count"`
+	// Feedback tallies, filled by correlated subqueries in the paged list query
+	// so the ops log can show user/admin feedback at a glance.
+	UserFeedbackUp     int64 `json:"user_feedback_up" gorm:"column:user_feedback_up"`
+	UserFeedbackDown   int64 `json:"user_feedback_down" gorm:"column:user_feedback_down"`
+	AdminFeedbackCount int64 `json:"admin_feedback_count" gorm:"column:admin_feedback_count"`
 }
 
 // StringArray represents a list of strings
