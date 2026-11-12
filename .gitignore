@@ -63,3 +63,6 @@ miniprogram/project.private.config.json
 
 # Locally built BrowserSkill runtime and extension bundles
 /artifacts/browserskill/
+
+# embed-wrapper 编译产物（与目录同名的二进制文件）
+embed-wrapper/embed-wrapper
