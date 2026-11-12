@@ -43,17 +43,17 @@ func (f *exchangeEmbedSvc) LookupForEmbed(context.Context, string, string) (*typ
 func (f *exchangeEmbedSvc) LookupEnabledChannel(context.Context, string) (*types.EmbedChannel, error) {
 	return nil, nil
 }
-func (f *exchangeEmbedSvc) IssueSessionToken(context.Context, string) (string, int, error) {
+func (f *exchangeEmbedSvc) IssueSessionToken(context.Context, string, string) (string, int, error) {
 	if f.err != nil {
 		return "", 0, f.err
 	}
 	return f.sessionToken, f.expiresIn, nil
 }
 func (f *exchangeEmbedSvc) IssuePreviewSession(context.Context, uint64, string) (string, int, error) {
-	return f.IssueSessionToken(context.Background(), "")
+	return f.IssueSessionToken(context.Background(), "", "")
 }
-func (f *exchangeEmbedSvc) ResolveSessionToken(context.Context, string) (string, error) {
-	return "", nil
+func (f *exchangeEmbedSvc) ResolveSessionToken(context.Context, string) (string, string, error) {
+	return "", "", nil
 }
 func (f *exchangeEmbedSvc) PublicConfig(context.Context, *types.EmbedChannel) types.EmbedChannelPublicConfig {
 	return types.EmbedChannelPublicConfig{}

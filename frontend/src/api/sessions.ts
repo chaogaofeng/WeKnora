@@ -13,6 +13,8 @@ export interface SessionListItem {
   is_pinned: boolean
   created_at: string
   updated_at: string
+  /** 最近一次请求的输入栏状态；其中 agent_id 用于日志页"智能体"列 */
+  last_request_state?: { agent_id?: string; [k: string]: unknown }
   agent_id?: string
   im_platform?: string
   im_chat_id?: string
@@ -77,8 +79,14 @@ export interface SessionListResult {
 export interface SessionListParams {
   kind?: string
   keyword?: string
+  /** 关键词同时匹配消息内容（会话日志页用；默认仅匹配标题） */
+  search_content?: boolean
   source?: string
   agent_id?: string
+  start_time?: string
+  end_time?: string
+  sort_by?: string
+  order?: string
   page?: number
   page_size?: number
 }
@@ -90,8 +98,13 @@ export function listSessions(params: SessionListParams) {
   const query = new URLSearchParams()
   if (params.kind) query.set('kind', params.kind)
   if (params.keyword) query.set('keyword', params.keyword)
+  if (params.search_content) query.set('search_content', 'true')
   if (params.source) query.set('source', params.source)
   if (params.agent_id) query.set('agent_id', params.agent_id)
+  if (params.start_time) query.set('start_time', params.start_time)
+  if (params.end_time) query.set('end_time', params.end_time)
+  if (params.sort_by) query.set('sort_by', params.sort_by)
+  if (params.order) query.set('order', params.order)
   if (params.page) query.set('page', String(params.page))
   if (params.page_size) query.set('page_size', String(params.page_size))
   const qs = query.toString()
@@ -113,4 +126,26 @@ export function loadSessionMessages(sessionId: string) {
   return get<{ success: boolean; data: ChatMessage[] }>(
     `/api/v1/messages/${encodeURIComponent(sessionId)}/load`,
   )
+}
+
+// SessionStats aggregates session/user/question counts for the current filter.
+export interface SessionStats {
+  total_sessions: number
+  total_users: number
+  total_questions: number
+}
+
+// getSessionStats returns aggregate counts (sessions / users / questions) for
+// the same filter window used by listSessions.
+export function getSessionStats(params: SessionListParams = {}) {
+  const query = new URLSearchParams()
+  if (params.kind) query.set('kind', params.kind)
+  if (params.keyword) query.set('keyword', params.keyword)
+  if (params.search_content) query.set('search_content', 'true')
+  if (params.source) query.set('source', params.source)
+  if (params.agent_id) query.set('agent_id', params.agent_id)
+  if (params.start_time) query.set('start_time', params.start_time)
+  if (params.end_time) query.set('end_time', params.end_time)
+  if (params.sort_by) query.set('sort_by', params.sort_by)
+  return get<SessionStats>(`/api/v1/sessions/stats?${query.toString()}`)
 }

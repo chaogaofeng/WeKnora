@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -32,8 +33,20 @@ func generateEmbedSessionToken() (string, error) {
 	return embedSessionTokenPrefix + base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
-// IssueSessionToken mints a short-lived session token bound to channelID.
-func (s *embedChannelService) IssueSessionToken(ctx context.Context, channelID string) (string, int, error) {
+// embedSessionTokenPayload is the Redis value behind an ems_ session token.
+// It carries the channel id plus an optional host-asserted owner id so a chat
+// session can be attributed to a logged-in user of the embedding project
+// without trusting the browser.
+type embedSessionTokenPayload struct {
+	ChannelID string `json:"c"`
+	Owner     string `json:"o"`
+}
+
+// IssueSessionToken mints a short-lived session token bound to channelID. When
+// owner is non-empty (a host-asserted external user id supplied by the host
+// backend that holds the publish token), it is embedded in the token so the
+// value is verified at session-creation time rather than self-reported.
+func (s *embedChannelService) IssueSessionToken(ctx context.Context, channelID, owner string) (string, int, error) {
 	if s.redis == nil {
 		return "", 0, ErrEmbedSessionUnavailable
 	}
@@ -41,38 +54,56 @@ func (s *embedChannelService) IssueSessionToken(ctx context.Context, channelID s
 	if channelID == "" {
 		return "", 0, ErrEmbedTokenInvalid
 	}
+	owner = strings.TrimSpace(owner)
+	if owner != "" {
+		if err := types.ValidateEmbedOwnerID(owner); err != nil {
+			return "", 0, err
+		}
+	}
 	token, err := generateEmbedSessionToken()
 	if err != nil {
 		return "", 0, err
 	}
+	payload := embedSessionTokenPayload{ChannelID: channelID, Owner: owner}
+	val, err := json.Marshal(payload)
+	if err != nil {
+		return "", 0, err
+	}
 	key := embedSessionRedisPrefix + token
-	if err := s.redis.Set(ctx, key, channelID, embedSessionTTL).Err(); err != nil {
+	if err := s.redis.Set(ctx, key, val, embedSessionTTL).Err(); err != nil {
 		return "", 0, err
 	}
 	return token, int(embedSessionTTL.Seconds()), nil
 }
 
-// ResolveSessionToken returns the channel ID stored for a session token.
-func (s *embedChannelService) ResolveSessionToken(ctx context.Context, token string) (string, error) {
+// ResolveSessionToken returns the channel ID and host-asserted owner stored for
+// a session token. Older tokens (before owner support) stored the bare channel
+// id; those resolve with an empty owner for backward compatibility.
+func (s *embedChannelService) ResolveSessionToken(ctx context.Context, token string) (string, string, error) {
 	token = strings.TrimSpace(token)
 	if !strings.HasPrefix(token, embedSessionTokenPrefix) {
-		return "", ErrEmbedTokenInvalid
+		return "", "", ErrEmbedTokenInvalid
 	}
 	if s.redis == nil {
-		return "", ErrEmbedSessionUnavailable
+		return "", "", ErrEmbedSessionUnavailable
 	}
-	channelID, err := s.redis.Get(ctx, embedSessionRedisPrefix+token).Result()
+	raw, err := s.redis.Get(ctx, embedSessionRedisPrefix+token).Result()
 	if err == redis.Nil {
-		return "", ErrEmbedTokenInvalid
+		return "", "", ErrEmbedTokenInvalid
 	}
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	channelID = strings.TrimSpace(channelID)
-	if channelID == "" {
-		return "", ErrEmbedTokenInvalid
+	var payload embedSessionTokenPayload
+	if jsonErr := json.Unmarshal([]byte(raw), &payload); jsonErr != nil || payload.ChannelID == "" {
+		// Legacy token: the raw value is the channel id.
+		channelID := strings.TrimSpace(raw)
+		if channelID == "" {
+			return "", "", ErrEmbedTokenInvalid
+		}
+		return channelID, "", nil
 	}
-	return channelID, nil
+	return payload.ChannelID, payload.Owner, nil
 }
 
 // LookupEnabledChannel loads an embed channel and verifies it is enabled.
@@ -144,5 +175,5 @@ func (s *embedChannelService) IssuePreviewSession(
 	if !ch.Enabled {
 		return "", 0, ErrEmbedChannelDisabled
 	}
-	return s.IssueSessionToken(ctx, ch.ID)
+	return s.IssueSessionToken(ctx, ch.ID, "")
 }

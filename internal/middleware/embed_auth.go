@@ -95,8 +95,10 @@ func EmbedAuth(
 
 		var ch *types.EmbedChannel
 		var err error
+		var owner string
 		if service.IsEmbedSessionToken(token) {
-			resolvedID, resolveErr := svc.ResolveSessionToken(c.Request.Context(), token)
+			resolvedID, resolvedOwner, resolveErr := svc.ResolveSessionToken(c.Request.Context(), token)
+			owner = resolvedOwner
 			if resolveErr != nil || resolvedID != channelID {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid embed channel or token"})
 				c.Abort()
@@ -172,6 +174,13 @@ func EmbedAuth(
 			Extra:      map[types.ContextKey]any{types.EmbedChannelContextKey: ch},
 			AuthSource: types.AuthSourceEmbed,
 		})
+		// Carry the host-asserted owner (verified via the signed session
+		// token) into the request context so CreateEmbedSession can attribute
+		// the chat session to a logged-in user of the embedding project.
+		if owner != "" {
+			c.Request = c.Request.WithContext(context.WithValue(
+				c.Request.Context(), types.EmbedOwnerContextKey, owner))
+		}
 		c.Next()
 	}
 }
@@ -245,4 +254,18 @@ func originAllowed(origin string, allowed []string) bool {
 func EmbedChannelFromContext(ctx context.Context) (*types.EmbedChannel, bool) {
 	ch, ok := ctx.Value(types.EmbedChannelContextKey).(*types.EmbedChannel)
 	return ch, ok && ch != nil
+}
+
+// EmbedOwnerFromContext returns the host-asserted owner id carried by a verified
+// embed session token, or "" for anonymous sessions. The value is trustworthy
+// because it can only be set by EmbedAuth from the signed token minted by the
+// host backend that holds the publish token.
+func EmbedOwnerFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if v, ok := ctx.Value(types.EmbedOwnerContextKey).(string); ok {
+		return strings.TrimSpace(v)
+	}
+	return ""
 }

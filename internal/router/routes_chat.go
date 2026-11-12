@@ -59,6 +59,7 @@ func RegisterSessionRoutes(
 		sessions.POST("/transcriptions", handler.TranscribeVoiceInput)
 		sessions.GET("/:id", handler.GetSession)
 		sessions.GET("", handler.GetSessionsByTenant)
+		sessions.GET("/stats", handler.GetSessionStats)
 		sessions.PUT("/:id", handler.UpdateSession)
 		sessions.GET("/:id/host-approval-mode", handler.GetHostApprovalMode)
 		sessions.PUT("/:id/host-approval-mode", handler.SetHostApprovalMode)

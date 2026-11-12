@@ -6,100 +6,116 @@
     </div>
 
     <div class="toolbar">
-      <t-radio-group v-model="mode" variant="default-filled">
-        <t-radio-button value="list">{{ t('conversationLogs.tabList') }}</t-radio-button>
-        <t-radio-button value="search">{{ t('conversationLogs.tabSearch') }}</t-radio-button>
-      </t-radio-group>
-
-      <div class="filters">
-        <t-input
-          v-if="mode === 'list'"
-          v-model="keyword"
-          :placeholder="t('conversationLogs.keywordPlaceholder')"
-          clearable
-          class="filter-item"
-          @enter="onSearch"
-        />
-        <t-select
-          v-if="mode === 'list'"
-          v-model="source"
-          :placeholder="t('conversationLogs.filterSource')"
-          class="filter-item source-select"
-        >
-          <t-option value="" :label="t('conversationLogs.sourceAll')" />
-          <t-option value="web" :label="t('conversationLogs.sourceWeb')" />
-          <t-option value="embed" :label="t('conversationLogs.sourceEmbed')" />
-          <t-option value="api" :label="t('conversationLogs.sourceAPI')" />
-          <t-option value="feishu" :label="t('conversationLogs.sourceFeishu')" />
-          <t-option value="wecom" :label="t('conversationLogs.sourceWecom')" />
-          <t-option value="channel" :label="t('conversationLogs.sourceChannel')" />
+      <t-date-range-picker
+        v-model="dateRange"
+        value-type="YYYY-MM-DD"
+        :placeholder="[t('conversationLogs.filterTime'), t('conversationLogs.filterTime')]"
+        clearable
+        allow-input
+        class="filter-item time-select"
+        @change="onFilterChange"
+      />
+      <t-select
+        v-model="source"
+        :placeholder="t('conversationLogs.filterSource')"
+        class="filter-item source-select"
+        @change="onFilterChange"
+      >
+        <t-option value="" :label="t('conversationLogs.sourceAll')" />
+        <t-option value="web" :label="t('conversationLogs.sourceWeb')" />
+        <t-option value="embed" :label="t('conversationLogs.sourceEmbed')" />
+        <t-option value="api" :label="t('conversationLogs.sourceAPI')" />
+        <t-option value="feishu" :label="t('conversationLogs.sourceFeishu')" />
+        <t-option value="wecom" :label="t('conversationLogs.sourceWecom')" />
+        <t-option value="channel" :label="t('conversationLogs.sourceChannel')" />
+      </t-select>
+      <t-select
+        v-model="agentId"
+        :placeholder="t('conversationLogs.filterAgent')"
+        filterable
+        clearable
+        class="filter-item agent-select"
+        @change="onFilterChange"
+      >
+        <t-option v-for="a in agents" :key="a.id" :value="a.id" :label="a.name" />
+      </t-select>
+      <t-input
+        v-model="keyword"
+        :placeholder="t('conversationLogs.searchPlaceholder')"
+        clearable
+        class="filter-item search-input"
+        @enter="onFilterChange"
+        @clear="onFilterChange"
+      />
+      <div class="sort-group">
+        <span class="sort-label">{{ t('conversationLogs.sortLabel') }}</span>
+        <t-select v-model="sortBy" class="sort-select" @change="onSortSelectChange">
+          <t-option value="updated_at" :label="t('conversationLogs.sortUpdatedAt')" />
+          <t-option value="created_at" :label="t('conversationLogs.sortCreatedAt')" />
         </t-select>
-        <t-select
-          v-if="mode === 'list'"
-          v-model="agentId"
-          :placeholder="t('conversationLogs.filterAgent')"
-          filterable
-          clearable
-          class="filter-item agent-select"
-        >
-          <t-option v-for="a in agents" :key="a.id" :value="a.id" :label="a.name" />
-        </t-select>
-
-        <t-input
-          v-if="mode === 'search'"
-          v-model="searchQuery"
-          :placeholder="t('conversationLogs.searchPlaceholder')"
-          clearable
-          class="filter-item search-input"
-          @enter="onSearch"
-        />
-
-        <t-button theme="primary" :loading="loading" @click="onSearch">
-          {{ mode === 'search' ? t('conversationLogs.searchButton') : t('conversationLogs.tabList') }}
+        <t-button variant="outline" class="sort-dir" @click="toggleSortOrder">
+          {{ sortOrder === 'asc' ? '↑' : '↓' }}
         </t-button>
       </div>
     </div>
 
-    <template v-if="mode === 'list'">
-      <t-table
-        :data="sessions"
-        :columns="columns"
-        row-key="id"
-        :loading="loading"
-        size="medium"
-        hover
-        @row-click="(ctx: any) => openSession(ctx.row)"
-      >
-        <template #cell.source="{ row }">
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-value">{{ stats.total_sessions }}</div>
+        <div class="stat-label">{{ t('conversationLogs.statSessions') }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">{{ stats.total_users }}</div>
+        <div class="stat-label">{{ t('conversationLogs.statUsers') }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">{{ stats.total_questions }}</div>
+        <div class="stat-label">{{ t('conversationLogs.statQuestions') }}</div>
+      </div>
+    </div>
+
+    <t-table
+      :data="sessions"
+      :columns="columns"
+      row-key="id"
+      :loading="loading"
+      size="medium"
+      hover
+      @row-click="(ctx: any) => openSession(ctx.row)"
+    >
+        <template #source="{ row }">
           <t-tag :theme="sourceTheme(row)" variant="light">{{ sourceLabel(row) }}</t-tag>
         </template>
-        <template #cell.owner="{ row }">
+        <template #owner="{ row }">
           <t-tag v-if="userLabel(row)" variant="outline" theme="primary" size="small">
             {{ userLabel(row) }}
           </t-tag>
           <span v-else class="muted">—</span>
         </template>
-        <template #cell.agent="{ row }">
-          {{ agentName(row.agent_id) }}
+        <template #agent="{ row }">
+          {{ agentName(row.last_request_state?.agent_id) }}
         </template>
-        <template #cell.messages="{ row }">
+        <template #messages="{ row }">
           {{ row.message_count ?? 0 }}
         </template>
-        <template #cell.created_at="{ row }">
+        <template #created_at="{ row }">
           {{ formatTime(row.created_at) }}
         </template>
-        <template #cell.user_feedback="{ row }">
+        <template #updated_at="{ row }">
+          {{ formatTime(row.updated_at) }}
+        </template>
+        <template #user_feedback="{ row }">
           <span class="fb-cell">
             <span v-if="row.user_feedback_up" class="fb-up" :title="t('conversationLogs.fbUp')">👍 {{ row.user_feedback_up }}</span>
             <span v-if="row.user_feedback_down" class="fb-down" :title="t('conversationLogs.fbDown')">👎 {{ row.user_feedback_down }}</span>
             <span v-if="!row.user_feedback_up && !row.user_feedback_down" class="muted">—</span>
           </span>
         </template>
-        <template #cell.admin_feedback="{ row }">
+        <template #admin_feedback="{ row }">
           <span v-if="row.admin_feedback_count" class="fb-admin">📝 {{ row.admin_feedback_count }}</span>
           <span v-else class="muted">—</span>
         </template>
-        <template #cell.actions="{ row }">
+        <template #actions="{ row }">
           <t-link theme="primary" @click.stop="openSession(row)">{{ t('conversationLogs.view') }}</t-link>
         </template>
       </t-table>
@@ -114,26 +130,6 @@
         class="pager"
         @change="onPageChange"
       />
-    </template>
-
-    <template v-else>
-      <div v-if="searchResults.length" class="search-results">
-        <div class="search-count">{{ t('conversationLogs.searchResults') }} · {{ searchTotal }}</div>
-        <div
-          v-for="item in searchResults"
-          :key="item.request_id"
-          class="search-item"
-          @click="openSessionId(item)"
-        >
-          <div class="search-session">{{ item.session_title || item.session_id }}</div>
-          <div class="search-qa">
-            <div class="qa-q"><b>Q:</b> {{ item.query_content }}</div>
-            <div class="qa-a"><b>A:</b> {{ item.answer_content }}</div>
-          </div>
-        </div>
-      </div>
-      <div v-else-if="!loading" class="empty">{{ t('conversationLogs.emptySearch') }}</div>
-    </template>
 
     <t-drawer
       v-model:visible="drawerVisible"
@@ -242,7 +238,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { MessagePlugin } from 'tdesign-vue-next'
 import {
@@ -251,23 +247,30 @@ import {
   listSessionFeedbacks,
   saveSessionFeedback,
   deleteSessionFeedback,
+  getSessionStats,
   type SessionListItem,
   type ChatMessage,
   type MessageFeedback,
+  type SessionStats,
 } from '@/api/sessions'
 import { listAgents } from '@/api/agent'
-import { searchMessages, type MessageSearchGroupItem } from '@/api/chat-history'
 
 const { t } = useI18n()
 
-const mode = ref<'list' | 'search'>('list')
 const keyword = ref('')
 const source = ref('') // 默认全部来源：覆盖所有用户的会话
 const agentId = ref('')
+// 时间范围过滤（字段跟随排序下拉：更新时间/创建时间，YYYY-MM-DD；后端对结束日含当日）
+const dateRange = ref<string[]>([])
 const searchQuery = ref('')
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
+// 当前筛选范围内的聚合统计（会话总数 / 用户总数 / 提问数）
+const stats = ref<SessionStats>({ total_sessions: 0, total_users: 0, total_questions: 0 })
+// 服务端排序（避免分页下的本地排序误导）
+const sortBy = ref('updated_at')
+const sortOrder = ref('desc')
 const sessions = ref<SessionListItem[]>([])
 const loading = ref(false)
 
@@ -277,9 +280,6 @@ const agentMap = computed(() => {
   agents.value.forEach((a) => (m[a.id] = a.name))
   return m
 })
-
-const searchResults = ref<MessageSearchGroupItem[]>([])
-const searchTotal = ref(0)
 
 const drawerVisible = ref(false)
 const drawerLoading = ref(false)
@@ -293,6 +293,12 @@ const drawerMeta = ref<{ title: string; user: string; agent: string; source: str
 })
 const drawerSessionId = ref('')
 const feedbacks = ref<MessageFeedback[]>([])
+// 预建 message_id+source -> feedback 的索引，避免逐条线性扫描
+const feedbackMap = computed(() => {
+  const m = new Map<string, MessageFeedback>()
+  for (const f of feedbacks.value) m.set(`${f.message_id}:${f.from_source}`, f)
+  return m
+})
 const annotatingId = ref('')
 const annotateRating = ref(0)
 const annotateContent = ref('')
@@ -347,7 +353,9 @@ function agentName(id?: string) {
 function formatTime(s?: string) {
   if (!s) return ''
   const d = new Date(s)
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString()
+  if (Number.isNaN(d.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 async function fetchSessions() {
@@ -355,8 +363,13 @@ async function fetchSessions() {
   try {
     const res: any = await listSessions({
       keyword: keyword.value || undefined,
+      search_content: true,
       source: source.value || undefined,
       agent_id: agentId.value || undefined,
+      start_time: dateRange.value?.[0] || undefined,
+      end_time: dateRange.value?.[1] || undefined,
+      sort_by: sortBy.value || undefined,
+      order: sortOrder.value || undefined,
       page: page.value,
       page_size: pageSize.value,
     })
@@ -369,45 +382,62 @@ async function fetchSessions() {
   }
 }
 
-async function onContentSearch() {
-  if (!searchQuery.value.trim()) return
-  loading.value = true
+function onFilterChange() {
+  page.value = 1
+  fetchSessions()
+  fetchStats()
+}
+
+async function fetchStats() {
   try {
-    const res: any = await searchMessages({
-      query: searchQuery.value.trim(),
-      mode: 'hybrid',
-      limit: 50,
+    const res = await getSessionStats({
+      keyword: keyword.value || undefined,
+      search_content: true,
+      source: source.value || undefined,
+      agent_id: agentId.value || undefined,
+      start_time: dateRange.value?.[0] || undefined,
+      end_time: dateRange.value?.[1] || undefined,
+      sort_by: sortBy.value || undefined,
     })
-    const payload = res?.data ?? res
-    const items: MessageSearchGroupItem[] = payload?.items || []
-    searchResults.value = items
-    searchTotal.value = payload?.total || items.length
-  } catch (e: any) {
-    MessagePlugin.error(e?.message || 'search failed')
-  } finally {
-    loading.value = false
+    if (res) stats.value = res
+  } catch {
+    // 统计失败不影响列表展示，保留上一次的聚合值
   }
 }
 
-function onSearch() {
-  if (mode.value === 'search') {
-    onContentSearch()
-  } else {
-    page.value = 1
-    fetchSessions()
-  }
-}
+// 关键词输入防抖后自动搜索（回车/清空立即触发）
+let keywordTimer: number | null = null
+watch(keyword, () => {
+  if (keywordTimer) clearTimeout(keywordTimer)
+  keywordTimer = window.setTimeout(() => {
+    keywordTimer = null
+    onFilterChange()
+  }, 300)
+})
+
+onBeforeUnmount(() => {
+  if (keywordTimer) clearTimeout(keywordTimer)
+})
 
 function onPageChange(p: { current: number; pageSize: number }) {
   page.value = p.current
   fetchSessions()
 }
 
+function onSortSelectChange() {
+  onFilterChange()
+}
+
+function toggleSortOrder() {
+  sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
+  onFilterChange()
+}
+
 function buildMeta(row: SessionListItem) {
   return {
     title: row.title || t('conversationLogs.emptyMessages'),
     user: userLabel(row) || '—',
-    agent: agentName(row.agent_id),
+    agent: agentName(row.last_request_state?.agent_id),
     source: sourceLabel(row),
   }
 }
@@ -416,17 +446,6 @@ async function openSession(row: SessionListItem) {
   drawerMeta.value = buildMeta(row)
   drawerSessionId.value = row.id
   await loadMessages(row.id)
-}
-
-async function openSessionId(item: MessageSearchGroupItem) {
-  drawerMeta.value = {
-    title: item.session_title || item.session_id,
-    user: '—',
-    agent: '—',
-    source: '',
-  }
-  drawerSessionId.value = item.session_id
-  await loadMessages(item.session_id)
 }
 
 async function loadMessages(id: string) {
@@ -447,7 +466,7 @@ async function loadMessages(id: string) {
 }
 
 function feedbackOf(messageId: string, source: 'user' | 'admin') {
-  return feedbacks.value.find((f) => f.message_id === messageId && f.from_source === source)
+  return feedbackMap.value.get(`${messageId}:${source}`)
 }
 
 async function loadFeedbacks(id: string) {
@@ -508,6 +527,7 @@ onMounted(async () => {
     agents.value = []
   }
   fetchSessions()
+  fetchStats()
 })
 </script>
 
@@ -524,6 +544,29 @@ onMounted(async () => {
   align-items: center;
   margin-bottom: 16px;
 }
+.stats-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.stat-card {
+  flex: 1;
+  min-width: 0;
+  background: var(--td-bg-color-secondarycontainer);
+  border-radius: var(--app-radius-md);
+  padding: 16px 20px;
+}
+.stat-value {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--td-brand-color);
+  line-height: 1.2;
+}
+.stat-label {
+  margin-top: 4px;
+  font-size: var(--app-text-md);
+  color: var(--td-text-color-secondary);
+}
 .filters {
   display: flex;
   flex-wrap: wrap;
@@ -535,13 +578,35 @@ onMounted(async () => {
   width: 200px;
 }
 .source-select {
-  width: 160px;
+  width: 130px;
 }
 .agent-select {
-  width: 200px;
+  width: 160px;
+}
+.time-select {
+  width: 250px;
 }
 .search-input {
-  width: 360px;
+  flex: 1;
+  min-width: 200px;
+}
+.sort-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.sort-label {
+  color: var(--td-text-color-secondary);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.sort-select {
+  width: 120px;
+}
+.sort-dir {
+  width: 36px;
+  padding: 0;
 }
 .empty {
   padding: 40px;

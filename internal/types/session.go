@@ -300,6 +300,26 @@ type SessionListQuery struct {
 	AgentID  string
 	Page     int
 	PageSize int
+	// StartTime/EndTime optionally restrict the list to sessions whose
+	// updated_at falls within [StartTime, EndTime]. Nil means unbounded.
+	StartTime *time.Time
+	EndTime   *time.Time
+	// SortBy/Order optionally override the default pin-aware ordering.
+	// Allowed columns: "updated_at", "created_at", "title".
+	SortBy string
+	Order  string
+	// ContentSearch extends the keyword filter beyond the session title to
+	// also match message content (SQL LIKE). Off by default so the regular
+	// chat sidebar keeps its cheap title-only search.
+	ContentSearch bool
+}
+
+// SessionStats aggregates counts for the current filter window (time range,
+// source, agent, keyword). Used by the conversation-logs overview cards.
+type SessionStats struct {
+	TotalSessions  int64 `json:"total_sessions"`
+	TotalUsers     int64 `json:"total_users"`
+	TotalQuestions int64 `json:"total_questions"`
 }
 
 // SessionListItem is a session row enriched with its IM origin (when any).

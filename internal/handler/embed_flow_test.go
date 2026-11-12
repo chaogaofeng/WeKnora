@@ -66,7 +66,7 @@ func (f *flowEmbedSvc) LookupEnabledChannel(context.Context, string) (*types.Emb
 	return nil, nil
 }
 
-func (f *flowEmbedSvc) IssueSessionToken(context.Context, string) (string, int, error) {
+func (f *flowEmbedSvc) IssueSessionToken(context.Context, string, string) (string, int, error) {
 	if f.issueErr != nil {
 		return "", 0, f.issueErr
 	}
@@ -74,11 +74,11 @@ func (f *flowEmbedSvc) IssueSessionToken(context.Context, string) (string, int, 
 }
 
 func (f *flowEmbedSvc) IssuePreviewSession(context.Context, uint64, string) (string, int, error) {
-	return f.IssueSessionToken(context.Background(), "")
+	return f.IssueSessionToken(context.Background(), "", "")
 }
 
-func (f *flowEmbedSvc) ResolveSessionToken(context.Context, string) (string, error) {
-	return "", nil
+func (f *flowEmbedSvc) ResolveSessionToken(context.Context, string) (string, string, error) {
+	return "", "", nil
 }
 
 func (f *flowEmbedSvc) PublicConfig(context.Context, *types.EmbedChannel) types.EmbedChannelPublicConfig {

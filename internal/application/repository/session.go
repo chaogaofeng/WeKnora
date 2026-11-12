@@ -188,6 +188,18 @@ func (r *sessionRepository) QueryPaged(
 		orderClause = "s.updated_at DESC"
 	}
 
+	// Explicit sort requested by the UI overrides the default pin-aware order.
+	if q.SortBy != "" {
+		dir := "ASC"
+		if strings.EqualFold(q.Order, "desc") {
+			dir = "DESC"
+		}
+		switch q.SortBy {
+		case "updated_at", "created_at", "title":
+			orderClause = "s." + q.SortBy + " " + dir
+		}
+	}
+
 	// Base filter shared by count and list queries.
 	applyBase := func(db *gorm.DB) *gorm.DB {
 		db = db.Where("s.tenant_id = ? AND s.deleted_at IS NULL AND s.kind = ?", q.TenantID, q.Kind)
@@ -205,8 +217,28 @@ func (r *sessionRepository) QueryPaged(
 			"(s.description IS NULL OR s.description NOT LIKE ?)",
 			types.SkillMaintenanceSessionMarker+"%",
 		)
+		if q.StartTime != nil {
+			db = db.Where(listTimeColumn(q)+" >= ?", *q.StartTime)
+		}
+		if q.EndTime != nil {
+			db = db.Where(listTimeColumn(q)+" <= ?", *q.EndTime)
+		}
 		if kw := strings.TrimSpace(q.Keyword); kw != "" {
-			db = db.Where(titleLikeExpr, "%"+escapeLikeKeyword(kw)+"%", likeEscapeChar)
+			like := "%" + escapeLikeKeyword(kw) + "%"
+			if q.ContentSearch {
+				// Title OR message content. The EXISTS stays cheap: it stops
+				// at the first matching message per session.
+				contentExpr := "EXISTS (SELECT 1 FROM messages m WHERE m.session_id = s.id" +
+					" AND m.deleted_at IS NULL AND m.content ILIKE ? ESCAPE ?)"
+				if !isPostgres {
+					contentExpr = "EXISTS (SELECT 1 FROM messages m WHERE m.session_id = s.id" +
+						" AND m.deleted_at IS NULL AND LOWER(m.content) LIKE LOWER(?) ESCAPE ?)"
+				}
+				db = db.Where("("+titleLikeExpr+" OR "+contentExpr+")",
+					like, likeEscapeChar, like, likeEscapeChar)
+			} else {
+				db = db.Where(titleLikeExpr, like, likeEscapeChar)
+			}
 		}
 		return db
 	}
@@ -305,7 +337,7 @@ func (r *sessionRepository) QueryPaged(
 			ics.agent_id       AS im_agent_id,
 			ics.im_channel_id  AS im_channel_id,
 			(SELECT COUNT(*) FROM messages m
-				WHERE m.session_id = s.id AND m.deleted_at IS NULL) AS message_count,
+				WHERE m.session_id = s.id AND m.deleted_at IS NULL AND m.role = 'user') AS message_count,
 			(SELECT COUNT(*) FROM message_feedbacks mf
 				WHERE mf.session_id = s.id AND mf.from_source = 'user'
 				  AND mf.rating = 1 AND mf.deleted_at IS NULL) AS user_feedback_up,
@@ -325,7 +357,122 @@ func (r *sessionRepository) QueryPaged(
 	return items, total, nil
 }
 
-// SetPinned toggles is_pinned/pinned_at for a single session.
+// SessionStats returns aggregate counts (sessions / users / questions) for the
+// same filter window used by QueryPaged. The three counts share one filtered
+// query so they always reflect identical source/agent/time/keyword scopes.
+func (r *sessionRepository) SessionStats(ctx context.Context, q *types.SessionListQuery) (*types.SessionStats, error) {
+	isPostgres := r.db.Dialector.Name() == "postgres"
+	joinClause := "LEFT JOIN im_channel_sessions ics ON ics.session_id = s.id"
+	db := r.db.WithContext(ctx).Table("sessions AS s").Joins(joinClause)
+
+	// Base filter: tenant/kind/skill-marker/time/keyword — mirrors QueryPaged.
+	db = db.Where("s.tenant_id = ? AND s.deleted_at IS NULL AND s.kind = ?", q.TenantID, q.Kind)
+	if q.Kind == types.SessionKindAssistant {
+		db = db.Where("s.user_id = ? AND s.user_id <> ''", q.UserID)
+	} else if q.UserID != "" {
+		db = db.Where("(s.user_id = ? OR s.user_id IS NULL OR s.user_id = '')", q.UserID)
+	}
+	db = db.Where(
+		"(s.description IS NULL OR s.description NOT LIKE ?)",
+		types.SkillMaintenanceSessionMarker+"%",
+	)
+	if q.StartTime != nil {
+		db = db.Where(listTimeColumn(q)+" >= ?", *q.StartTime)
+	}
+	if q.EndTime != nil {
+		db = db.Where(listTimeColumn(q)+" <= ?", *q.EndTime)
+	}
+	if kw := strings.TrimSpace(q.Keyword); kw != "" {
+		like := "%" + escapeLikeKeyword(kw) + "%"
+		titleLikeExpr := "s.title ILIKE ? ESCAPE ?"
+		if !isPostgres {
+			titleLikeExpr = "LOWER(s.title) LIKE LOWER(?) ESCAPE ?"
+		}
+		if q.ContentSearch {
+			contentExpr := "EXISTS (SELECT 1 FROM messages m WHERE m.session_id = s.id" +
+				" AND m.deleted_at IS NULL AND m.content ILIKE ? ESCAPE ?)"
+			if !isPostgres {
+				contentExpr = "EXISTS (SELECT 1 FROM messages m WHERE m.session_id = s.id" +
+					" AND m.deleted_at IS NULL AND LOWER(m.content) LIKE LOWER(?) ESCAPE ?)"
+			}
+			db = db.Where("("+titleLikeExpr+" OR "+contentExpr+")",
+				like, likeEscapeChar, like, likeEscapeChar)
+		} else {
+			db = db.Where(titleLikeExpr, like, likeEscapeChar)
+		}
+	}
+
+	// Source filter — mirrors applySource in QueryPaged.
+	src := strings.TrimSpace(q.Source)
+	lower := strings.ToLower(src)
+	embedPrefix := types.EmbedSessionMarkerPrefix
+	switch lower {
+	case "":
+	case types.SessionSourceAPI:
+		db = db.Where(
+			"(s.user_id LIKE ? OR s.user_id LIKE ?)",
+			types.SessionOwnerAPITenantKeyPrefix+"%",
+			types.SessionOwnerAPIExternalUserPrefix+"%",
+		)
+	case "web":
+		db = db.Where(webSessionPredicate, webSessionPredicateArgs()...)
+	case "embed":
+		db = db.Where("ics.id IS NULL AND s.description LIKE ?", embedPrefix+"%")
+	case "channel":
+		db = db.Where(
+			"(s.user_id LIKE ? OR s.user_id LIKE ? OR s.description LIKE ? OR ics.platform <> ?)",
+			types.SessionOwnerAPITenantKeyPrefix+"%",
+			types.SessionOwnerAPIExternalUserPrefix+"%",
+			embedPrefix+"%",
+			"",
+		)
+	default:
+		if strings.HasPrefix(lower, "embed:") {
+			channelID := strings.TrimSpace(src[len("embed:"):])
+			if channelID != "" {
+				db = db.Where("ics.id IS NULL AND s.description = ?", embedPrefix+channelID)
+			} else {
+				db = db.Where("ics.platform = ?", lower)
+			}
+		} else {
+			db = db.Where("ics.platform = ?", lower)
+		}
+	}
+
+	if q.AgentID != "" {
+		db = db.Where("ics.agent_id = ?", q.AgentID)
+	}
+
+	var row struct {
+		TotalSessions  int64 `gorm:"column:total_sessions"`
+		TotalUsers     int64 `gorm:"column:total_users"`
+		TotalQuestions int64 `gorm:"column:total_questions"`
+	}
+	err := db.Select(`
+		COUNT(DISTINCT s.id) AS total_sessions,
+		COUNT(DISTINCT CASE WHEN s.user_id <> '' THEN s.user_id END) AS total_users,
+		COALESCE(SUM((SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id AND m.deleted_at IS NULL AND m.role = 'user')), 0) AS total_questions
+	`).Scan(&row).Error
+	if err != nil {
+		return nil, err
+	}
+	return &types.SessionStats{
+		TotalSessions:  row.TotalSessions,
+		TotalUsers:     row.TotalUsers,
+		TotalQuestions: row.TotalQuestions,
+	}, nil
+}
+
+// listTimeColumn resolves which time column a start_time/end_time filter
+// applies to. It follows the sort selection: "创建时间" sorts on created_at, so
+// the range filters created_at too; everything else (default) uses updated_at.
+// Only whitelisted values are honored — the input feeds straight into SQL.
+func listTimeColumn(q *types.SessionListQuery) string {
+	if q.SortBy == "created_at" {
+		return "s.created_at"
+	}
+	return "s.updated_at"
+}
 // Scope: must match tenant, and user_id (when provided) to prevent pinning
 // other users' sessions. Legacy rows with user_id NULL/” remain mutable
 // at the tenant level (same visibility rule as QueryPaged).

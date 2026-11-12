@@ -15,6 +15,12 @@ const (
 	PrincipalEmbedChannel    = "embed_channel"
 	PrincipalEmbedSession    = "embed_session"
 	PrincipalEmbedVisitor    = "embed_visitor"
+	// PrincipalEmbedOwner identifies a host-asserted external user that owns
+	// an embed chat session. The remainder is "<tenantID>:<channelID>:<owner>",
+	// namespaced to the tenant+channel so a host-supplied owner can never
+	// collide with a real WeKnora account id or impersonate another
+	// tenant/channel's owner.
+	PrincipalEmbedOwner = "embed_owner"
 	PrincipalMCPEndpoint     = "mcp_endpoint"
 )
 
@@ -155,6 +161,35 @@ func ValidateEmbedVisitorID(id string) error {
 	return nil
 }
 
+// EmbedOwnerPrincipal namespaces a host-asserted owner id for an embed session.
+// ownerExternalID is the identifier the host project assigns to its own logged-in
+// user; it is opaque to WeKnora and scoped to the tenant+channel.
+func EmbedOwnerPrincipal(tenantID uint64, channelID, ownerExternalID string) Principal {
+	return Principal{
+		Type: PrincipalEmbedOwner,
+		ID:   fmt.Sprintf("%d:%s:%s", tenantID, strings.TrimSpace(channelID), strings.TrimSpace(ownerExternalID)),
+	}
+}
+
+// ValidateEmbedOwnerID checks a host-asserted owner id. Same bounded, printable
+// policy as the anonymous visitor id; the host backend supplies it after its own
+// login, so we only guard against log injection / oversized values.
+func ValidateEmbedOwnerID(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return fmt.Errorf("empty embed owner id")
+	}
+	if len(id) > 128 {
+		return fmt.Errorf("embed owner id too long (max 128)")
+	}
+	for _, r := range id {
+		if r < 0x20 || r == 0x7f {
+			return fmt.Errorf("embed owner id contains invalid characters")
+		}
+	}
+	return nil
+}
+
 // MCPOAuthPrincipalFromContext resolves the OAuth token principal for ctx.
 // Embed chat sessions map to a per-visitor principal when X-Embed-Visitor is
 // present; otherwise OAuth falls back to the chat session principal.
@@ -279,6 +314,8 @@ func AuthSourceForBoundOwnerID(ownerID string) string {
 	case strings.HasPrefix(ownerID, PrincipalMCPEndpoint+":"):
 		return AuthSourceMCPEndpoint
 	case strings.HasPrefix(ownerID, PrincipalEmbedSession+":"):
+		return AuthSourceEmbed
+	case strings.HasPrefix(ownerID, PrincipalEmbedOwner+":"):
 		return AuthSourceEmbed
 	default:
 		return AuthSourceInternal

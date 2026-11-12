@@ -83,6 +83,13 @@ const (
 	// every context key, and middleware imports this package, so a key
 	// declared there could only be referred to by its raw string value.
 	EmbedChannelContextKey ContextKey = "EmbedChannel"
+	// EmbedOwnerContextKey carries the host-asserted external owner id for an
+	// embed chat session. It is populated from the verified embed session
+	// token (minted by the host backend that holds the publish token), so the
+	// value is trustworthy; it is empty for anonymous sessions. Declared here
+	// for the same context_clone.go / import-cycle reason as
+	// EmbedChannelContextKey.
+	EmbedOwnerContextKey ContextKey = "EmbedOwner"
 	// MCPEndpointContextKey stores the authenticated *MCPEndpoint on the
 	// request context of a call arriving on the workspace MCP server surface.
 	// Declared here for the same reason as EmbedChannelContextKey.

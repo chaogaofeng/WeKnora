@@ -101,7 +101,7 @@ func (s *sessionEmbedSvc) LookupEnabledChannel(context.Context, string) (*types.
 	return nil, nil
 }
 
-func (s *sessionEmbedSvc) IssueSessionToken(context.Context, string) (string, int, error) {
+func (s *sessionEmbedSvc) IssueSessionToken(context.Context, string, string) (string, int, error) {
 	return "", 0, nil
 }
 
@@ -109,8 +109,8 @@ func (s *sessionEmbedSvc) IssuePreviewSession(context.Context, uint64, string) (
 	return "", 0, nil
 }
 
-func (s *sessionEmbedSvc) ResolveSessionToken(context.Context, string) (string, error) {
-	return "", nil
+func (s *sessionEmbedSvc) ResolveSessionToken(context.Context, string) (string, string, error) {
+	return "", "", nil
 }
 
 func (s *sessionEmbedSvc) PublicConfig(context.Context, *types.EmbedChannel) types.EmbedChannelPublicConfig {

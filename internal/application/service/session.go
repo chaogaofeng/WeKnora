@@ -469,7 +469,40 @@ func (s *sessionService) CountSessionsBySource(
 	return total, nil
 }
 
-// SetSessionPinned pins or unpins a session for the current user scope.
+// SessionStats returns aggregate counts (sessions / users / questions) for the
+// current filter window. Scope mirrors CountSessionsBySource: admins get a
+// tenant-wide view, non-admins (and per-key/visitor/IM identities) stay scoped
+// to their own principal — but no hard Admin+ gate, so the logs console can
+// show totals to any role that can open it.
+func (s *sessionService) SessionStats(
+	ctx context.Context, query *types.SessionListQuery,
+) (*types.SessionStats, error) {
+	if query == nil {
+		query = &types.SessionListQuery{}
+	}
+	if !types.IsValidSessionKind(query.Kind) {
+		return nil, apperrors.NewBadRequestError("invalid session kind")
+	}
+	query.TenantID = types.MustTenantIDFromContext(ctx)
+	if query.Kind == types.SessionKindAssistant {
+		query.UserID = types.SessionOwnerIDFromContext(ctx)
+	} else if types.SessionListSourceRequiresAdmin(query.Source) {
+		query.UserID = ""
+	} else if uid := types.SessionOwnerIDFromContext(ctx); uid != "" {
+		query.UserID = uid
+	}
+	stats, err := s.sessionRepo.SessionStats(ctx, query)
+	if err != nil {
+		logger.ErrorWithFields(ctx, err, map[string]interface{}{
+			"tenant_id": query.TenantID,
+			"user_id":   query.UserID,
+			"source":    query.Source,
+			"agent_id":  query.AgentID,
+		})
+		return nil, err
+	}
+	return stats, nil
+}// SetSessionPinned pins or unpins a session for the current user scope.
 // Returns the number of rows affected; 0 means the session doesn't exist
 // or is not owned by the caller so the handler can respond 404.
 func (s *sessionService) SetSessionPinned(

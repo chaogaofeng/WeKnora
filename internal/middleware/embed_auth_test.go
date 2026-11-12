@@ -92,17 +92,17 @@ func (f *fakeEmbedChannelService) LookupEnabledChannel(
 }
 
 func (f *fakeEmbedChannelService) IssueSessionToken(
-	ctx context.Context, channelID string,
+	ctx context.Context, channelID, owner string,
 ) (string, int, error) {
 	return "ems_testtoken", 1800, nil
 }
 
-func (f *fakeEmbedChannelService) ResolveSessionToken(ctx context.Context, token string) (string, error) {
+func (f *fakeEmbedChannelService) ResolveSessionToken(ctx context.Context, token string) (string, string, error) {
 	channelID, ok := f.sessions[token]
 	if !ok {
-		return "", service.ErrEmbedTokenInvalid
+		return "", "", service.ErrEmbedTokenInvalid
 	}
-	return channelID, nil
+	return channelID, "", nil
 }
 
 func (f *fakeEmbedChannelService) PublicConfig(

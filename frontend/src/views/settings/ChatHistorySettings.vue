@@ -203,7 +203,6 @@ const saveConfig = async () => {
     if (mounted) MessagePlugin.error(t('chatHistorySettings.toasts.saveFailed', { message: errorMessage }))
   } finally {
     isSaving.value = false
-    if (mounted && saved && hasConfigChanged()) debouncedSave()
   }
 }
 

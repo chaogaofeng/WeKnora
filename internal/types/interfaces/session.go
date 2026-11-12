@@ -46,6 +46,9 @@ type SessionService interface {
 	// CountSessionsBySource returns the total for a source filter without the
 	// Admin+ gate applied by ListSessions (for aggregate stats endpoints).
 	CountSessionsBySource(ctx context.Context, query *types.SessionListQuery) (int64, error)
+	// SessionStats returns aggregate counts (sessions / users / questions) for
+	// the current filter window. User scope is pulled from ctx.
+	SessionStats(ctx context.Context, query *types.SessionListQuery) (*types.SessionStats, error)
 	// SetSessionPinned pins or unpins the session for the current user scope.
 	// Returns the number of rows affected; 0 signals "not found" to the handler.
 	SetSessionPinned(ctx context.Context, sessionID string, pinned bool) (int64, error)
@@ -96,6 +99,9 @@ type SessionRepository interface {
 	GetPagedByTenantID(ctx context.Context, tenantID uint64, userID string, page *types.Pagination) ([]*types.Session, int64, error)
 	// QueryPaged lists sessions with filters, user-scoped ownership and pin-aware ordering.
 	QueryPaged(ctx context.Context, q *types.SessionListQuery) ([]*types.SessionListItem, int64, error)
+	// SessionStats returns aggregate counts (sessions / users / questions) for the
+	// same filter window used by QueryPaged.
+	SessionStats(ctx context.Context, q *types.SessionListQuery) (*types.SessionStats, error)
 	// Update updates a session visible to the tenant/user scope.
 	Update(ctx context.Context, session *types.Session, userID string) (int64, error)
 	// SetOwnerID assigns sessions.user_id for a tenant-scoped row.

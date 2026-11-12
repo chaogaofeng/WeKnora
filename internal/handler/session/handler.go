@@ -3,8 +3,10 @@ package session
 import (
 	"context"
 	stderrors "errors"
+	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/agent/hitl"
 	"github.com/Tencent/WeKnora/internal/application/service"
@@ -317,6 +319,10 @@ func (h *Handler) GetSession(c *gin.Context) {
 // @Param        keyword    query     string  false  "标题模糊搜索"  extensions(x-agent)
 // @Param        source     query     string  false  "来源过滤：web / embed / api / feishu / wechat / slack / channel（api、embed、IM、channel 渠道需 Admin+）"
 // @Param        agent_id   query     string  false  "按 Agent 过滤（仅对 IM 会话生效）"
+// @Param        start_time query     string  false  "按更新时间过滤的起始时间（RFC3339 或 YYYY-MM-DD）"
+// @Param        end_time   query     string  false  "按更新时间过滤的结束时间（RFC3339 或 YYYY-MM-DD，含当日）"
+// @Param        sort_by    query     string  false  "排序字段：updated_at / created_at / title"
+// @Param        order      query     string  false  "排序方向：asc / desc"
 // @Success      200        {object}  sessionListResponse  "会话列表"
 // @Failure      400        {object}  errors.AppError         "请求参数错误"
 // @Security     Bearer
@@ -340,16 +346,32 @@ func (h *Handler) GetSessionsByTenant(c *gin.Context) {
 		return
 	}
 
+	startTime, err := parseListTimeParam(c.Query("start_time"), false)
+	if err != nil {
+		c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+	endTime, err := parseListTimeParam(c.Query("end_time"), true)
+	if err != nil {
+		c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+
 	// Response items always include pin state and (when available) IM origin
 	// fields so the frontend can render pin icons / source badges without a
 	// second roundtrip. An omitted kind selects normal conversations.
 	result, err := h.sessionService.ListSessions(ctx, &types.SessionListQuery{
-		Kind:     kind,
-		Keyword:  c.Query("keyword"),
-		Source:   c.Query("source"),
-		AgentID:  c.Query("agent_id"),
-		Page:     pagination.Page,
-		PageSize: pagination.PageSize,
+		Kind:          kind,
+		Keyword:       c.Query("keyword"),
+		Source:        c.Query("source"),
+		AgentID:       c.Query("agent_id"),
+		StartTime:     startTime,
+		EndTime:       endTime,
+		SortBy:        c.Query("sort_by"),
+		Order:         c.Query("order"),
+		ContentSearch: c.Query("search_content") == "true",
+		Page:          pagination.Page,
+		PageSize:      pagination.PageSize,
 	})
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, nil)
@@ -367,6 +389,85 @@ func (h *Handler) GetSessionsByTenant(c *gin.Context) {
 		Page:     result.Page,
 		PageSize: result.PageSize,
 	})
+}
+
+// GetSessionStats returns aggregate counts (sessions / users / questions) for the
+// current filter window. Shares the same query params as the list endpoint so
+// the overview cards always match the rows shown below them.
+//
+// @Summary      获取会话统计
+// @Description  返回当前筛选范围内（时间/来源/智能体/关键词）的会话总数、用户总数、提问数
+// @Tags         sessions
+// @Produce      json
+// @Param        kind       query     string  false  "会话类型：normal / assistant"
+// @Param        keyword    query     string  false  "关键词"
+// @Param        source     query     string  false  "来源过滤"
+// @Param        agent_id   query     string  false  "按 Agent 过滤（仅对 IM 会话生效）"
+// @Param        start_time query     string  false  "按更新时间过滤的起始时间（RFC3339 或 YYYY-MM-DD）"
+// @Param        end_time   query     string  false  "按更新时间过滤的结束时间（RFC3339 或 YYYY-MM-DD，含当日）"
+// @Param        search_content query  string  false  "关键词同时匹配消息内容（true/false）"
+// @Success      200        {object}  types.SessionStats "会话统计"
+// @Failure      400        {object}  errors.AppError "请求参数错误"
+// @Security     Bearer
+// @Security     ApiKeyAuth
+// @Router       /sessions/stats [get]
+func (h *Handler) GetSessionStats(c *gin.Context) {
+	ctx := c.Request.Context()
+	kind := c.Query("kind")
+	if !types.IsValidSessionKind(kind) {
+		_ = c.Error(errors.NewBadRequestError("invalid session kind"))
+		return
+	}
+
+	startTime, err := parseListTimeParam(c.Query("start_time"), false)
+	if err != nil {
+		c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+	endTime, err := parseListTimeParam(c.Query("end_time"), true)
+	if err != nil {
+		c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+
+	stats, err := h.sessionService.SessionStats(ctx, &types.SessionListQuery{
+		Kind:          kind,
+		Keyword:       c.Query("keyword"),
+		Source:        c.Query("source"),
+		AgentID:       c.Query("agent_id"),
+		StartTime:     startTime,
+		EndTime:       endTime,
+		SortBy:        c.Query("sort_by"),
+		ContentSearch: c.Query("search_content") == "true",
+	})
+	if err != nil {
+		logger.ErrorWithFields(ctx, err, nil)
+		c.Error(errors.NewInternalServerError(err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, stats)
+}
+
+// parseListTimeParam accepts RFC3339 timestamps or plain dates (YYYY-MM-DD).
+// A date-only end boundary is expanded to the last second of that day so a
+// date-range filter is inclusive on both ends.
+func parseListTimeParam(raw string, endOfDay bool) (*time.Time, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	if t, err := time.Parse(time.RFC3339, raw); err == nil {
+		return &t, nil
+	}
+	t, err := time.Parse("2006-01-02", raw)
+	if err != nil {
+		return nil, fmt.Errorf("invalid time %q: use RFC3339 or YYYY-MM-DD", raw)
+	}
+	if endOfDay {
+		t = t.Add(24*time.Hour - time.Second)
+	}
+	return &t, nil
 }
 
 // resolveSessionOwnerNames fills OwnerName for Web/internal user-owned sessions

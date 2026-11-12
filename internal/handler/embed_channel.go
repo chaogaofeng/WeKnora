@@ -309,7 +309,24 @@ func (h *EmbedChannelHandler) ExchangeEmbedSession(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "publish token required"})
 		return
 	}
-	sessionToken, expiresIn, err := h.embedSvc.IssueSessionToken(ctx, ch.ID)
+	// owner is an optional host-asserted external user id. The host backend
+	// supplies it after its own login so the resulting chat session can be
+	// attributed to a real user; it is embedded in the signed token rather
+	// than taken from the browser, so it cannot be forged.
+	var ownerReq struct {
+		Owner string `json:"owner"`
+	}
+	if err := c.ShouldBindJSON(&ownerReq); err != nil {
+		ownerReq.Owner = ""
+	}
+	owner := strings.TrimSpace(ownerReq.Owner)
+	if owner != "" {
+		if verr := types.ValidateEmbedOwnerID(owner); verr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": verr.Error()})
+			return
+		}
+	}
+	sessionToken, expiresIn, err := h.embedSvc.IssueSessionToken(ctx, ch.ID, owner)
 	if err != nil {
 		if errors.Is(err, service.ErrEmbedSessionUnavailable) {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "session tokens unavailable"})
@@ -425,7 +442,13 @@ func (h *EmbedChannelHandler) CreateEmbedSession(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create session"})
 		return
 	}
+	// Default to an opaque anonymous visitor owner. When the host asserted an
+	// owner through the verified session token, attribute the session to that
+	// external user instead (namespaced to the tenant+channel).
 	ownerID := types.EmbedSessionPrincipal(tenantID, ch.ID, created.ID).StorageID()
+	if owner := middleware.EmbedOwnerFromContext(ctx); owner != "" {
+		ownerID = types.EmbedOwnerPrincipal(tenantID, ch.ID, owner).StorageID()
+	}
 	if err := h.sessionService.SetSessionOwnerID(ctx, tenantID, created.ID, ownerID); err != nil {
 		logger.Warnf(ctx, "failed to assign embed session owner for %s: %v", created.ID, err)
 	} else {
