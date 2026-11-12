@@ -5167,6 +5167,14 @@ export default {
     followUpQuestions: '이어서 질문',
     followUpQuestionsLoading: '추천 질문 로딩 중',
     refreshSuggestedQuestions: '다른 질문',
+    feedback: {
+      like: '도움이 됨',
+      dislike: '도움이 되지 않음',
+      thanks: '피드백 감사합니다',
+      commentPlaceholder: '이유 추가 (선택)',
+      submit: '제출',
+      skip: '건너뛰기',
+    },
     thinking: '생각 중...',
     thinkingAlt: '생각 중',
     conversationTime: {

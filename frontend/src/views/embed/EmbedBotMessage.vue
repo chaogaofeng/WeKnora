@@ -18,6 +18,14 @@
         <div class="ai-markdown-template markdown-content" v-stable-html="renderedHTML" />
       </div>
     </div>
+    <div v-if="session?.is_completed && !session?.isAgentMode" class="embed-bot-toolbar">
+      <MessageFeedback
+        v-if="feedbackMessageId"
+        :session-id="sessionId"
+        :message-id="feedbackMessageId"
+        :api="feedbackApi"
+      />
+    </div>
     <Teleport to="body">
       <div v-if="citationFloat.visible" class="embed-citation-float"
         :style="{ top: `${citationFloat.top}px`, left: `${citationFloat.left}px` }" @mouseenter="cancelCitationClose"
@@ -61,6 +69,8 @@ import {
 import { useEmbedCitationPopover } from '@/composables/useEmbedCitationPopover'
 import { useTypewriter } from '@/composables/useTypewriter'
 import { vStableHtml } from '@/directives/stableHtml'
+import MessageFeedback from '@/components/MessageFeedback.vue'
+import { listEmbedFeedbacks, saveEmbedFeedback } from '@/api/embed'
 
 const RagPipelineProgress = defineAsyncComponent(
   () => import('@/views/chat/components/RagPipelineProgress.vue'),
@@ -99,6 +109,7 @@ const props = withDefaults(
     content?: string
     session?: EmbedSession
     sessionId?: string
+    messageId?: string
     userQuery?: string
     embeddedMode?: boolean
     embedChannelId?: string
@@ -120,6 +131,32 @@ const props = withDefaults(
 )
 
 const parentMd = ref<HTMLElement | null>(null)
+
+// Per-message thumbs up/down feedback for the embed visitor. The api closures read
+// the embed auth props at call time so the signed session handle stays current.
+const feedbackApi = {
+  list: (sid: string) =>
+    listEmbedFeedbacks(
+      props.embedChannelId,
+      props.embedToken,
+      sid,
+      props.embedSessionSig,
+      props.embedVisitorId,
+    ).then((r) => (r && r.data) || []),
+  save: (
+    sid: string,
+    p: { message_id: string; from_source: 'user' | 'admin'; rating: number; content: string },
+  ) =>
+    saveEmbedFeedback(
+      props.embedChannelId,
+      props.embedToken,
+      sid,
+      props.embedSessionSig,
+      props.embedVisitorId,
+      p,
+    ).then((r) => r.data),
+}
+const feedbackMessageId = computed(() => props.messageId || props.session?.id || '')
 
 const embedChannelIdRef = computed(() => props.embedChannelId)
 const embedTokenRef = computed(() => props.embedToken)
@@ -230,6 +267,12 @@ onMounted(() => {
 
 .content-wrapper {
   padding: 2px 0;
+}
+
+.embed-bot-toolbar {
+  display: flex;
+  align-items: center;
+  margin-top: 6px;
 }
 
 .markdown-content {

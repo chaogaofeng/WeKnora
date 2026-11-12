@@ -9,9 +9,8 @@
   margin-left: -5px;
   min-height: 28px;
   color: color-mix(in srgb, var(--td-text-color-primary) 55%, transparent);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--app-motion-fast) ease;
+  opacity: 1;
+  pointer-events: auto;
 
   // Quiet outline actions, with a full hit target around each icon.
   :deep(.t-button) {
@@ -86,22 +85,6 @@
       outline: 2px solid var(--td-brand-color-focus);
       outline-offset: 2px;
     }
-  }
-}
-
-.answer-toolbar--persistent,
-.bot_msg:hover :deep(.answer-toolbar),
-.bot_msg:focus-within :deep(.answer-toolbar),
-.agent-stream-display:hover .answer-toolbar,
-.agent-stream-display:focus-within .answer-toolbar {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-@media (hover: none) {
-  .answer-toolbar {
-    opacity: 1;
-    pointer-events: auto;
   }
 }
 

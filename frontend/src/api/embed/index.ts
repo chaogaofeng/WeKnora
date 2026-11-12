@@ -281,6 +281,56 @@ export async function recordEmbedMessageSuggestionEvent(
   )
 }
 
+export interface EmbedMessageFeedback {
+  id: string
+  tenant_id: number
+  session_id: string
+  message_id: string
+  from_source: 'user' | 'admin'
+  rating: number
+  content: string
+  creator_id: string
+  created_at: string
+  updated_at: string
+}
+
+export interface EmbedFeedbackPayload {
+  message_id: string
+  from_source: 'user' | 'admin'
+  rating: number
+  content: string
+}
+
+/** Persist a visitor rating (thumbs up/down) on an assistant message. */
+export async function saveEmbedFeedback(
+  channelId: string,
+  token: string,
+  sessionId: string,
+  sessionSig: string,
+  visitorId: string,
+  payload: EmbedFeedbackPayload,
+) {
+  return post<{ success: boolean; data: EmbedMessageFeedback }>(
+    `/api/v1/embed/${channelId}/sessions/${sessionId}/feedbacks`,
+    payload,
+    { headers: embedSessionHeaders(token, sessionSig, visitorId) },
+  )
+}
+
+/** Load all feedback rows for an embed session. */
+export async function listEmbedFeedbacks(
+  channelId: string,
+  token: string,
+  sessionId: string,
+  sessionSig: string,
+  visitorId: string,
+) {
+  return get<{ success: boolean; data: EmbedMessageFeedback[] }>(
+    `/api/v1/embed/${channelId}/sessions/${sessionId}/feedbacks`,
+    { headers: embedSessionHeaders(token, sessionSig, visitorId) },
+  )
+}
+
 export async function getEmbedConfig(channelId: string, token: string) {
   return get<{ success: boolean; data: EmbedChannelPublicConfig }>(
     `/api/v1/embed/${channelId}/config`,

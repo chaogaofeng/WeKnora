@@ -551,6 +551,13 @@
                   :title="$t('agent.addToKnowledgeBase')">
                   <ChatActionIcon name="bookmark-add" />
                 </t-button>
+                <!-- Thumbs up/down for the final agent answer, on the same row as copy. -->
+                <MessageFeedback
+                  v-if="event === pinnedAnswerEvent && agentFeedbackMessageId"
+                  :session-id="sessionId || ''"
+                  :message-id="agentFeedbackMessageId"
+                  :api="agentFeedbackApi"
+                />
                 <!-- Includes files delivered by child agents. Embedded assistants
                      use the same entry and open the artifact drawer. -->
                 <span v-if="hasArtifacts || artifactsCollecting" class="answer-toolbar__artifact"
@@ -822,6 +829,9 @@ import { isCollectingSkillArtifacts } from '@/utils/skillArtifacts';
 import { useArtifactArriveMotion } from '@/composables/useArtifactArriveMotion';
 import { useChatSandboxPanel } from '@/composables/useChatSandboxPanel';
 import { persistedAssistantId } from '@/utils/steerStreamFork';
+import MessageFeedback from '@/components/MessageFeedback.vue';
+import { listSessionFeedbacks, saveSessionFeedback } from '@/api/sessions';
+import { listEmbedFeedbacks, saveEmbedFeedback } from '@/api/embed';
 import ChatMemoryStep from './ChatMemoryStep.vue';
 import { useChatMemoryRow, type UsedMemory } from '@/composables/useChatMemoryRow';
 import { countGrepDocuments, groupGrepChunkResults } from '@/utils/grepResultsGroup';
@@ -1308,6 +1318,43 @@ const {
 
 const resolveAssistantMessageId = (session?: SessionData) =>
   String(session?.assistant_message_id || session?.id || '').trim();
+
+// Feedback targets the assistant message that holds the final answer. Embed
+// visitors use the channel-scoped API; logged-in users use the session API.
+const agentFeedbackMessageId = computed(
+  () => persistedAssistantId(props.session) || resolveAssistantMessageId(props.session),
+);
+// Only use the embed-scoped API when real embed credentials are present; the
+// main chat page can set embeddedMode for shared views without a channel token.
+const useEmbedFeedback = computed(
+  () => !!props.embeddedMode && !!props.embedChannelId && !!props.embedToken,
+);
+const agentFeedbackApi = {
+  list: (sid: string) =>
+    useEmbedFeedback.value
+      ? listEmbedFeedbacks(
+          props.embedChannelId || '',
+          props.embedToken || '',
+          sid,
+          props.embedSessionSig || '',
+          props.embedVisitorId || '',
+        ).then((r) => (r && r.data) || [])
+      : listSessionFeedbacks(sid).then((r) => (r && r.data) || []),
+  save: (
+    sid: string,
+    p: { message_id: string; from_source: 'user' | 'admin'; rating: number; content: string },
+  ) =>
+    useEmbedFeedback.value
+      ? saveEmbedFeedback(
+          props.embedChannelId || '',
+          props.embedToken || '',
+          sid,
+          props.embedSessionSig || '',
+          props.embedVisitorId || '',
+          p,
+        ).then((r) => r.data)
+      : saveSessionFeedback(sid, p).then((r) => r.data),
+};
 
 // Agent answers embed exported charts and knowledge-base images as
 // `resource://` handles. Embed visitors use the channel-scoped proxy. Logged-in

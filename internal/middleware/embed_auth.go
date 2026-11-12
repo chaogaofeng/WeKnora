@@ -162,6 +162,13 @@ func EmbedAuth(
 			TenantID: ch.TenantID,
 			IsActive: true,
 		}
+		extra := map[types.ContextKey]any{types.EmbedChannelContextKey: ch}
+		// Carry the host-asserted owner (verified via the signed session token)
+		// into both context surfaces so CreateEmbedSession can attribute the
+		// chat session to a logged-in user of the embedding project.
+		if owner != "" {
+			extra[types.EmbedOwnerContextKey] = owner
+		}
 		applyAuthSession(c, authSession{
 			User: user,
 			Principal: types.Principal{
@@ -171,16 +178,9 @@ func EmbedAuth(
 			TenantID:   ch.TenantID,
 			Tenant:     tenant,
 			Role:       types.TenantRoleViewer,
-			Extra:      map[types.ContextKey]any{types.EmbedChannelContextKey: ch},
+			Extra:      extra,
 			AuthSource: types.AuthSourceEmbed,
 		})
-		// Carry the host-asserted owner (verified via the signed session
-		// token) into the request context so CreateEmbedSession can attribute
-		// the chat session to a logged-in user of the embedding project.
-		if owner != "" {
-			c.Request = c.Request.WithContext(context.WithValue(
-				c.Request.Context(), types.EmbedOwnerContextKey, owner))
-		}
 		c.Next()
 	}
 }

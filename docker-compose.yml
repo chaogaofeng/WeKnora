@@ -1,4 +1,47 @@
 services:
+  embed-wrapper:
+    image: wechatopenai/weknora-embed-wrapper:${WEKNORA_VERSION:-latest}
+    build:
+      context: ./embed-wrapper
+      dockerfile: Dockerfile
+      args:
+        - GOPROXY_ARG=${GOPROXY_ARG:-}
+    container_name: WeKnora-embed-wrapper
+    ports:
+      - "${EMBED_WRAPPER_PORT:-8088}:8088"
+    environment:
+      # 唯一必填：WeKnora 分享链接（逗号分隔，每条可带 |名称）
+      - WEKNORA_EMBED_URLS=${WEKNORA_EMBED_URLS:-}
+      # 通用
+      - WRAPPER_PORT=:8088
+      - WRAPPER_PASSCODE=${WRAPPER_PASSCODE:-}
+      - WRAPPER_ORIGIN=${WRAPPER_ORIGIN:-}
+      - WRAPPER_COOKIE_MAXDAYS=${WRAPPER_COOKIE_MAXDAYS:-}
+      - WRAPPER_COOKIE_SECURE=${WRAPPER_COOKIE_SECURE:-}
+      - WRAPPER_ALLOWLIST_EXCEL=${WRAPPER_ALLOWLIST_EXCEL:-}
+      - WRAPPER_ALLOWLIST_COLUMN=${WRAPPER_ALLOWLIST_COLUMN:-}
+      - WRAPPER_SMS_MOCK=${WRAPPER_SMS_MOCK:-}
+      - WRAPPER_SMS_MOCK_CODE=${WRAPPER_SMS_MOCK_CODE:-}
+      # GoldNet 短信网关
+      - SMS_VALIDCODE_URL=${SMS_VALIDCODE_URL:-}
+      - SMS_VERIFICATION_URL=${SMS_VERIFICATION_URL:-}
+      - SMS_ACCESS_KEY=${SMS_ACCESS_KEY:-}
+      - SMS_TENANT_ID=${SMS_TENANT_ID:-}
+      - SMS_SCENE_CODE=${SMS_SCENE_CODE:-}
+      - SMS_SIGN_NAME=${SMS_SIGN_NAME:-}
+      - SMS_GOLDNET_APP_KEY=${SMS_GOLDNET_APP_KEY:-}
+      - SMS_GOLDNET_SECRET_KEY=${SMS_GOLDNET_SECRET_KEY:-}
+      - SMS_GOLDNET_PUBLIC_KEY=${SMS_GOLDNET_PUBLIC_KEY:-}
+      - SMS_GOLDNET_PRIVATE_KEY=${SMS_GOLDNET_PRIVATE_KEY:-}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8088/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - WeKnora-network
+    restart: unless-stopped
   frontend:
     image: wechatopenai/weknora-ui:${WEKNORA_VERSION:-latest}
     # Multi-stage Dockerfile builds dist inside the image (no host npm required).

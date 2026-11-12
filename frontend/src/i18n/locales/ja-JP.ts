@@ -4552,6 +4552,14 @@ export default {
     followUpQuestions: '続けて質問',
     followUpQuestionsLoading: '質問候補を読み込み中',
     refreshSuggestedQuestions: '別の候補',
+    feedback: {
+      like: '役に立った',
+      dislike: '役に立たなかった',
+      thanks: 'フィードバックありがとうございます',
+      commentPlaceholder: '理由を追加（任意）',
+      submit: '送信',
+      skip: 'スキップ',
+    },
     thinking: '思考中...',
     thinkingAlt: '思考中',
     conversationTime: {

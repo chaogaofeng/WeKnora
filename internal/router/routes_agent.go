@@ -268,6 +268,9 @@ func RegisterEmbedPublicRoutes(
 		embed.GET("/sessions/:session_id/mcp-services/:id/oauth/status", embedHandler.EmbedMCPOAuthStatus)
 		embed.POST("/sessions/:session_id/tool-approvals/:pending_id", embedHandler.EmbedResolveToolApproval)
 		embed.POST("/sessions/:session_id/prompts/:prompt_id", embedHandler.EmbedResolveAgentPrompt)
+		// Per-message visitor feedback (thumbs up/down) on assistant replies.
+		embed.POST("/sessions/:session_id/feedbacks", embedHandler.EmbedSaveFeedback)
+		embed.GET("/sessions/:session_id/feedbacks", embedHandler.EmbedListFeedback)
 		// Serve images embedded in bot replies (e.g. chart exports). EmbedAuth
 		// injects the channel's tenant, and the handler enforces that the
 		// requested path belongs to that tenant.

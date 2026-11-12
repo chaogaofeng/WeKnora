@@ -4642,6 +4642,14 @@ export default {
     followUpQuestions: 'Keep asking',
     followUpQuestionsLoading: 'Loading suggested questions',
     refreshSuggestedQuestions: 'More',
+    feedback: {
+      like: 'Helpful',
+      dislike: 'Not helpful',
+      thanks: 'Thanks for your feedback',
+      commentPlaceholder: 'Add a reason (optional)',
+      submit: 'Submit',
+      skip: 'Skip',
+    },
     thinking: 'Thinking...',
     thinkingAlt: 'Thinking in progress',
     conversationTime: {

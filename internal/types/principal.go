@@ -236,7 +236,7 @@ func MCPOAuthPrincipalFromContext(ctx context.Context) Principal {
 func SessionOwnerIDFromContext(ctx context.Context) string {
 	if p, ok := PrincipalFromContext(ctx); ok {
 		switch p.Type {
-		case PrincipalAPIExternalUser, PrincipalEmbedSession, PrincipalMCPEndpoint:
+		case PrincipalAPIExternalUser, PrincipalEmbedSession, PrincipalMCPEndpoint, PrincipalEmbedOwner:
 			return p.StorageID()
 		case PrincipalAPITenant:
 			if scope, ok := TenantAPIKeyScopeFromContext(ctx); ok && scope.KeyID > 0 {

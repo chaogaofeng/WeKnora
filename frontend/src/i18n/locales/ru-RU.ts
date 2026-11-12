@@ -5167,6 +5167,14 @@ export default {
     followUpQuestions: 'Спрашивайте дальше',
     followUpQuestionsLoading: 'Загрузка рекомендуемых вопросов',
     refreshSuggestedQuestions: 'Ещё',
+    feedback: {
+      like: 'Полезно',
+      dislike: 'Не помогло',
+      thanks: 'Спасибо за отзыв',
+      commentPlaceholder: 'Добавить причину (необязательно)',
+      submit: 'Отправить',
+      skip: 'Пропустить',
+    },
     thinking: 'Думаю...',
     thinkingAlt: 'Обдумывание...',
     conversationTime: {

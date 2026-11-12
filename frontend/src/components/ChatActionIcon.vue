@@ -44,11 +44,19 @@
     <template v-else-if="name === 'delete'">
       <path d="M3 6h18M9 6V3h6v3M5 6l1 14a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-14M10 10v7m4-7v7" />
     </template>
+    <template v-else-if="name === 'thumb-up'">
+      <path d="M7 10v12" />
+      <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" />
+    </template>
+    <template v-else-if="name === 'thumb-down'">
+      <path d="M17 14V2" />
+      <path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z" />
+    </template>
   </svg>
 </template>
 
 <script setup lang="ts">
 defineProps<{
-  name: 'copy' | 'git-branch' | 'rollback' | 'bookmark-add' | 'folder' | 'info-circle' | 'play' | 'resume' | 'pause' | 'edit' | 'delete'
+  name: 'copy' | 'git-branch' | 'rollback' | 'bookmark-add' | 'folder' | 'info-circle' | 'play' | 'resume' | 'pause' | 'edit' | 'delete' | 'thumb-up' | 'thumb-down'
 }>()
 </script>

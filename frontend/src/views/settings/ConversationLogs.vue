@@ -186,6 +186,9 @@
                   <template v-if="feedbackOf(m.id, 'user')!.rating === 1">👍</template>
                   <template v-else-if="feedbackOf(m.id, 'user')!.rating === -1">👎</template>
                   {{ t('conversationLogs.userFb') }}
+                  <span v-if="feedbackOf(m.id, 'user')!.content" class="fb-user-note">
+                    {{ feedbackOf(m.id, 'user')!.content }}
+                  </span>
                 </span>
                 <span v-if="feedbackOf(m.id, 'admin') && annotatingId !== m.id" class="fb-admin-note">
                   📝 {{ feedbackOf(m.id, 'admin')!.content || t('conversationLogs.annotated') }}
@@ -761,6 +764,13 @@ onMounted(async () => {
 }
 .fb-user {
   color: var(--td-text-color-secondary);
+}
+.fb-user-note {
+  margin-left: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--td-bg-color-page);
+  color: var(--td-text-color-primary);
 }
 .fb-admin-note {
   background: var(--td-warning-color-light);

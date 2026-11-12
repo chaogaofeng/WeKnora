@@ -90,6 +90,12 @@
                     :title="$t('agent.addToKnowledgeBase')">
                     <ChatActionIcon name="bookmark-add" />
                 </t-button>
+                <MessageFeedback
+                    v-if="feedbackMessageId"
+                    :session-id="sessionId"
+                    :message-id="feedbackMessageId"
+                    :api="feedbackApi"
+                />
                 <!-- Skill artifact download: only shown when this reply's
                      assistant message actually recorded any generated files.
                      Emptiness is the default: the button stays hidden for
@@ -180,7 +186,9 @@ import {
     formatManualTitle,
     collectManualPreferredKbIds,
 } from '@/utils/chatMessageShared';
-import { copyWithToast } from '@/utils/clipboard';
+import { copyWithToast } from '@/utils/clipboard'
+import { listSessionFeedbacks, saveSessionFeedback } from '@/api/sessions'
+import MessageFeedback from '@/components/MessageFeedback.vue';
 import {
     createChatMarkdownRenderer,
     renderChatMarkdown,
@@ -289,13 +297,23 @@ const emitAskAssistant = () => {
     if (messageId) emit('ask-assistant', messageId)
 }
 const answerAssistantActions = computed(() => {
-    const source = JSON.stringify({ session_id: props.sessionId, message_id: persistedAssistantId(props.session) || props.session?.id })
-    return [
-        { key: 'document', label: t('assistant.actions.answerToDocument'), query: t('assistant.prompts.answerToDocument', { source }) },
-        { key: 'faq', label: t('assistant.actions.answerToFaq'), query: t('assistant.prompts.answerToFaq', { source }) },
-        { key: 'automation', label: t('assistant.actions.answerToAutomation'), query: t('assistant.prompts.answerToAutomation', { source }) },
-    ]
+  const source = JSON.stringify({ session_id: props.sessionId, message_id: persistedAssistantId(props.session) || props.session?.id })
+  return [
+    { key: 'document', label: t('assistant.actions.answerToDocument'), query: t('assistant.prompts.answerToDocument', { source }) },
+    { key: 'faq', label: t('assistant.actions.answerToFaq'), query: t('assistant.prompts.answerToFaq', { source }) },
+    { key: 'automation', label: t('assistant.actions.answerToAutomation'), query: t('assistant.prompts.answerToAutomation', { source }) },
+  ]
 })
+
+// Per-message thumbs up/down feedback. The cache is shared with the session, so
+// the feedback list is fetched once even with many rendered assistant messages.
+const feedbackApi = {
+  list: (sid) => listSessionFeedbacks(sid).then((r) => (r && r.data) || []),
+  save: (sid, p) => saveSessionFeedback(sid, p).then((r) => r.data),
+}
+const feedbackMessageId = computed(
+  () => persistedAssistantId(props.session) || props.session?.id || '',
+)
 
 const showRequestInfo = computed(() => !!(props.session?.request_id || props.session?.id));
 

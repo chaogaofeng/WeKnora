@@ -5169,6 +5169,14 @@ export default {
     followUpQuestions: '繼續問',
     followUpQuestionsLoading: '載入推薦問題',
     refreshSuggestedQuestions: '換一批',
+    feedback: {
+      like: '有幫助',
+      dislike: '沒幫助',
+      thanks: '感謝你的回饋',
+      commentPlaceholder: '補充原因（可選）',
+      submit: '提交',
+      skip: '跳過',
+    },
     thinking: '思考中...',
     thinkingAlt: '正在思考',
     conversationTime: {

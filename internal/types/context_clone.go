@@ -139,6 +139,10 @@ var contextCloneAcrossDetach = map[ContextKey]bool{
 	// request context inside the embed handler that authenticated it; nothing
 	// downstream of a detach reads it.
 	EmbedChannelContextKey: false,
+	// The host-asserted embed owner. Like EmbedChannelContextKey, every reader
+	// takes it off the request context inside the embed handler that
+	// authenticated it; nothing downstream of a detach needs it.
+	EmbedOwnerContextKey: false,
 	// [openai-compat] The final-answer-marker flag set by the OpenAI-compatible
 	// endpoint. Must survive CloneContext so the agent engine (which builds its
 	// system prompt from a context derived via logger.CloneContext) still sees

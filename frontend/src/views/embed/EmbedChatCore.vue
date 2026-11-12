@@ -66,6 +66,7 @@
               :content="String(session.content || '')"
               :session="session"
               :session-id="sessionId"
+              :message-id="(session.id as string)"
               :user-query="getUserQuery(index)"
               :embedded-mode="true"
               :embed-channel-id="channelId"

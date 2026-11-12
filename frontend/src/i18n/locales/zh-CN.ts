@@ -5172,6 +5172,14 @@ export default {
     followUpQuestions: '继续问',
     followUpQuestionsLoading: '加载推荐问题',
     refreshSuggestedQuestions: '换一批',
+    feedback: {
+      like: '有帮助',
+      dislike: '没帮助',
+      thanks: '感谢你的反馈',
+      commentPlaceholder: '补充原因（可选）',
+      submit: '提交',
+      skip: '跳过',
+    },
     thinking: '思考中...',
     thinkingAlt: '正在思考',
     conversationTime: {

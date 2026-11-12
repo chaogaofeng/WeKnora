@@ -589,6 +589,35 @@ func (h *EmbedChannelHandler) EmbedResolveAgentPrompt(c *gin.Context) {
 	h.mcpServiceHandler.ResolveAgentPrompt(c)
 }
 
+// EmbedSaveFeedback records a visitor rating on an assistant message within an
+// embed session. ensureEmbedSession already authorizes the session and pins the
+// channel's tenant into the context, so we can delegate straight to the session
+// feedback handler. That handler only accepts user-source ratings from anonymous
+// visitors — admin annotations require a tenant-admin role embed visitors never
+// hold, so they are rejected before any write.
+func (h *EmbedChannelHandler) EmbedSaveFeedback(c *gin.Context) {
+	if err := h.ensureEmbedSession(c); err != nil {
+		return
+	}
+	if h.sessionHandler == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "feedback service unavailable"})
+		return
+	}
+	h.sessionHandler.SaveSessionFeedback(c)
+}
+
+// EmbedListFeedback returns every feedback row for an embed session.
+func (h *EmbedChannelHandler) EmbedListFeedback(c *gin.Context) {
+	if err := h.ensureEmbedSession(c); err != nil {
+		return
+	}
+	if h.sessionHandler == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "feedback service unavailable"})
+		return
+	}
+	h.sessionHandler.ListSessionFeedbacks(c)
+}
+
 type embedWebhookEventRequest struct {
 	Type      string `json:"type"`
 	SessionID string `json:"session_id"`
@@ -721,6 +750,12 @@ func (h *EmbedChannelHandler) ensureEmbedSession(c *gin.Context) error {
 		return apperrors.NewForbiddenError("session signature invalid")
 	}
 	principal := types.EmbedSessionPrincipal(ch.TenantID, ch.ID, sessionID)
+	// 若会话已绑定 host-asserted owner（embed owner principal），将查询作用域对齐到该
+	// owner：否则 GetOwnedSession 会以匿名 EmbedSessionPrincipal 的 user_id 查询，与
+	// session.user_id（owner principal）不匹配而返回 Session not found（单独访问无 owner 时正常）。
+	if su := strings.TrimSpace(sess.UserID); strings.HasPrefix(su, types.PrincipalEmbedOwner+":") {
+		principal = types.Principal{Type: types.PrincipalEmbedOwner, ID: strings.TrimPrefix(su, types.PrincipalEmbedOwner+":")}
+	}
 	ctx := c.Request.Context()
 	if visitorID := strings.TrimSpace(c.GetHeader(types.EmbedVisitorHeader)); visitorID != "" {
 		if err := types.ValidateEmbedVisitorID(visitorID); err != nil {
