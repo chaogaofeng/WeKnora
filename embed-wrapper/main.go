@@ -770,7 +770,7 @@ func wrapperOrigin(r *http.Request) string {
 }
 
 const loginHTML = `<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>内部智能体</title>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>公司内部智能体</title>
 <style>
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
@@ -807,7 +807,7 @@ input:focus{border-color:#4f7cff;background:#fff;box-shadow:0 0 0 3px rgba(79,12
 </style>
 </head><body><div class="card">{{MOCK_BANNER}}
 <div class="logo"><svg viewBox="0 0 24 24"><path d="M12 3C7.03 3 3 6.58 3 11c0 2.09.9 4 2.38 5.42L4.5 20.5l3.9-1.55A9.7 9.7 0 0 0 12 19c4.97 0 9-3.58 9-8s-4.03-8-9-8z"/></svg></div>
-<h1>内部智能体</h1>
+<h1>公司内部智能体</h1>
 <label for="phone">手机号</label>
 <input id="phone" type="tel" maxlength="11" placeholder="请输入 11 位手机号" autofocus />
 <label for="code">短信验证码</label>
@@ -873,7 +873,7 @@ $('login').onclick = doLogin;
 </script></body></html>`
 
 const appHTML = `<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><title>内部智能体</title>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>公司内部智能体</title>
 <style>
 html,body{margin:0;height:100%;font-family:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
 #app{display:flex;height:100%;background:#f1f5f9}
@@ -927,7 +927,7 @@ html,body{margin:0;height:100%;font-family:system-ui,-apple-system,"Segoe UI","P
 <body><div id="app">
 <header id="topbar"><span class="dot">智</span><span class="name" id="topname"></span><span class="user" id="topuser"></span><button type="button" class="logout" onclick="location.href='/logout'">退出</button></header>
 <aside id="side">
-  <div class="brand"><span class="dot">智</span><div><div class="name">内部智能体</div><div class="desc">企业知识助手</div></div></div>
+  <div class="brand"><span class="dot">智</span><div><div class="name">公司内部智能体</div><div class="desc">企业 AI 助手</div></div></div>
   <h4>智能体</h4>
   <div id="list"></div>
   <div class="user"><span class="uav">用</span><span class="unum" id="userphone"></span><button type="button" class="logout" onclick="location.href='/logout'">退出</button></div>
@@ -965,7 +965,7 @@ if (single) {
   document.getElementById('app').style.flexDirection = 'column';
   const tb = document.getElementById('topbar');
   tb.style.display = 'flex';
-  document.getElementById('topname').textContent = AGENTS.length ? AGENTS[0].label : '内部智能体';
+  document.getElementById('topname').textContent = AGENTS.length ? AGENTS[0].label : '公司内部智能体';
 }
 
 function avatarText(label) {
