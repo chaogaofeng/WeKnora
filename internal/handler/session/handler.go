@@ -471,12 +471,26 @@ func parseListTimeParam(raw string, endOfDay bool) (*time.Time, error) {
 }
 
 // resolveSessionOwnerNames fills OwnerName for Web/internal user-owned sessions
-// so the conversation log can show who each conversation belongs to. Channel
-// sessions (API key, embed, IM) have no human owner and are left empty; the UI
-// falls back to a source label for those.
+// so the conversation log can show who each conversation belongs to. For
+// host-asserted embed owners the stored owner is
+// "embed_owner:<tenant>:<channel>:<externalID>", whose last segment (e.g. the
+// host-side phone number) is the best display name. Other channel sessions
+// (API key, IM) have no human owner and are left empty; the UI falls back to a
+// source label for those.
 func resolveSessionOwnerNames(ctx context.Context, svc interfaces.UserService, items []*types.SessionListItem) {
 	if len(items) == 0 {
 		return
+	}
+	// Host-asserted embed owners are resolved from the user_id itself and must
+	// run BEFORE the users-table lookup below: when the page contains no
+	// resolvable web users at all (e.g. a pure embed log), the early return in
+	// that path must not skip them.
+	for _, it := range items {
+		if id := it.UserID; strings.HasPrefix(id, types.PrincipalEmbedOwner+":") {
+			if i := strings.LastIndex(id, ":"); i >= 0 && i < len(id)-1 {
+				it.OwnerName = id[i+1:]
+			}
+		}
 	}
 	ids := make([]string, 0, len(items))
 	seen := make(map[string]struct{}, len(items))
@@ -496,6 +510,9 @@ func resolveSessionOwnerNames(ctx context.Context, svc interfaces.UserService, i
 		return
 	}
 	for _, it := range items {
+		if it.OwnerName != "" {
+			continue
+		}
 		if u, ok := users[it.UserID]; ok && u != nil {
 			it.OwnerName = u.Username
 		}

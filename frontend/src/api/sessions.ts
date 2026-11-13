@@ -133,6 +133,8 @@ export interface SessionStats {
   total_sessions: number
   total_users: number
   total_questions: number
+  total_anonymous: number
+  total_anonymous_questions: number
 }
 
 // getSessionStats returns aggregate counts (sessions / users / questions) for

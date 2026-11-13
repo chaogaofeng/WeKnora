@@ -320,6 +320,11 @@ type SessionStats struct {
 	TotalSessions  int64 `json:"total_sessions"`
 	TotalUsers     int64 `json:"total_users"`
 	TotalQuestions int64 `json:"total_questions"`
+	// Anonymous visitors: embed sessions with no host-asserted owner
+	// ("embed_session:..." / "embed_visitor:..."). Surfaced separately so the
+	// totals above stay identity-scoped (no human owner to count as a user).
+	TotalAnonymous          int64 `json:"total_anonymous"`
+	TotalAnonymousQuestions int64 `json:"total_anonymous_questions"`
 }
 
 // SessionListItem is a session row enriched with its IM origin (when any).

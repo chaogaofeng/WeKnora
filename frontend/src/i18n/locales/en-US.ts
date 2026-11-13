@@ -3045,6 +3045,8 @@ export default {
     statSessions: 'Sessions',
     statUsers: 'Users',
     statQuestions: 'Questions',
+    statAnonymousSessions: 'Anonymous Sessions',
+    statAnonymousQuestions: 'Anonymous Questions',
     colCreated: 'Created',
     colAgent: 'Agent',
     colUpdated: 'Updated',

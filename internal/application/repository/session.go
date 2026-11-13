@@ -225,6 +225,13 @@ func (r *sessionRepository) QueryPaged(
 		}
 		if kw := strings.TrimSpace(q.Keyword); kw != "" {
 			like := "%" + escapeLikeKeyword(kw) + "%"
+			// Also match the host-asserted owner stored on user_id
+			// (e.g. "embed_owner:<tenant>:<channel>:<phone>"); the owner tail
+			// is the identity shown in the conversation log user column.
+			userIDLikeExpr := "s.user_id ILIKE ? ESCAPE ?"
+			if !isPostgres {
+				userIDLikeExpr = "LOWER(s.user_id) LIKE LOWER(?) ESCAPE ?"
+			}
 			if q.ContentSearch {
 				// Title OR message content. The EXISTS stays cheap: it stops
 				// at the first matching message per session.
@@ -234,10 +241,11 @@ func (r *sessionRepository) QueryPaged(
 					contentExpr = "EXISTS (SELECT 1 FROM messages m WHERE m.session_id = s.id" +
 						" AND m.deleted_at IS NULL AND LOWER(m.content) LIKE LOWER(?) ESCAPE ?)"
 				}
-				db = db.Where("("+titleLikeExpr+" OR "+contentExpr+")",
-					like, likeEscapeChar, like, likeEscapeChar)
+				db = db.Where("("+titleLikeExpr+" OR "+contentExpr+" OR "+userIDLikeExpr+")",
+					like, likeEscapeChar, like, likeEscapeChar, like, likeEscapeChar)
 			} else {
-				db = db.Where(titleLikeExpr, like, likeEscapeChar)
+				db = db.Where("("+titleLikeExpr+" OR "+userIDLikeExpr+")",
+					like, likeEscapeChar, like, likeEscapeChar)
 			}
 		}
 		return db
@@ -388,6 +396,13 @@ func (r *sessionRepository) SessionStats(ctx context.Context, q *types.SessionLi
 		if !isPostgres {
 			titleLikeExpr = "LOWER(s.title) LIKE LOWER(?) ESCAPE ?"
 		}
+		// Also match the host-asserted owner stored on user_id
+		// (e.g. "embed_owner:<tenant>:<channel>:<phone>"); the owner tail is
+		// the identity shown in the conversation log user column.
+		userIDLikeExpr := "s.user_id ILIKE ? ESCAPE ?"
+		if !isPostgres {
+			userIDLikeExpr = "LOWER(s.user_id) LIKE LOWER(?) ESCAPE ?"
+		}
 		if q.ContentSearch {
 			contentExpr := "EXISTS (SELECT 1 FROM messages m WHERE m.session_id = s.id" +
 				" AND m.deleted_at IS NULL AND m.content ILIKE ? ESCAPE ?)"
@@ -395,10 +410,11 @@ func (r *sessionRepository) SessionStats(ctx context.Context, q *types.SessionLi
 				contentExpr = "EXISTS (SELECT 1 FROM messages m WHERE m.session_id = s.id" +
 					" AND m.deleted_at IS NULL AND LOWER(m.content) LIKE LOWER(?) ESCAPE ?)"
 			}
-			db = db.Where("("+titleLikeExpr+" OR "+contentExpr+")",
-				like, likeEscapeChar, like, likeEscapeChar)
+			db = db.Where("("+titleLikeExpr+" OR "+contentExpr+" OR "+userIDLikeExpr+")",
+				like, likeEscapeChar, like, likeEscapeChar, like, likeEscapeChar)
 		} else {
-			db = db.Where(titleLikeExpr, like, likeEscapeChar)
+			db = db.Where("("+titleLikeExpr+" OR "+userIDLikeExpr+")",
+				like, likeEscapeChar, like, likeEscapeChar)
 		}
 	}
 
@@ -444,22 +460,51 @@ func (r *sessionRepository) SessionStats(ctx context.Context, q *types.SessionLi
 	}
 
 	var row struct {
-		TotalSessions  int64 `gorm:"column:total_sessions"`
-		TotalUsers     int64 `gorm:"column:total_users"`
-		TotalQuestions int64 `gorm:"column:total_questions"`
+		TotalSessions           int64 `gorm:"column:total_sessions"`
+		TotalUsers              int64 `gorm:"column:total_users"`
+		TotalQuestions          int64 `gorm:"column:total_questions"`
+		TotalAnonymous          int64 `gorm:"column:total_anonymous"`
+		TotalAnonymousQuestions int64 `gorm:"column:total_anonymous_questions"`
 	}
+	// total_users counts distinct HUMAN identities, not raw user_id strings:
+	// host-asserted embed owners ("embed_owner:<tenant>:<channel>:<externalID>")
+	// collapse to their external ID tail (e.g. a phone number), so the same
+	// person counts once even when seen through several channels; web users
+	// keep their bare UUID. Anonymous embed-session principals and other
+	// channel principals carry no human identity and are excluded.
+	var userCountExpr string
+	if isPostgres {
+		userCountExpr = "COUNT(DISTINCT CASE WHEN s.user_id LIKE 'embed_owner:%' THEN split_part(s.user_id, ':', 4)" +
+			" WHEN s.user_id NOT LIKE '%:%' THEN s.user_id END)"
+	} else {
+		// SQLite has no split_part: peel "embed_owner:<tenant>:<channel>:" with
+		// nested instr/substr.
+		first := "substr(s.user_id, instr(s.user_id, ':') + 1)"
+		second := "substr(" + first + ", instr(" + first + ", ':') + 1)"
+		tail := "substr(" + second + ", instr(" + second + ", ':') + 1)"
+		userCountExpr = "COUNT(DISTINCT CASE WHEN s.user_id LIKE 'embed_owner:%' THEN " + tail +
+			" WHEN s.user_id NOT LIKE '%:%' THEN s.user_id END)"
+	}
+	// Anonymous embed visitors carry no host-asserted owner
+	// ("embed_session:<tenant>:<channel>:<session>" / "embed_visitor:...");
+	// surface them as separate stats so the totals above stay identity-scoped.
+	anonymousCond := "s.user_id LIKE '" + types.PrincipalEmbedSession + ":%' OR s.user_id LIKE '" + types.PrincipalEmbedVisitor + ":%'"
 	err := db.Select(`
 		COUNT(DISTINCT s.id) AS total_sessions,
-		COUNT(DISTINCT CASE WHEN s.user_id <> '' THEN s.user_id END) AS total_users,
-		COALESCE(SUM((SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id AND m.deleted_at IS NULL AND m.role = 'user')), 0) AS total_questions
+		`+userCountExpr+` AS total_users,
+		COALESCE(SUM((SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id AND m.deleted_at IS NULL AND m.role = 'user')), 0) AS total_questions,
+		COUNT(DISTINCT CASE WHEN `+anonymousCond+` THEN s.id END) AS total_anonymous,
+		COALESCE(SUM(CASE WHEN `+anonymousCond+` THEN (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id AND m.deleted_at IS NULL AND m.role = 'user') ELSE 0 END), 0) AS total_anonymous_questions
 	`).Scan(&row).Error
 	if err != nil {
 		return nil, err
 	}
 	return &types.SessionStats{
-		TotalSessions:  row.TotalSessions,
-		TotalUsers:     row.TotalUsers,
-		TotalQuestions: row.TotalQuestions,
+		TotalSessions:           row.TotalSessions,
+		TotalUsers:              row.TotalUsers,
+		TotalQuestions:          row.TotalQuestions,
+		TotalAnonymous:          row.TotalAnonymous,
+		TotalAnonymousQuestions: row.TotalAnonymousQuestions,
 	}, nil
 }
 

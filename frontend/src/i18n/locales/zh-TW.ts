@@ -7324,6 +7324,8 @@ export default {
     statSessions: '會話總數',
     statUsers: '使用者總數',
     statQuestions: '提問數',
+    statAnonymousSessions: '匿名會話',
+    statAnonymousQuestions: '匿名提問',
     colCreated: '建立時間',
     colAgent: '智慧代理',
     colUpdated: '更新時間',

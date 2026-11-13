@@ -72,6 +72,14 @@
         <div class="stat-value">{{ stats.total_questions }}</div>
         <div class="stat-label">{{ t('conversationLogs.statQuestions') }}</div>
       </div>
+      <div class="stat-card">
+        <div class="stat-value">{{ stats.total_anonymous }}</div>
+        <div class="stat-label">{{ t('conversationLogs.statAnonymousSessions') }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">{{ stats.total_anonymous_questions }}</div>
+        <div class="stat-label">{{ t('conversationLogs.statAnonymousQuestions') }}</div>
+      </div>
     </div>
 
     <t-table
@@ -270,7 +278,7 @@ const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
 // 当前筛选范围内的聚合统计（会话总数 / 用户总数 / 提问数）
-const stats = ref<SessionStats>({ total_sessions: 0, total_users: 0, total_questions: 0 })
+const stats = ref<SessionStats>({ total_sessions: 0, total_users: 0, total_questions: 0, total_anonymous: 0, total_anonymous_questions: 0 })
 // 服务端排序（避免分页下的本地排序误导）
 const sortBy = ref('updated_at')
 const sortOrder = ref('desc')

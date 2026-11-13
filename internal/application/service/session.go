@@ -455,6 +455,11 @@ func (s *sessionService) CountSessionsBySource(
 		query.UserID = types.SessionOwnerIDFromContext(ctx)
 	} else if types.SessionListSourceRequiresAdmin(query.Source) {
 		query.UserID = ""
+	} else if types.TenantRoleFromContext(ctx).HasPermission(types.TenantRoleAdmin) {
+		// Admins see tenant-wide totals, mirroring ListSessions: without this
+		// branch the per-user scope would hide channel sessions (whose user_id
+		// is an api/embed/IM principal) from the conversation log stats.
+		query.UserID = ""
 	} else if uid := types.SessionOwnerIDFromContext(ctx); uid != "" {
 		query.UserID = uid
 	}
@@ -488,6 +493,11 @@ func (s *sessionService) SessionStats(
 	if query.Kind == types.SessionKindAssistant {
 		query.UserID = types.SessionOwnerIDFromContext(ctx)
 	} else if types.SessionListSourceRequiresAdmin(query.Source) {
+		query.UserID = ""
+	} else if types.TenantRoleFromContext(ctx).HasPermission(types.TenantRoleAdmin) {
+		// Admins see tenant-wide totals, mirroring ListSessions: without this
+		// branch the per-user scope would hide channel sessions (whose user_id
+		// is an api/embed/IM principal) from the conversation log stats.
 		query.UserID = ""
 	} else if uid := types.SessionOwnerIDFromContext(ctx); uid != "" {
 		query.UserID = uid
