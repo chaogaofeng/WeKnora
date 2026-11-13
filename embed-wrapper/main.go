@@ -770,10 +770,12 @@ func wrapperOrigin(r *http.Request) string {
 }
 
 const loginHTML = `<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>公司内部智能体</title>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="format-detection" content="telephone=no"><meta name="apple-mobile-web-app-capable" content="yes"><title>公司内部智能体</title>
 <style>
 *{box-sizing:border-box}
-body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
+body{margin:0;min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;
+  padding:24px;padding-top:calc(24px + env(safe-area-inset-top));padding-bottom:calc(24px + env(safe-area-inset-bottom));
+  -webkit-tap-highlight-color:transparent;
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
   background:linear-gradient(135deg,#eef2ff 0%,#f6f7fb 45%,#e0f2fe 100%)}
 .card{width:360px;max-width:100%;background:#fff;border-radius:20px;padding:40px 36px 32px;
@@ -873,12 +875,13 @@ $('login').onclick = doLogin;
 </script></body></html>`
 
 const appHTML = `<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><title>公司内部智能体</title>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="format-detection" content="telephone=no"><title>公司内部智能体</title>
 <style>
-html,body{margin:0;height:100%;font-family:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
-#app{display:flex;height:100%;background:#f1f5f9}
+html,body{margin:0;height:100%;height:100dvh;font-family:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+#app{display:flex;height:100%;height:100dvh;background:#f1f5f9}
 /* 侧栏 */
-#side{width:232px;background:#0f172a;color:#e2e8f0;padding:20px 0;flex:0 0 auto;display:flex;flex-direction:column;overflow:auto}
+#side{width:232px;background:#0f172a;color:#e2e8f0;flex:0 0 auto;display:flex;flex-direction:column;overflow:auto;
+  padding-top:calc(20px + env(safe-area-inset-top));padding-bottom:calc(20px + env(safe-area-inset-bottom))}
 .brand{display:flex;align-items:center;gap:10px;padding:0 18px 16px}
 .brand .dot{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#4f7cff,#6d5cff);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:14px}
 .brand .name{font-size:15px;font-weight:600;color:#fff;line-height:1.2}
@@ -895,11 +898,12 @@ html,body{margin:0;height:100%;font-family:system-ui,-apple-system,"Segoe UI","P
 .agent-btn::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:#2563eb;opacity:0;transition:opacity .15s}
 .agent-btn.active::before{opacity:1}
 /* 舞台 */
-#stage{flex:1;min-width:0;background:#fff}
+#stage{flex:1;min-width:0;background:#fff;padding-bottom:env(safe-area-inset-bottom)}
 #stage iframe{width:100%;height:100%;border:0;display:block;opacity:0;transition:opacity .25s ease}
 #stage iframe.ready{opacity:1}
 /* 顶部条（单智能体时显示） */
-#topbar{display:none;align-items:center;gap:10px;height:56px;padding:0 18px;background:#0f172a;color:#fff;flex:0 0 auto}
+#topbar{display:none;align-items:center;gap:10px;height:56px;padding:0 18px;background:#0f172a;color:#fff;flex:0 0 auto;
+  padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
 #topbar .dot{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#4f7cff,#6d5cff);display:flex;align-items:center;justify-content:center;font-weight:600;color:#fff}
 #topbar .name{font-size:15px;font-weight:600}
 /* 当前登录用户 */
@@ -915,7 +919,7 @@ html,body{margin:0;height:100%;font-family:system-ui,-apple-system,"Segoe UI","P
 /* 窄屏：侧栏转顶部横向 */
 @media (max-width:640px){
   #app{flex-direction:column}
-  #side{width:100%;flex-direction:row;padding:10px;gap:8px;overflow-x:auto}
+  #side{width:100%;flex-direction:row;padding:10px;padding-top:calc(10px + env(safe-area-inset-top));padding-bottom:calc(10px + env(safe-area-inset-bottom));gap:8px;overflow-x:auto}
   .brand,#side h4{display:none}
   .agent-btn{border-radius:999px;padding:8px 14px;width:auto}
   .agent-btn .av{display:none}
