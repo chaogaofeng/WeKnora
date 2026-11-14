@@ -878,9 +878,9 @@ const appHTML = `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="format-detection" content="telephone=no"><title>公司内部智能体</title>
 <style>
 html,body{margin:0;height:100%;height:100dvh;font-family:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
-#app{display:flex;height:100%;height:100dvh;background:#f1f5f9}
+#app{position:relative;height:100%;height:100dvh;background:#f1f5f9;overflow:hidden}
 /* 侧栏 */
-#side{width:232px;background:#0f172a;color:#e2e8f0;flex:0 0 auto;display:flex;flex-direction:column;overflow:auto;
+#side{position:absolute;top:0;left:0;bottom:0;width:clamp(180px,20vw,240px);background:#0f172a;color:#e2e8f0;display:flex;flex-direction:column;overflow:auto;
   padding-top:calc(20px + env(safe-area-inset-top));padding-bottom:calc(20px + env(safe-area-inset-bottom))}
 .brand{display:flex;align-items:center;gap:10px;padding:0 18px 16px}
 .brand .dot{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#4f7cff,#6d5cff);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:14px}
@@ -889,20 +889,27 @@ html,body{margin:0;height:100%;height:100dvh;font-family:system-ui,-apple-system
 #side h4{margin:0 0 10px;padding:0 18px;font-size:12px;font-weight:500;letter-spacing:.04em;color:#64748b}
 .agent-btn{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:0;color:#cbd5e1;
   padding:10px 18px;font-size:14px;cursor:pointer;position:relative;transition:background .15s,color .15s}
-.agent-btn:hover{background:#1e293b;color:#fff}
-.agent-btn.active{background:#1e293b;color:#fff}
+.agent-btn:hover{background:rgba(255,255,255,.06);color:#fff}
+.agent-btn:focus-visible{outline:none;box-shadow:inset 0 0 0 2px rgba(79,124,255,.7)}
+.agent-btn.active{background:rgba(79,124,255,.18);color:#fff}
 .agent-btn .av{width:26px;height:26px;border-radius:50%;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
   font-size:12px;font-weight:600;color:#fff;background:#334155}
-.agent-btn.active .av{background:#2563eb}
+.agent-btn.active .av{background:#4f7cff}
 .agent-btn .txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.agent-btn::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:#2563eb;opacity:0;transition:opacity .15s}
+.agent-btn::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:#4f7cff;opacity:0;transition:opacity .15s}
 .agent-btn.active::before{opacity:1}
+/* 隐藏桌面侧栏滚动条，保持整洁 */
+#side{scrollbar-width:none}
+#side::-webkit-scrollbar{width:0;height:0}
 /* 舞台 */
-#stage{flex:1;min-width:0;background:#fff;padding-bottom:env(safe-area-inset-bottom)}
-#stage iframe{width:100%;height:100%;border:0;display:block;opacity:0;transition:opacity .25s ease}
+#stage{position:absolute;top:0;left:clamp(180px,20vw,240px);right:0;bottom:0;background:#fff;overflow:hidden}
+#stage iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0;display:block;opacity:0;transition:opacity .25s ease}
 #stage iframe.ready{opacity:1}
+#stage .retry{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:12px;background:#fff;color:#475569}
+#stage .retry[hidden]{display:none}
+#stage .retry button{min-height:44px;padding:0 20px;border:0;border-radius:8px;background:#4f7cff;color:#fff;cursor:pointer}
 /* 顶部条（单智能体时显示） */
-#topbar{display:none;align-items:center;gap:10px;height:56px;padding:0 18px;background:#0f172a;color:#fff;flex:0 0 auto;
+#topbar{display:none;position:absolute;top:0;left:0;right:0;align-items:center;gap:10px;height:56px;padding:0 18px;background:#0f172a;color:#fff;z-index:2;
   padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
 #topbar .dot{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#4f7cff,#6d5cff);display:flex;align-items:center;justify-content:center;font-weight:600;color:#fff}
 #topbar .name{font-size:15px;font-weight:600}
@@ -916,16 +923,20 @@ html,body{margin:0;height:100%;height:100dvh;font-family:system-ui,-apple-system
 .logout:hover{background:#1e293b;color:#fff}
 #topbar .logout{margin-left:auto;color:#cbd5e1}
 #topbar .logout:hover{background:rgba(255,255,255,.12);color:#fff}
-/* 窄屏：侧栏转顶部横向 */
-@media (max-width:640px){
-  #app{flex-direction:column}
-  #side{width:100%;flex-direction:row;padding:10px;padding-top:calc(10px + env(safe-area-inset-top));padding-bottom:calc(10px + env(safe-area-inset-bottom));gap:8px;overflow-x:auto}
+/* 窄屏/平板竖屏/窄窗口：侧栏转顶部横向（自适应网页 + H5 共用） */
+@media (max-width:768px){
+  #side{box-sizing:border-box;width:auto;left:0;right:0;top:0;bottom:auto;height:calc(52px + env(safe-area-inset-top));flex-direction:row;padding:8px 10px;padding-top:calc(8px + env(safe-area-inset-top));padding-bottom:8px;gap:8px;overflow-x:auto;box-shadow:0 2px 10px rgba(15,23,42,.22);scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  #side::-webkit-scrollbar{height:0}
+  #stage{top:calc(52px + env(safe-area-inset-top));left:0;right:0;bottom:0}
   .brand,#side h4{display:none}
-  .agent-btn{border-radius:999px;padding:8px 14px;width:auto}
+  #list{display:flex;align-items:stretch;gap:8px;min-width:0;flex:1;overflow-x:auto;scrollbar-width:none}
+  .agent-btn{flex:none;border-radius:999px;padding:0 14px;width:auto}
   .agent-btn .av{display:none}
   .agent-btn::before{display:none}
-  .agent-btn.active{background:#2563eb}
-  .user{display:none}
+  .agent-btn.active{background:#4f7cff;box-shadow:0 2px 6px rgba(79,124,255,.4)}
+  #side .user{margin:0;padding:0;border:0;flex:none}
+  #side .uav,#side .unum{display:none}
+  #side .logout{height:100%}
 }
 </style></head>
 <body><div id="app">
@@ -936,7 +947,7 @@ html,body{margin:0;height:100%;height:100dvh;font-family:system-ui,-apple-system
   <div id="list"></div>
   <div class="user"><span class="uav">用</span><span class="unum" id="userphone"></span><button type="button" class="logout" onclick="location.href='/logout'">退出</button></div>
 </aside>
-<main id="stage"></main>
+<main id="stage"><div class="retry" hidden><span role="status">对话暂时无法加载</span><button type="button">重试</button></div></main>
 </div>
 <script>
 window.addEventListener('error', function (e) {
@@ -950,7 +961,6 @@ window.addEventListener('error', function (e) {
 });
 const AGENTS = {{AGENTS_JSON}};
 const OWNER = "{{OWNER}}";
-let activeChannel = AGENTS.length ? AGENTS[0].id : null;
 
 function maskPhone(p) {
   if (!p || p.length < 7) return p || '';
@@ -966,9 +976,11 @@ if (topUserEl) topUserEl.textContent = phoneText;
 const single = AGENTS.length <= 1;
 if (single) {
   document.getElementById('side').style.display = 'none';
-  document.getElementById('app').style.flexDirection = 'column';
   const tb = document.getElementById('topbar');
   tb.style.display = 'flex';
+  const st = document.getElementById('stage');
+  st.style.left = '0';
+  st.style.top = tb.offsetHeight + 'px';
   document.getElementById('topname').textContent = AGENTS.length ? AGENTS[0].label : '公司内部智能体';
 }
 
@@ -989,10 +1001,26 @@ AGENTS.forEach(function (a) {
 });
 
 const frames = new Map();
+const failedFrames = new Set();
+const retryPanel = document.querySelector('#stage .retry');
+let selectedId;
+retryPanel.querySelector('button').onclick = function () {
+  frames.get(selectedId).remove();
+  frames.delete(selectedId);
+  failedFrames.delete(selectedId);
+  loadAgent(selectedId);
+};
+
+const SELECTED_KEY = 'weknora_embed_selected';
 
 function loadAgent(id) {
   if (!id) return;
-  activeChannel = id;
+  selectedId = id;
+  // Remember the last picked agent so a page refresh restores it instead of
+  // falling back to the first one. Wrapped in try/catch for private-mode/
+  // storage-disabled environments where localStorage may throw.
+  try { localStorage.setItem(SELECTED_KEY, id); } catch (_) {}
+  retryPanel.hidden = !failedFrames.has(id);
   const a = AGENTS.find(function (x) { return x.id === id; });
   document.querySelectorAll('.agent-btn').forEach(function (b) {
     b.classList.toggle('active', b.dataset.id === id);
@@ -1004,7 +1032,7 @@ function loadAgent(id) {
     frame.allow = 'clipboard-write';
     frame.onload = function () { frame.classList.add('ready'); };
     frames.set(id, frame);
-    document.getElementById('stage').appendChild(frame);
+    retryPanel.before(frame);
   }
   frames.forEach(function (f, cid) {
     f.style.display = (cid === id) ? 'block' : 'none';
@@ -1015,16 +1043,43 @@ function loadAgent(id) {
 window.addEventListener('message', function (e) {
   const d = e.data || {};
   if (d.source === 'weknora-embed' && d.type === 'bootstrap_request') {
-    fetch('/embed-token?channel=' + encodeURIComponent(activeChannel))
-      .then(function (r) { return r.json(); })
+    const agent = AGENTS.find(function (a) { return a.id === d.channel_id; });
+    if (!agent) return;
+    const frame = frames.get(agent.id);
+    // Reject if the agent base URL is malformed rather than throwing an
+    // uncaught error inside the event listener.
+    let originOk = false;
+    try { originOk = !!agent.base && new URL(agent.base).origin === e.origin; } catch (_) { return; }
+    if (!frame || frame.contentWindow !== e.source || !originOk) return;
+    fetch('/embed-token?channel=' + encodeURIComponent(agent.id))
+      .then(function (r) {
+        if (!r.ok) throw new Error('Token request failed');
+        return r.json();
+      })
       .then(function (j) {
-        if (!j.token) return;
+        if (!j.token) throw new Error('Missing token');
         e.source.postMessage(
-          { source: 'weknora-host', type: 'provide_token', token: j.token, channel_id: activeChannel },
-          '*');
+          { source: 'weknora-host', type: 'provide_token', token: j.token, channel_id: agent.id },
+          e.origin);
+      })
+      .catch(function () {
+        if (frames.get(agent.id) !== frame) return;
+        failedFrames.add(agent.id);
+        if (selectedId === agent.id) retryPanel.hidden = false;
       });
   }
 });
 
-if (activeChannel) loadAgent(activeChannel);
+if (AGENTS.length) {
+  let initialId = AGENTS[0].id;
+  // Restore the previously selected agent on refresh, but only if it still
+  // exists in the current agent list (owner/session may differ).
+  if (AGENTS.length > 1) {
+    try {
+      const saved = localStorage.getItem(SELECTED_KEY);
+      if (saved && AGENTS.some(function (a) { return a.id === saved; })) initialId = saved;
+    } catch (_) {}
+  }
+  loadAgent(initialId);
+}
 </script></body></html>`

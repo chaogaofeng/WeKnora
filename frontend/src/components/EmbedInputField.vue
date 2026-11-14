@@ -104,6 +104,7 @@
           type="button"
           class="embed-send-btn"
           :class="{ disabled: !canSend }"
+          :disabled="!canSend"
           :aria-label="t('input.send')"
           @click="submit"
         >
@@ -490,6 +491,22 @@ onUnmounted(() => {
 
   &:hover {
     background: var(--td-bg-color-component-hover);
+  }
+}
+
+@media (pointer: coarse) {
+  .embed-control-btn,
+  .embed-send-btn,
+  .embed-stop-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  // 16px 规避 iOS 聚焦自动放大；底部 60px 避让 iOS 底部地址栏/手势条，
+  // 避免已输入文字被遮挡（经验值，随 iOS 版本可能需微调）。
+  .embed-input-box__textarea :deep(.t-textarea__inner) {
+    font-size: 16px;
+    padding-bottom: 60px;
   }
 }
 </style>

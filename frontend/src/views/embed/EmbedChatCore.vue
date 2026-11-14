@@ -565,7 +565,7 @@ watch(
 
 .embed-chat__input {
   flex-shrink: 0;
-  padding: 8px 16px 16px;
+  padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
   box-sizing: border-box;
 }
 

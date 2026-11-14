@@ -248,6 +248,7 @@ watch(headerTitle, (title) => {
 <style scoped lang="less">
 .embed-page {
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   background: var(--td-bg-color-container);
@@ -276,7 +277,7 @@ watch(headerTitle, (title) => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 16px;
+  padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
   border-bottom: 1px solid var(--td-component-stroke);
   background: var(--td-bg-color-container);
   flex-shrink: 0;
@@ -306,6 +307,11 @@ watch(headerTitle, (title) => {
   &__action {
     flex-shrink: 0;
     color: var(--td-text-color-secondary);
+
+    @media (pointer: coarse) {
+      width: 44px;
+      height: 44px;
+    }
 
     &:hover {
       color: var(--td-brand-color);

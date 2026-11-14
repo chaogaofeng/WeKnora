@@ -417,20 +417,19 @@ func goldnetVerifyCode(phone, code string) (bool, string) {
 	}
 	if smsMockEnabled() {
 		mockSMSMu.Lock()
+		defer mockSMSMu.Unlock()
 		mc, ok := mockSMSCodes[phone]
-		if ok {
-			delete(mockSMSCodes, phone) // 一次性使用
-		}
-		mockSMSMu.Unlock()
 		if !ok {
 			return false, "验证码错误或已过期"
 		}
 		if time.Now().Unix() > mc.exp {
+			delete(mockSMSCodes, phone)
 			return false, "验证码已过期"
 		}
 		if mc.code != code {
 			return false, "验证码错误"
 		}
+		delete(mockSMSCodes, phone)
 		return true, "验证成功"
 	}
 	if !goldnetConfigured() {
