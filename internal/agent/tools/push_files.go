@@ -310,11 +310,16 @@ func (t *PushFilesTool) generateDownloadURL(ctx context.Context, knowledge *type
 	if isHTTPDownloadURL(url, err) {
 		return url, nil
 	}
-	// 回落：local 存储未配 APP_EXTERNAL_URL，直接用 utils.SignFileURL 生成 /api/v1/files/presigned
-	// 注意：需要 baseURL，可从环境变量 APP_EXTERNAL_URL 取；若未配置则无法生成 HTTP 链接
-	baseURL := os.Getenv("APP_EXTERNAL_URL")
+	// 回落：local 存储用 HMAC 签名 URL。baseURL 优先级：配置项 PUSH_FILES_EXTERNAL_URL
+	// > APP_EXTERNAL_URL。两者皆空时无法生成 HTTP 链接（本地存储总得有个对外可达
+	// 域名才能签发下载链接）。当你用反向代理/CDN 对外暴露、且代理对外域名与
+	// APP_EXTERNAL_URL 不一致时，设 PUSH_FILES_EXTERNAL_URL 让下载链接走代理域名。
+	baseURL := strings.TrimSpace(os.Getenv("PUSH_FILES_EXTERNAL_URL"))
 	if baseURL == "" {
-		return "", fmt.Errorf("APP_EXTERNAL_URL not configured, cannot generate download URL for local storage")
+		baseURL = os.Getenv("APP_EXTERNAL_URL")
+	}
+	if baseURL == "" {
+		return "", fmt.Errorf("PUSH_FILES_EXTERNAL_URL/APP_EXTERNAL_URL not configured, cannot generate download URL for local storage")
 	}
 	// Sign with the file's owning tenant (cross-tenant shared KBs may own the
 	// file under a different tenant than the caller's session tenant).

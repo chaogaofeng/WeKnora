@@ -161,6 +161,9 @@ services:
       # 存储后端公网可达（如 MINIO_ENDPOINT 设为公网），或设本变量走 <APP_EXTERNAL_URL>/r/<token>（需 nginx 代理 /r/）。
       # 默认 MinIO 内网部署 / local 后端需设本变量。
       # - APP_EXTERNAL_URL=${APP_EXTERNAL_URL:-}
+      # push_files 工具签发下载链接时使用的对外域名（可选，优先级高于 APP_EXTERNAL_URL）。
+      # 代理/CDN 对外域名与 APP_EXTERNAL_URL 不一致时设本变量，让下载链接走代理域名。
+      # - PUSH_FILES_EXTERNAL_URL=${PUSH_FILES_EXTERNAL_URL:-}
       # 前端外部 origin，用于邀请链接等绝对 URL（留空走 host-relative）
       - FRONTEND_BASE_URL=${FRONTEND_BASE_URL:-}
       # ========== 对象存储 - 腾讯云 COS ==========
