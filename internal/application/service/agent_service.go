@@ -113,6 +113,7 @@ type agentService struct {
 	knowledgeBaseService  interfaces.KnowledgeBaseService
 	knowledgeService      interfaces.KnowledgeService
 	fileService           interfaces.FileService
+	catalog               interfaces.ResourceCatalog
 	chunkService          interfaces.ChunkService
 	duckdb                *sql.DB
 	wikiPageService       interfaces.WikiPageService
@@ -169,6 +170,7 @@ func NewAgentService(
 	messageService interfaces.MessageService,
 	memoryService interfaces.MemoryService,
 	storageResolver interfaces.StorageBackendResolver,
+	catalog interfaces.ResourceCatalog,
 	toolApprovalGate approval.MCPApproval,
 	sandboxMgr sandbox.Manager,
 	sandboxResolver sandbox.TenantSandboxResolver,
@@ -195,6 +197,7 @@ func NewAgentService(
 		knowledgeBaseService: knowledgeBaseService,
 		knowledgeService:     knowledgeService,
 		fileService:          fileService,
+		catalog:              catalog,
 		chunkService:         chunkService,
 		mcpServiceService:    mcpServiceService,
 		mcpManager:           mcpManager,
@@ -1510,7 +1513,7 @@ if s.fileService == nil {
 	continue
 }
 tenantID := firstSearchTargetTenant(config.SearchTargets)
-toolToRegister = tools.NewPushFilesTool(s.knowledgeService, s.fileService, config.SearchTargets, tenantID)
+toolToRegister = tools.NewPushFilesTool(s.knowledgeService, s.fileService, s.catalog, config.SearchTargets, tenantID)
 		case tools.ToolSearchConversations:
 			// The owner is captured from the caller's identity here, not read
 			// from the model's arguments, so no prompt can redirect the search

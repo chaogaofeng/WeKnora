@@ -2,10 +2,12 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"io"
 	"mime/multipart"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -138,5 +140,75 @@ func TestGenerateDownloadURLKeepsHTTPFileServiceURL(t *testing.T) {
 	}
 	if got != cloudURL {
 		t.Fatalf("generateDownloadURL() = %q, want the backend URL %q unchanged", got, cloudURL)
+	}
+}
+
+// stubPushFilesCatalog only needs CreateAccessGrant for these tests; the embedded
+// interface surfaces accidental calls to other methods as panics.
+type stubPushFilesCatalog struct {
+	interfaces.ResourceCatalog
+	grant    string
+	grantErr error
+}
+
+func (s *stubPushFilesCatalog) CreateAccessGrant(context.Context, string, time.Duration) (string, error) {
+	return s.grant, s.grantErr
+}
+
+func newPushFilesResourceTool(grant string, grantErr error) *PushFilesTool {
+	return &PushFilesTool{
+		catalog:  &stubPushFilesCatalog{grant: grant, grantErr: grantErr},
+		tenantID: 42,
+	}
+}
+
+// A resource:// handle must be minted as a /r/<token> capability URL built from
+// the external base, with PUSH_FILES_EXTERNAL_URL taking priority over
+// APP_EXTERNAL_URL. This is the canonical /r/ path the rest of the system uses.
+func TestGenerateDownloadURLResourceHandleMintsResourceLink(t *testing.T) {
+	t.Setenv("PUSH_FILES_EXTERNAL_URL", "https://dl.example.com")
+	t.Setenv("APP_EXTERNAL_URL", "https://app.example.com")
+
+	const handle = "resource://AbCdEfGhIjKlMnOpQrStUv"
+	got, err := newPushFilesResourceTool("tokAbCdEf", nil).generateDownloadURL(
+		context.Background(), &types.Knowledge{ID: "k1", TenantID: 42, FilePath: handle}, 24)
+	if err != nil {
+		t.Fatalf("generateDownloadURL() error = %v", err)
+	}
+	// PUSH_FILES_EXTERNAL_URL wins, and the link is a /r/ capability URL.
+	if want := "https://dl.example.com/r/tokAbCdEf"; got != want {
+		t.Fatalf("generateDownloadURL() = %q, want %q", got, want)
+	}
+}
+
+// Without an externally reachable base, a resource:// handle cannot be exposed;
+// the call must fail loudly rather than leaking the raw handle.
+func TestGenerateDownloadURLResourceHandleRequiresExternalURL(t *testing.T) {
+	t.Setenv("PUSH_FILES_EXTERNAL_URL", "")
+	t.Setenv("APP_EXTERNAL_URL", "")
+
+	_, err := newPushFilesResourceTool("tokAbCdEf", nil).generateDownloadURL(
+		context.Background(),
+		&types.Knowledge{ID: "k1", TenantID: 42, FilePath: "resource://AbCdEfGhIjKlMnOpQrStUv"},
+		24,
+	)
+	if err == nil {
+		t.Fatal("generateDownloadURL() error = nil, want an error requiring the external URL")
+	}
+}
+
+// If the catalog cannot resolve/mint a grant for the handle, surface the real
+// error instead of falling back to a signed raw handle (which would 404).
+func TestGenerateDownloadURLResourceGrantFailure(t *testing.T) {
+	t.Setenv("PUSH_FILES_EXTERNAL_URL", "https://dl.example.com")
+	t.Setenv("APP_EXTERNAL_URL", "")
+
+	_, err := newPushFilesResourceTool("", errors.New("resource not found")).generateDownloadURL(
+		context.Background(),
+		&types.Knowledge{ID: "k1", TenantID: 42, FilePath: "resource://AbCdEfGhIjKlMnOpQrStUv"},
+		24,
+	)
+	if err == nil {
+		t.Fatal("generateDownloadURL() error = nil, want the catalog grant error")
 	}
 }

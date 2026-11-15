@@ -52,8 +52,19 @@ func NewResourceCatalogFileService(
 	return &resourceCatalogFileService{
 		inner:       inner,
 		catalog:     catalog,
-		externalURL: strings.TrimRight(strings.TrimSpace(os.Getenv("APP_EXTERNAL_URL")), "/"),
+		externalURL: resourceCatalogExternalURL(),
 	}
+}
+
+// resourceCatalogExternalURL returns the externally reachable base used to build
+// absolute /r/<token> capability URLs. PUSH_FILES_EXTERNAL_URL overrides
+// APP_EXTERNAL_URL so a reverse proxy / CDN domain can be used for download and
+// resource links without changing the app's canonical URL. Both empty -> "".
+func resourceCatalogExternalURL() string {
+	if v := strings.TrimRight(strings.TrimSpace(os.Getenv("PUSH_FILES_EXTERNAL_URL")), "/"); v != "" {
+		return v
+	}
+	return strings.TrimRight(strings.TrimSpace(os.Getenv("APP_EXTERNAL_URL")), "/")
 }
 
 func (s *resourceCatalogFileService) CheckConnectivity(ctx context.Context) error {

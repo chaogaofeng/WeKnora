@@ -93,8 +93,9 @@ type PushedFileCard struct {
 type PushFilesTool struct {
 	BaseTool
 	knowledgeService interfaces.KnowledgeService
-	fileService      interfaces.FileService // 用于 GetFileURL
-	searchTargets    types.SearchTargets    // 会话可见 KB 范围（权限边界）
+	fileService      interfaces.FileService      // 用于非 resource 路径的 GetFileURL
+	catalog          interfaces.ResourceCatalog // 用于 resource:// 句柄签 /r/ token
+	searchTargets    types.SearchTargets        // 会话可见 KB 范围（权限边界）
 	tenantID         uint64
 }
 
@@ -102,6 +103,7 @@ type PushFilesTool struct {
 func NewPushFilesTool(
 	knowledgeService interfaces.KnowledgeService,
 	fileService interfaces.FileService,
+	catalog interfaces.ResourceCatalog,
 	searchTargets types.SearchTargets,
 	tenantID uint64,
 ) *PushFilesTool {
@@ -109,6 +111,7 @@ func NewPushFilesTool(
 		BaseTool:         pushFilesTool,
 		knowledgeService: knowledgeService,
 		fileService:      fileService,
+		catalog:          catalog,
 		searchTargets:    searchTargets,
 		tenantID:         tenantID,
 	}
@@ -299,27 +302,40 @@ func (t *PushFilesTool) pushOneFile(
 	return card, sr, true
 }
 
-// generateDownloadURL tries FileService.GetFileURL first; falls back to
-// /api/v1/files/presigned HMAC signing for local storage without APP_EXTERNAL_URL.
+// generateDownloadURL mints a /r/<token> capability URL for the file's storage
+// reference via the resource catalog — the same mechanism the rest of the system
+// uses for chat/file links. A resource:// handle is resolved to its physical
+// path at serve time, so the link works without leaking the real storage path or
+// tenant, and honours the caller's expiry_hours (unlike the global FileService
+// GetFileURL, which hardcodes a 2h grant). When the reference is not a catalog
+// resource (a raw local:///cos:// path), it falls back to the provider file
+// service, which returns a native or HMAC-signed /api/v1/files/presigned URL.
+//
+// A download URL always needs an externally reachable base. Priority:
+// PUSH_FILES_EXTERNAL_URL > APP_EXTERNAL_URL. Both empty -> error.
 func (t *PushFilesTool) generateDownloadURL(ctx context.Context, knowledge *types.Knowledge, expiryHours int) (string, error) {
-	// 优先用 FileService.GetFileURL（云存储返回原生 presigned HTTP URL）。
-	// 注意：local 存储未配置 externalURL 时，GetFileURL 会退回 local://（或经
-	// backendScopedFileService 包裹成 storage://）这类内部路径，浏览器无法直接下载，
-	// 必须降级到 HMAC 签名 URL，不能原样透出。
+	if _, ok := types.ParseResourcePath(knowledge.FilePath); ok {
+		externalURL := pushFilesExternalURL()
+		if externalURL == "" {
+			return "", fmt.Errorf("PUSH_FILES_EXTERNAL_URL/APP_EXTERNAL_URL not configured, cannot generate download URL")
+		}
+		token, err := t.catalog.CreateAccessGrant(ctx, knowledge.FilePath, time.Duration(expiryHours)*time.Hour)
+		if err != nil {
+			return "", fmt.Errorf("create resource access grant: %w", err)
+		}
+		return strings.TrimRight(externalURL, "/") + "/r/" + token, nil
+	}
+
+	// Non-resource storage path (e.g. a raw local:// or cos:// reference):
+	// delegate to the provider file service, which returns a native URL or a
+	// HMAC-signed /api/v1/files/presigned URL for local storage.
 	url, err := t.fileService.GetFileURL(ctx, knowledge.FilePath)
 	if isHTTPDownloadURL(url, err) {
 		return url, nil
 	}
-	// 回落：local 存储用 HMAC 签名 URL。baseURL 优先级：配置项 PUSH_FILES_EXTERNAL_URL
-	// > APP_EXTERNAL_URL。两者皆空时无法生成 HTTP 链接（本地存储总得有个对外可达
-	// 域名才能签发下载链接）。当你用反向代理/CDN 对外暴露、且代理对外域名与
-	// APP_EXTERNAL_URL 不一致时，设 PUSH_FILES_EXTERNAL_URL 让下载链接走代理域名。
-	baseURL := strings.TrimSpace(os.Getenv("PUSH_FILES_EXTERNAL_URL"))
-	if baseURL == "" {
-		baseURL = os.Getenv("APP_EXTERNAL_URL")
-	}
-	if baseURL == "" {
-		return "", fmt.Errorf("PUSH_FILES_EXTERNAL_URL/APP_EXTERNAL_URL not configured, cannot generate download URL for local storage")
+	externalURL := pushFilesExternalURL()
+	if externalURL == "" {
+		return "", fmt.Errorf("PUSH_FILES_EXTERNAL_URL/APP_EXTERNAL_URL not configured, cannot generate download URL")
 	}
 	// Sign with the file's owning tenant (cross-tenant shared KBs may own the
 	// file under a different tenant than the caller's session tenant).
@@ -327,11 +343,22 @@ func (t *PushFilesTool) generateDownloadURL(ctx context.Context, knowledge *type
 	if ownerTenant == 0 {
 		ownerTenant = t.tenantID
 	}
-	signed, err := utils.SignFileURL(baseURL, knowledge.FilePath, ownerTenant, time.Duration(expiryHours)*time.Hour)
+	signed, err := utils.SignFileURL(externalURL, knowledge.FilePath, ownerTenant, time.Duration(expiryHours)*time.Hour)
 	if err != nil {
 		return "", fmt.Errorf("sign file URL failed: %w", err)
 	}
 	return signed, nil
+}
+
+// pushFilesExternalURL returns the externally reachable base used to build
+// absolute download links. PUSH_FILES_EXTERNAL_URL takes priority so a reverse
+// proxy/CDN domain can override APP_EXTERNAL_URL.
+func pushFilesExternalURL() string {
+	baseURL := strings.TrimSpace(os.Getenv("PUSH_FILES_EXTERNAL_URL"))
+	if baseURL == "" {
+		baseURL = strings.TrimSpace(os.Getenv("APP_EXTERNAL_URL"))
+	}
+	return baseURL
 }
 
 // isHTTPDownloadURL reports whether GetFileURL returned a directly downloadable
