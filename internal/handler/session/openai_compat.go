@@ -467,7 +467,11 @@ func (h *Handler) openAIStreamQA(
 
 	// Setup stream handler: bridges EventBus events → StreamManager so
 	// the pull-based polling loop can observe answer/thinking/complete events.
-	h.setupStreamHandler(asyncCtx, sessionID, assistantMessageID, requestID,
+	// Captured so we can explicitly publish the terminal "complete" event after
+	// the message is persisted — the OpenAI SSE poll loop depends on that
+	// StreamManager event to emit finish_reason + data: [DONE] and close the
+	// stream (see streamEventsToOpenAIChunks).
+	streamHandler := h.setupStreamHandler(asyncCtx, sessionID, assistantMessageID, requestID,
 		reqCtx.session.TenantID, time.Now(), reqCtx.assistantMessage, eventBus)
 
 	// Normal mode: register completion handler on EventAgentFinalAnswer
@@ -494,6 +498,15 @@ func (h *Handler) openAIStreamQA(
 					SessionID: sessionID,
 					Data:      event.AgentCompleteData{FinalAnswer: reqCtx.assistantMessage.Content},
 				})
+				// Publish the terminal "complete" event to the StreamManager so
+				// the OpenAI SSE poll loop emits finish_reason + data: [DONE]
+				// and closes the stream. Without this the answer is delivered
+				// but the stream never terminates.
+				if streamHandler != nil {
+					if pubErr := streamHandler.publishCompletion(asyncCtx); pubErr != nil {
+						logger.Errorf(asyncCtx, "[openai] failed to publish completion event: %v", pubErr)
+					}
+				}
 			}
 			return nil
 		})
@@ -524,6 +537,13 @@ func (h *Handler) openAIStreamQA(
 					types.TenantIDContextKey, reqCtx.session.TenantID,
 				)
 				h.completeAssistantMessage(updateCtx, reqCtx.assistantMessage, reqCtx.query, reqCtx.userMessageID)
+				// Agent mode has no separate completion handler, so publish the
+				// terminal "complete" event here to let the SSE poll loop close.
+				if streamHandler != nil {
+					if pubErr := streamHandler.publishCompletion(updateCtx); pubErr != nil {
+						logger.Errorf(asyncCtx, "[openai] failed to publish completion event (agent mode): %v", pubErr)
+					}
+				}
 			}
 		}()
 
@@ -604,6 +624,16 @@ func (h *Handler) streamEventsToOpenAIChunks(
 ) {
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
+
+	// Absolute backstop: the loop below only terminates when a terminal event
+	// (complete / stop / fatal error) reaches the StreamManager. If that event
+	// is never written — e.g. a Redis blip drops it, or generation is force-
+	// cancelled by the stop watcher without a completion event — the SSE stream
+	// would otherwise block forever and never emit data: [DONE]. This deadline
+	// mirrors the stop watcher's generation lifetime and guarantees the stream
+	// closes so clients (Dify etc.) don't hang waiting for an end marker.
+	deadline := time.NewTimer(stopWatcherMaxDuration)
+	defer deadline.Stop()
 
 	lastOffset := 0
 	now := time.Now().Unix()
@@ -787,6 +817,33 @@ func (h *Handler) streamEventsToOpenAIChunks(
 		select {
 		case <-c.Request.Context().Done():
 			log.Infof("[openai] client disconnected, session=%s (offset=%d, finalAnswerStarted=%v)", sessionID, lastOffset, finalAnswerStarted)
+			return
+
+		case <-deadline.C:
+			// No terminal event ever arrived — force-close the stream so the
+			// client receives finish_reason + data: [DONE] instead of hanging.
+			log.Warnf("[openai] stream deadline reached without terminal event; forcing close, session=%s (offset=%d, finalAnswerStarted=%v)", sessionID, lastOffset, finalAnswerStarted)
+			if !finalAnswerStarted {
+				// Treat everything buffered as thinking and re-emit as the
+				// answer (mirrors the no-marker completion fallback).
+				finishWithoutMarker()
+			} else if tail := markerScanBuf.String(); tail != "" {
+				markerScanBuf.Reset()
+				if cleaned := wikiStripper.feed(tail); cleaned != "" {
+					if processed := urlRewriter.feed(cleaned); processed != "" {
+						fullAnswer.WriteString(processed)
+						h.writeOpenAIChunk(c, completionID, now, modelName, "", processed, nil)
+					}
+				}
+			}
+			if tail := urlRewriter.flush(); tail != "" {
+				fullAnswer.WriteString(tail)
+				h.writeOpenAIChunk(c, completionID, now, modelName, "", tail, nil)
+			}
+			finishReason := "stop"
+			h.writeOpenAIChunk(c, completionID, now, modelName, "", "", &finishReason)
+			fmt.Fprintf(c.Writer, "data: [DONE]\n\n")
+			c.Writer.Flush()
 			return
 
 		case <-ticker.C:
