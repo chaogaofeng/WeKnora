@@ -84,6 +84,15 @@ var toolHandlePolicies = map[string]toolHandlePolicy{
 		sourceIDKeys: map[string]struct{}{"knowledge_base_id": {}},
 		sourceOutput: true,
 	},
+	// push_files turns document identities into download links. It accepts the
+	// same knowledge_id arguments other RAG tools do (a bare UUID, a wiki
+	// summary/<id> slug, or a doc://N handle from search_knowledge /
+	// read_document), so knowledge_ids must be decoded back to the real UUID and
+	// its output compacted so the real UUID is never leaked to the model.
+	"push_files": {
+		sourceIDKeys: map[string]struct{}{"knowledge_ids": {}},
+		sourceOutput: true,
+	},
 	// Retired retrieval tools keep their policies so stored histories that
 	// still carry their calls decode and compact exactly as they did.
 	"knowledge_search": {

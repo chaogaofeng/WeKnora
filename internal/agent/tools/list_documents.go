@@ -19,8 +19,10 @@ const (
 var listDocumentsTool = BaseTool{
 	name: ToolListDocuments,
 	description: "List the documents inside one knowledge base, newest first, with pagination and an optional " +
-		"title filter.\nUse it to see what a knowledge base contains or to find a document by name; each entry " +
-		"carries the doc://N handle that read_document accepts.",
+		"title filter.\nUse it to see what a knowledge base contains or to find a document by name. Each entry " +
+		"carries a knowledge_id (a UUID) in the <document knowledge_id=\"...\"> attribute and the data field " +
+		"\"knowledge_id\". Pass that UUID directly to read_document (id) or push_files (knowledge_ids); the " +
+		"wiki summary/<knowledge_id> slug and doc://N handles are produced by other tools, not by this one.",
 	schema: json.RawMessage(`{
   "type": "object",
   "properties": {
