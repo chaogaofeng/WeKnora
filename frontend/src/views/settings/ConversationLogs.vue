@@ -330,6 +330,11 @@ const columns = [
 
 function userLabel(row: SessionListItem): string {
   if (row.owner_name) return row.owner_name
+  // Show the IM sender identity (platform + user id) instead of only the
+  // platform tag, so WeCom/DingTalk/Feishu sessions are attributable.
+  if (row.im_user_id) {
+    return row.im_platform ? `${row.im_platform} · ${row.im_user_id}` : row.im_user_id
+  }
   if (row.im_platform) return row.im_platform
   if (row.user_id) {
     const id = row.user_id
